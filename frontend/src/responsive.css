@@ -1,0 +1,13 @@
+/* Reserved for the browser's forced-color accessibility mode. */
+@media (forced-colors: active) {
+  button,
+  .panel,
+  input,
+  select {
+    border: 1px solid ButtonText;
+  }
+  .age-readout output {
+    color: CanvasText !important;
+    background: none !important;
+  }
+}
