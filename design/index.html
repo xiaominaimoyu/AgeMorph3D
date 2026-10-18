@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>岁月镜 AgeMorph3D — 跨年龄三维人脸重建与可视化系统</title>
+<meta name="description" content="拍照 → 三维重建 → 拖动年龄滑块（20—70 岁），在浏览器中实时看见时光。全程本地处理。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* ============ 设计 Token ============ */
+  :root{
+    --ink:        #0A0E1A;   /* 视口背景 */
+    --panel:      #111828;   /* 承载面板 */
+    --etch:       #233047;   /* 蚀刻细线 */
+    --readout:    #E9EEF6;   /* 主文字 */
+    --dim:        #8B96AC;   /* 次文字 */
+    --youth:      #35D3C0;   /* 时间起点 · 青 */
+    --aged:       #E8A04C;   /* 时间终点 · 琥珀 */
+    --time-grad:  linear-gradient(90deg in oklab, var(--youth), var(--aged));
+    --font-disp:  "Space Grotesk","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+    --font-body:  "Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+    --font-mono:  "JetBrains Mono",ui-monospace,"SF Mono",Consolas,monospace;
+    --maxw: 1180px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--ink);
+    color:var(--readout);
+    font-family:var(--font-body);
+    font-size:16px;line-height:1.75;
+    -webkit-font-smoothing:antialiased;
+    font-variant-numeric:tabular-nums;
+    overflow-x:hidden;
+  }
+  ::selection{background:var(--youth);color:var(--ink)}
+  a{color:var(--youth);text-decoration:none}
+  a:hover{text-decoration:underline;text-underline-offset:4px}
+  :focus-visible{outline:2px solid var(--youth);outline-offset:3px;border-radius:2px}
+
+  .mono{font-family:var(--font-mono)}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+  /* ============ 蚀刻区块：细线 + 准星 ============ */
+  .plate{border-top:1px solid var(--etch);position:relative}
+  .plate::before,.plate::after{
+    content:"";position:absolute;top:-6px;left:24px;width:12px;height:12px;pointer-events:none;
+    background:
+      linear-gradient(var(--etch),var(--etch)) center/12px 1px no-repeat,
+      linear-gradient(var(--etch),var(--etch)) center/1px 12px no-repeat;
+  }
+  .plate::after{left:auto;right:24px}
+  .plate:hover::before,.plate:hover::after{
+    background:
+      linear-gradient(var(--youth),var(--youth)) center/12px 1px no-repeat,
+      linear-gradient(var(--youth),var(--youth)) center/1px 12px no-repeat;
+  }
+  section{padding:96px 0}
+
+  .kicker{
+    font-family:var(--font-mono);font-size:13px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:14px;
+    display:flex;align-items:center;gap:12px;
+  }
+  .kicker::before{content:"";width:28px;height:1px;background:var(--time-grad)}
+  h2{font-family:var(--font-disp);font-size:28px;line-height:1.25;font-weight:700;margin-bottom:40px}
+
+  /* ============ 顶栏 ============ */
+  header{
+    position:sticky;top:0;z-index:50;
+    background:color-mix(in srgb,var(--ink) 86%,transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--etch);
+  }
+  .nav{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{font-family:var(--font-disp);font-weight:700;font-size:17px;letter-spacing:.02em;color:var(--readout);display:flex;align-items:baseline;gap:10px}
+  .brand .dot{width:8px;height:8px;background:var(--time-grad);display:inline-block;transform:rotate(45deg);align-self:center}
+  .brand small{font-family:var(--font-mono);font-size:11px;color:var(--dim);font-weight:400;letter-spacing:.08em}
+  .nav-links{display:flex;gap:28px;font-size:14px}
+  .nav-links a{color:var(--dim)}
+  .nav-links a:hover{color:var(--readout);text-decoration:none}
+
+  /* ============ Hero ============ */
+  .hero{min-height:calc(100vh - 60px);display:flex;flex-direction:column;justify-content:center;padding:72px 0 64px;position:relative}
+  .hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:56px;align-items:center}
+  .hero h1{
+    font-family:var(--font-disp);font-weight:700;
+    font-size:clamp(44px,7vw,64px);line-height:1.05;letter-spacing:-.02em;
+  }
+  .hero h1 .en{display:block;font-size:.42em;letter-spacing:.01em;color:var(--dim);font-weight:500;margin-top:10px}
+  .hero .lede{max-width:56ch;color:var(--dim);margin-top:24px;font-size:17px}
+  .hero .lede strong{color:var(--readout);font-weight:500}
+
+  /* 线框脸画布 */
+  .face-stage{
+    background:var(--panel);border:1px solid var(--etch);position:relative;
+    aspect-ratio:1/1;max-height:460px;width:100%;
+  }
+  .face-stage svg{display:block;width:100%;height:100%}
+  .face-tag{
+    position:absolute;top:12px;left:14px;font-family:var(--font-mono);
+    font-size:11px;letter-spacing:.1em;color:var(--dim);
+  }
+  .face-tag b{color:var(--youth);font-weight:500}
+  .face-corner{position:absolute;width:14px;height:14px;border:1px solid var(--etch)}
+  .fc-tl{top:-1px;left:-1px;border-right:0;border-bottom:0}
+  .fc-tr{top:-1px;right:-1px;border-left:0;border-bottom:0}
+  .fc-bl{bottom:-1px;left:-1px;border-right:0;border-top:0}
+  .fc-br{bottom:-1px;right:-1px;border-left:0;border-top:0}
+
+  /* 年龄刻度尺（全站母题） */
+  .age-ruler{margin-top:56px}
+  .ruler-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+  .ruler-head .label{font-family:var(--font-mono);font-size:12px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+  .age-readout{
+    font-family:var(--font-mono);font-weight:700;font-size:clamp(28px,4vw,40px);line-height:1;
+    background:var(--time-grad);-webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .age-readout small{font-size:.4em;font-weight:400;letter-spacing:.1em}
+  .ruler-track{position:relative;padding-top:22px}
+  .ticks{position:absolute;top:0;left:0;right:0;height:14px;
+    background:repeating-linear-gradient(90deg,var(--etch) 0 1px,transparent 1px calc(100%/50));
+  }
+  .ticks-major{position:absolute;top:0;left:0;right:0;height:14px;display:flex;justify-content:space-between}
+  .ticks-major span{width:1px;height:14px;background:var(--dim)}
+  .ruler-nums{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:12px;color:var(--dim);margin-top:6px}
+  input[type=range].age-slider{
+    -webkit-appearance:none;appearance:none;width:100%;height:34px;background:transparent;cursor:pointer;margin-top:8px;
+  }
+  .age-slider::-webkit-slider-runnable-track{
+    height:6px;border-radius:0;
+    background:linear-gradient(90deg,var(--youth) 0%,var(--aged) var(--fill,0%),var(--etch) var(--fill,0%));
+  }
+  .age-slider::-moz-range-track{height:6px;background:var(--etch)}
+  .age-slider::-moz-range-progress{height:6px;background:linear-gradient(90deg,var(--youth),var(--aged))}
+  .age-slider::-webkit-slider-thumb{
+    -webkit-appearance:none;width:18px;height:26px;margin-top:-10px;
+    background:var(--ink);border:2px solid var(--readout);
+    box-shadow:0 0 0 4px var(--ink),0 0 18px rgba(53,211,192,.35);
+    cursor:grab;
+  }
+  .age-slider::-moz-range-thumb{
+    width:14px;height:24px;border-radius:0;background:var(--ink);
+    border:2px solid var(--readout);cursor:grab;
+  }
+  .age-slider:active::-webkit-slider-thumb{cursor:grabbing}
+
+  /* 载入扫描动效（仅一次） */
+  @keyframes sweep{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  .sweep-bar{height:2px;background:var(--time-grad);transform-origin:left;margin-top:20px;animation:sweep 1.2s cubic-bezier(.65,0,.35,1) .2s both}
+  @media (prefers-reduced-motion:reduce){
+    .sweep-bar{animation:none}
+    html{scroll-behavior:auto}
+    *{transition:none!important}
+  }
+
+  /* 读数条 */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--etch);margin-top:64px}
+  .stat{padding:22px 24px;border-right:1px solid var(--etch)}
+  .stat:last-child{border-right:0}
+  .stat b{display:block;font-family:var(--font-mono);font-weight:700;font-size:26px;line-height:1.1;color:var(--readout)}
+  .stat b em{font-style:normal;font-size:.55em;color:var(--dim);font-weight:400}
+  .stat span{display:block;font-size:13px;color:var(--dim);margin-top:6px}
+
+  /* ============ 三条边界 ============ */
+  .bounds{display:flex;flex-direction:column}
+  .bound{
+    display:grid;grid-template-columns:28px 1fr 1fr;gap:24px;align-items:baseline;
+    padding:28px 0;border-bottom:1px solid var(--etch);
+  }
+  .bound:last-child{border-bottom:0}
+  .bound .xh{
+    width:12px;height:12px;justify-self:center;transition:.2s;
+    background:
+      linear-gradient(var(--dim),var(--dim)) center/12px 1px no-repeat,
+      linear-gradient(var(--dim),var(--dim)) center/1px 12px no-repeat;
+  }
+  .bound:hover .xh{
+    background:
+      linear-gradient(var(--youth),var(--youth)) center/12px 1px no-repeat,
+      linear-gradient(var(--youth),var(--youth)) center/1px 12px no-repeat;
+  }
+  .bound .do{font-size:18px;font-weight:500;line-height:1.6}
+  .bound .dont{color:var(--dim);font-size:15px}
+  .bound .dont::before{content:"不做 — ";font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;color:var(--aged)}
+
+  /* ============ 流水线 ============ */
+  .pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--etch)}
+  .stage{padding:28px 24px;border-right:1px solid var(--etch);position:relative;background:var(--panel)}
+  .stage:last-child{border-right:0}
+  .stage .idx{font-family:var(--font-mono);font-size:12px;letter-spacing:.12em;color:var(--youth)}
+  .stage h3{font-family:var(--font-disp);font-size:18px;margin:10px 0 8px}
+  .stage p{font-size:13.5px;color:var(--dim);line-height:1.65}
+  .stage .stack{margin-top:14px;font-family:var(--font-mono);font-size:11.5px;color:var(--dim);line-height:1.8}
+  .stage .stack b{color:var(--readout);font-weight:500}
+  .stage::after{
+    content:"";position:absolute;top:50%;right:-9px;width:18px;height:1px;
+    background:var(--time-grad);z-index:1;
+  }
+  .stage:last-child::after{display:none}
+
+  .lanes{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}
+  .lane{border:1px solid var(--etch);padding:22px 24px}
+  .lane h4{font-family:var(--font-mono);font-size:13px;letter-spacing:.1em;font-weight:500;display:flex;align-items:center;gap:10px}
+  .lane h4 i{width:10px;height:2px;display:inline-block}
+  .lane.rt h4 i{background:var(--youth)}
+  .lane.off h4 i{background:var(--aged)}
+  .lane p{font-size:14px;color:var(--dim);margin-top:10px}
+  .lane .mono-kv{font-family:var(--font-mono);font-size:12px;color:var(--readout);margin-top:12px}
+
+  /* ============ 规格表 ============ */
+  .spec{border-top:1px solid var(--etch)}
+  .spec-row{
+    display:grid;grid-template-columns:180px 1fr 220px;gap:24px;align-items:baseline;
+    padding:16px 0;border-bottom:1px solid var(--etch);
+  }
+  .spec-row .layer{font-size:13px;letter-spacing:.06em;color:var(--dim)}
+  .spec-row .pick{font-weight:500;font-size:15.5px}
+  .spec-row .ver{font-family:var(--font-mono);font-size:13px;color:var(--youth);text-align:right}
+
+  /* ============ 指标读数墙 ============ */
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--etch)}
+  .metric{padding:28px;border-right:1px solid var(--etch);border-bottom:1px solid var(--etch)}
+  .metric:nth-child(3n){border-right:0}
+  .metric:nth-last-child(-n+3){border-bottom:0}
+  .metric b{font-family:var(--font-mono);font-weight:700;font-size:clamp(22px,2.6vw,30px);line-height:1.1;display:block}
+  .metric b em{font-style:normal;font-size:.55em;color:var(--dim);font-weight:400}
+  .metric .m-label{font-size:13px;color:var(--dim);margin-top:8px;display:block}
+  .metric .m-note{font-family:var(--font-mono);font-size:11px;color:var(--dim);margin-top:4px;display:block;letter-spacing:.04em}
+
+  /* ============ 时间轴 ============ */
+  .timeline{position:relative;margin-top:24px}
+  .tl-scale{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--dim);padding:0 2px 10px}
+  .tl-bar{position:relative;height:1px;background:var(--etch)}
+  .tl-phase{position:absolute;top:-5px;height:11px;border-left:1px solid var(--dim)}
+  .tl-phase i{position:absolute;top:-7px;left:-4px;width:7px;height:7px;transform:rotate(45deg);background:var(--aged)}
+  .tl-phase.start i{background:var(--youth)}
+  .tl-labels{display:grid;grid-template-columns:repeat(5,1fr);margin-top:18px;gap:16px}
+  .tl-item .ph{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;color:var(--dim)}
+  .tl-item h4{font-family:var(--font-disp);font-size:15.5px;margin:6px 0 6px;font-weight:500}
+  .tl-item p{font-size:13px;color:var(--dim);line-height:1.6}
+  .tl-item .gate{font-family:var(--font-mono);font-size:11px;color:var(--aged);margin-top:8px;display:block;letter-spacing:.05em}
+
+  /* ============ 交付物 ============ */
+  .deliver{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--etch)}
+  .deliver ul{list-style:none;padding:24px 28px}
+  .deliver ul:first-child{border-right:1px solid var(--etch)}
+  .deliver li{
+    font-size:14px;color:var(--dim);padding:9px 0 9px 22px;position:relative;
+    border-bottom:1px dashed color-mix(in srgb,var(--etch) 55%,transparent);
+  }
+  .deliver li:last-child{border-bottom:0}
+  .deliver li::before{
+    content:"";position:absolute;left:0;top:17px;width:8px;height:8px;
+    border:1px solid var(--dim);transform:rotate(45deg);
+  }
+  .deliver li b{color:var(--readout);font-weight:500}
+  .deliver li .wk{font-family:var(--font-mono);font-size:11.5px;color:var(--youth);margin-left:8px}
+
+  /* ============ 页脚 ============ */
+  footer{padding:96px 0 48px;text-align:left}
+  .creed{
+    font-family:var(--font-disp);font-weight:700;
+    font-size:clamp(26px,4.5vw,42px);line-height:1.3;letter-spacing:-.01em;max-width:20ch;
+  }
+  .creed .grad{background:var(--time-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .foot-meta{
+    display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:16px;
+    margin-top:56px;padding-top:24px;border-top:1px solid var(--etch);
+    font-family:var(--font-mono);font-size:12px;color:var(--dim);letter-spacing:.06em;
+  }
+
+  /* ============ 响应式 ============ */
+  @media (max-width:1023px){
+    .hero-grid{grid-template-columns:1fr;gap:40px}
+    .face-stage{max-width:460px}
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .stat:nth-child(2n){border-right:0}
+    .stat:nth-child(-n+2){border-bottom:1px solid var(--etch)}
+    .pipeline{grid-template-columns:repeat(2,1fr)}
+    .stage:nth-child(2n){border-right:0}
+    .stage:nth-child(-n+2){border-bottom:1px solid var(--etch)}
+    .stage::after{display:none}
+    .metrics{grid-template-columns:repeat(2,1fr)}
+    .metric:nth-child(3n){border-right:1px solid var(--etch)}
+    .metric:nth-child(2n){border-right:0}
+    .metric:nth-last-child(-n+3){border-bottom:1px solid var(--etch)}
+    .metric:nth-last-child(-n+2){border-bottom:0}
+    .spec-row{grid-template-columns:140px 1fr;gap:12px}
+    .spec-row .ver{grid-column:2;text-align:left}
+    section{padding:72px 0}
+  }
+  @media (max-width:639px){
+    .nav-links{display:none}
+    .wrap{padding:0 20px}
+    section{padding:56px 0}
+    h2{font-size:23px;margin-bottom:28px}
+    .bound{grid-template-columns:20px 1fr;gap:16px}
+    .bound .dont{grid-column:2}
+    .lanes{grid-template-columns:1fr}
+    .pipeline{grid-template-columns:1fr}
+    .stage{border-right:0;border-bottom:1px solid var(--etch)}
+    .stage:last-child{border-bottom:0}
+    .stats{grid-template-columns:1fr 1fr}
+    .metrics{grid-template-columns:1fr}
+    .metric{border-right:0!important;border-bottom:1px solid var(--etch)!important}
+    .metric:last-child{border-bottom:0!important}
+    .tl-labels{grid-template-columns:1fr;gap:0}
+    .timeline{border-left:1px solid var(--etch);padding-left:24px;margin-left:6px}
+    .tl-scale,.tl-bar{display:none}
+    .tl-item{padding:18px 0;position:relative}
+    .tl-item::before{
+      content:"";position:absolute;left:-28.5px;top:26px;width:9px;height:9px;
+      transform:rotate(45deg);background:var(--panel);border:1px solid var(--aged);
+    }
+    .deliver{grid-template-columns:1fr}
+    .deliver ul:first-child{border-right:0;border-bottom:1px solid var(--etch)}
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 顶栏 ================= -->
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top"><span class="dot"></span>岁月镜 <small>AGEMORPH3D</small></a>
+    <nav class="nav-links" aria-label="页面导航">
+      <a href="#bounds">边界</a>
+      <a href="#pipeline">流水线</a>
+      <a href="#stack">技术栈</a>
+      <a href="#metrics">指标</a>
+      <a href="#timeline">进度</a>
+      <a href="#deliver">交付</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ================= Hero ================= -->
+<div class="wrap" id="top">
+  <section class="hero" style="padding-top:72px">
+    <div class="hero-grid">
+      <div>
+        <div class="kicker">Cross-Age 3D Face Reconstruction</div>
+        <h1>岁月镜<span class="en">AgeMorph3D — 把时间变成参数</span></h1>
+        <p class="lede">
+          面对摄像头或上传一张照片，系统检测人脸并重建为<strong>参数化三维头模</strong>；
+          拖动年龄滑块，在浏览器里实时预览 <strong>20 → 70</strong> 岁的自己，并导出 glTF 模型。
+          全部计算在本地完成，人脸数据不出本机。
+        </p>
+      </div>
+      <div class="face-stage" aria-label="三维线框人脸随年龄形变示意">
+        <span class="face-corner fc-tl"></span><span class="face-corner fc-tr"></span>
+        <span class="face-corner fc-bl"></span><span class="face-corner fc-br"></span>
+        <div class="face-tag">MESH&nbsp;<b>bfm_v1</b>&nbsp;·&nbsp;VERTS&nbsp;<b>38365</b>&nbsp;·&nbsp;MORPH&nbsp;<b id="tagAge">w 0.00</b></div>
+        <svg id="faceSvg" viewBox="0 0 400 400" role="img" aria-label="线框人脸，随年龄滑块形变"></svg>
+      </div>
+    </div>
+
+    <!-- 年龄刻度尺 -->
+    <div class="age-ruler">
+      <div class="ruler-head">
+        <span class="label">Age Axis / 年龄轴</span>
+        <span class="age-readout"><span id="ageNum">20</span> <small>岁</small></span>
+      </div>
+      <div class="ruler-track">
+        <div class="ticks" aria-hidden="true"></div>
+        <div class="ticks-major" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <input type="range" class="age-slider" id="ageSlider" min="20" max="70" value="20" step="1"
+               aria-label="年龄滑块，20 到 70 岁">
+        <div class="ruler-nums"><span>20</span><span>30</span><span>40</span><span>50</span><span>60</span><span>70</span></div>
+      </div>
+      <div class="sweep-bar" aria-hidden="true"></div>
+    </div>
+
+    <!-- 读数条 -->
+    <div class="stats">
+      <div class="stat"><b>≥30 <em>FPS</em></b><span>实时线渲染帧率目标</span></div>
+      <div class="stat"><b>&lt;1 <em>KB</em></b><span>单帧 WebSocket payload</span></div>
+      <div class="stat"><b>≤5 <em>s</em></b><span>拍照 → 生成端到端延迟</span></div>
+      <div class="stat"><b>100<em>%</em></b><span>本地处理，零上传</span></div>
+    </div>
+  </section>
+</div>
+
+<!-- ================= 三条边界 ================= -->
+<div class="wrap">
+  <section class="plate" id="bounds">
+    <div class="kicker">Boundaries / 三条边界</div>
+    <h2>先划清边界，再谈实现</h2>
+    <div class="bounds">
+      <div class="bound">
+        <span class="xh" aria-hidden="true"></span>
+        <p class="do">做「年龄变换」——输出统计上合理的年龄方向形变，围绕目标年龄符合度与身份保持设计评价。</p>
+        <p class="dont">「年龄预测」。系统不预言任何人未来的长相，措辞写进开题报告与论文。</p>
+      </div>
+      <div class="bound">
+        <span class="xh" aria-hidden="true"></span>
+        <p class="do">适用范围 20 → 70 岁。BFM / FLAME 由成年人扫描数据训练，界面与文档全程明示该区间。</p>
+        <p class="dont">儿童头型。颅骨比例不在模型表达范围内，只出现在论文「局限与展望」。</p>
+      </div>
+      <div class="bound">
+        <span class="xh" aria-hidden="true"></span>
+        <p class="do">全部本地处理。检测、重建、老化、渲染均在本机完成——这是合规要求，也是系统卖点。</p>
+        <p class="dont">云端上传。人脸数据不出本机，网络面板中没有任何图像出网。</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ================= 流水线 ================= -->
+<div class="wrap">
+  <section class="plate" id="pipeline">
+    <div class="kicker">Pipeline / 系统流水线</div>
+    <h2>从一帧画面到一个会老去的三维头模</h2>
+    <div class="pipeline">
+      <div class="stage">
+        <span class="idx">M1</span>
+        <h3>人脸检测与对齐</h3>
+        <p>YOLO26n-face 输出人脸框与关键点，WIDER FACE 微调，ONNX 推理。</p>
+        <div class="stack"><b>ultralytics</b> 8.4.178<br>onnxruntime 1.31.0</div>
+      </div>
+      <div class="stage">
+        <span class="idx">M2</span>
+        <h3>单图三维重建</h3>
+        <p>3DDFA_V2 + BFM 保底、MICA + FLAME 主线，回归形状 / 表情 / 姿态与 UV 纹理。</p>
+        <div class="stack"><b>3DDFA_V2</b> → MICA<br>β, ψ, pose, UV</div>
+      </div>
+      <div class="stage">
+        <span class="idx">M3</span>
+        <h3>跨年龄变换</h3>
+        <p>BFM 年龄方向换算逐顶点位移，L2 归一化后导出 morph target；SAM 生成目标年龄纹理。</p>
+        <div class="stack"><b>Δβ_age</b> → delta.bin<br>SAM 纹理老化</div>
+      </div>
+      <div class="stage">
+        <span class="idx">M6</span>
+        <h3>实时可视化</h3>
+        <p>three.js morph target 滑块驱动，仅传参数、不传网格，导出 glTF 与效果图。</p>
+        <div class="stack"><b>three.js</b> 0.186.1<br>FastAPI + WebSocket</div>
+      </div>
+    </div>
+    <div class="lanes">
+      <div class="lane rt">
+        <h4><i></i>实时线 REALTIME</h4>
+        <p>检测 → 裁剪对齐 → 3DMM 回归 → 姿态驱动渲染，逐帧执行。</p>
+        <div class="mono-kv">target ≥ 30 FPS · payload &lt; 1 KB / frame</div>
+      </div>
+      <div class="lane off">
+        <h4><i></i>离线线 OFFLINE</h4>
+        <p>拍照 → 重建 → 年龄方向 → SAM 纹理 → 导出，一次性执行，可等待数秒。</p>
+        <div class="mono-kv">budget ≤ 5 s · glTF / PNG export</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ================= 技术栈 ================= -->
+<div class="wrap">
+  <section class="plate" id="stack">
+    <div class="kicker">Stack / 技术栈规格表</div>
+    <h2>锁定版本，可复现</h2>
+    <div class="spec">
+      <div class="spec-row"><span class="layer">检测框架</span><span class="pick">ultralytics（YOLO26）＋ yolo26n-face 权重</span><span class="ver">8.4.178</span></div>
+      <div class="spec-row"><span class="layer">三维重建</span><span class="pick">3DDFA_V2（保底）／ MICA + FLAME（主线）</span><span class="ver">fixed commit</span></div>
+      <div class="spec-row"><span class="layer">深度学习</span><span class="pick">PyTorch + TorchVision（cu128，50 系显卡硬要求）</span><span class="ver">2.14.1 / 0.29.1</span></div>
+      <div class="spec-row"><span class="layer">推理部署</span><span class="pick">ONNX Runtime（GPU / CPU 回退）</span><span class="ver">1.31.0</span></div>
+      <div class="spec-row"><span class="layer">纹理老化</span><span class="pick">SAM（StyleGAN + pSp，官方权重推理）</span><span class="ver">MIT license</span></div>
+      <div class="spec-row"><span class="layer">后端服务</span><span class="pick">FastAPI + Uvicorn + WebSocket，Pydantic v2 校验</span><span class="ver">0.143.3</span></div>
+      <div class="spec-row"><span class="layer">前端渲染</span><span class="pick">three.js 原生 ESM + Vite，无框架</span><span class="ver">0.186.1</span></div>
+      <div class="spec-row"><span class="layer">导出格式</span><span class="pick">glTF 2.0 / GLB（内嵌 morph target）</span><span class="ver">pygltflib 1.16.5</span></div>
+      <div class="spec-row"><span class="layer">评价工具</span><span class="pick">insightface（ArcFace）· MiVOLO · FG-NET</span><span class="ver">2.1.x</span></div>
+      <div class="spec-row"><span class="layer">测试质量</span><span class="pick">pytest + Playwright（Chrome / Edge 冒烟）+ ruff</span><span class="ver">9.1.1 / 1.64.0</span></div>
+    </div>
+  </section>
+</div>
+
+<!-- ================= 量化指标 ================= -->
+<div class="wrap">
+  <section class="plate" id="metrics">
+    <div class="kicker">Metrics / 量化指标</div>
+    <h2>验收，用数字说话</h2>
+    <div class="metrics">
+      <div class="metric"><b>≥90<em>%</em></b><span class="m-label">WIDER FACE Easy mAP</span><span class="m-note">M1 检测 · GPU ≥30 FPS</span></div>
+      <div class="metric"><b>NME<em>≤基线</em></b><span class="m-label">AFLW2000-3D 重建误差</span><span class="m-note">M2 不劣于开源基线</span></div>
+      <div class="metric"><b>MAE<em>↓</em></b><span class="m-label">MiVOLO 估计年龄与目标年龄差</span><span class="m-note">M3 主子指标</span></div>
+      <div class="metric"><b>cosθ<em>↑</em></b><span class="m-label">ArcFace 身份保持相似度</span><span class="m-note">显著高于 2D 换脸对照组</span></div>
+      <div class="metric"><b>≤5 <em>s</em></b><span class="m-label">拍照 → 生成端到端延迟</span><span class="m-note">渲染 ≥30 FPS</span></div>
+      <div class="metric"><b>4500<em>+行</em></b><span class="m-label">项目总代码量底线</span><span class="m-note">≥1500 行/人 · cloc 统计</span></div>
+    </div>
+  </section>
+</div>
+
+<!-- ================= 时间轴 ================= -->
+<div class="wrap">
+  <section class="plate" id="timeline">
+    <div class="kicker">Timeline / 30 周进度</div>
+    <h2>五个阶段，三个硬闸门</h2>
+    <div class="timeline">
+      <div class="tl-scale"><span>W1</span><span>W6</span><span>W11</span><span>W16</span><span>W22</span><span>W26</span><span>W30</span></div>
+      <div class="tl-bar">
+        <span class="tl-phase start" style="left:3.3%"><i></i></span>
+        <span class="tl-phase" style="left:20%"><i></i></span>
+        <span class="tl-phase" style="left:36.6%"><i></i></span>
+        <span class="tl-phase" style="left:56.6%"><i></i></span>
+        <span class="tl-phase" style="left:73.3%"><i></i></span>
+        <span class="tl-phase" style="left:86.6%"><i></i></span>
+      </div>
+      <div class="tl-labels">
+        <div class="tl-item">
+          <span class="ph">W1 — W11</span>
+          <h4>调研与开题</h4>
+          <p>许可申请、环境复现、接口冻结、开题报告定稿。</p>
+          <span class="gate">GATE · W6 接口冻结</span>
+        </div>
+        <div class="tl-item">
+          <span class="ph">W12 — W16</span>
+          <h4>检测与重建基础</h4>
+          <p>开题答辩；YOLO 微调；重建跑通；three.js demo。</p>
+          <span class="gate">检测与重建指标出数</span>
+        </div>
+        <div class="tl-item">
+          <span class="ph">W17 — W22</span>
+          <h4>年龄变换与可视化</h4>
+          <p>拓扑闸门、年龄滑块原型、回归方向、SAM 纹理、中期报告。</p>
+          <span class="gate">GATE · W17 拓扑锁定</span>
+        </div>
+        <div class="tl-item">
+          <span class="ph">W23 — W26</span>
+          <h4>集成与实验</h4>
+          <p>前后端联调仅传参数、glTF 导出、全部量化指标出数。</p>
+          <span class="gate">GATE · W22 效果评估</span>
+        </div>
+        <div class="tl-item">
+          <span class="ph">W27 — W30</span>
+          <h4>论文与答辩</h4>
+          <p>说明书、外文翻译、演示视频、查重、评阅、答辩。</p>
+          <span class="gate">全部交付物提交</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ================= 交付物 ================= -->
+<div class="wrap">
+  <section class="plate" id="deliver">
+    <div class="kicker">Deliverables / 交付物</div>
+    <h2>硬性交付清单</h2>
+    <div class="deliver">
+      <ul>
+        <li><b>任务书 / 开题 / 中期报告</b> — 按学校模板与命名规范<span class="wk">W1–W22</span></li>
+        <li><b>毕业设计说明书 ×2</b> — A 算法章节，B 系统章节<span class="wk">W27–W29</span></li>
+        <li><b>外文资料翻译 ×2</b> — 各与本人分工相关<span class="wk">W28</span></li>
+        <li><b>评阅表 / 答辩评审表</b> — 指导教师与评阅人双轨<span class="wk">05.20 起</span></li>
+      </ul>
+      <ul>
+        <li><b>完整可运行源码仓库</b> — README 记录环境与模型获取<span class="wk">v1.0-final</span></li>
+        <li><b>演示视频 3—5 分钟</b> — 覆盖全部 6 项功能<span class="wk">W27–W28</span></li>
+        <li><b>数据合规文档</b> — 知情同意书 + 本地处理声明<span class="wk">W23–W26</span></li>
+        <li><b>工作过程记录本</b> — 持续记录至答辩前<span class="wk">全程</span></li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<!-- ================= 页脚 ================= -->
+<footer>
+  <div class="wrap">
+    <p class="creed">人脸数据<span class="grad">不出本机</span>。<br>这是一条合规要求，<br>也是这个系统的设计信条。</p>
+    <div class="foot-meta">
+      <span>AGEMORPH3D · 岁月镜 — 本科毕业设计</span>
+      <span>2026.11 — 2027.06 · 30 WEEKS</span>
+      <span>YOLO26 · 3DMM · three.js · FastAPI</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  const slider = document.getElementById('ageSlider');
+  const ageNum = document.getElementById('ageNum');
+  const tagAge = document.getElementById('tagAge');
+  const svg    = document.getElementById('faceSvg');
+  const NS = 'http://www.w3.org/2000/svg';
+
+  // 青 → 琥珀 插值
+  function lerp(a,b,t){return a+(b-a)*t}
+  function lerpColor(t){
+    const c1=[0x35,0xD3,0xC0], c2=[0xE8,0xA0,0x4C];
+    const c=c1.map((v,i)=>Math.round(lerp(v,c2[i],t)));
+    return 'rgb('+c[0]+','+c[1]+','+c[2]+')';
+  }
+
+  // 线框头模：N 条水平切片等高线
+  const SLICES = 17, CX = 200, TOP = 46, BOT = 362, BASE_RX = 118;
+  // 年轻形态宽度轮廓（0=颅顶, 1=下巴）
+  function shapeYoung(h){
+    return Math.sin(Math.PI * Math.pow(h, 0.78)) * (1 - 0.18*h);
+  }
+  // 老化：太阳穴收窄、下颌下垂变宽、整体拉长
+  function shapeAged(h, t){
+    const temple = 1 - 0.16*t*Math.exp(-Math.pow((h-0.30)/0.18,2)); // 太阳穴凹陷
+    const jaw    = 1 + 0.20*t*Math.exp(-Math.pow((h-0.82)/0.14,2)); // 下颌垂坠
+    return shapeYoung(h) * temple * jaw;
+  }
+
+  function drawFace(t){
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+    const col = lerpColor(t);
+    const dimCol = 'rgba(139,150,172,0.35)';
+
+    // 背景十字参考线
+    const cross = document.createElementNS(NS,'g');
+    [[CX,TOP-16,CX,BOT+16],[CX-BASE_RX-24,204,CX+BASE_RX+24,204]].forEach(function(l){
+      const ln=document.createElementNS(NS,'line');
+      ln.setAttribute('x1',l[0]);ln.setAttribute('y1',l[1]);
+      ln.setAttribute('x2',l[2]);ln.setAttribute('y2',l[3]);
+      ln.setAttribute('stroke','#233047');ln.setAttribute('stroke-dasharray','2 6');
+      cross.appendChild(ln);
+    });
+    svg.appendChild(cross);
+
+    // 等高线切片
+    const g = document.createElementNS(NS,'g');
+    for(let i=0;i<SLICES;i++){
+      const h = i/(SLICES-1);
+      const droop = t * 16 * Math.pow(h,2);            // 下半脸随年龄下垂
+      const cy = TOP + (BOT-TOP)*h + droop;
+      const rx = Math.max(4, BASE_RX * shapeAged(h,t));
+      const ry = (BOT-TOP)/(SLICES-1) * 0.42;
+      const e = document.createElementNS(NS,'ellipse');
+      e.setAttribute('cx',CX); e.setAttribute('cy',cy.toFixed(1));
+      e.setAttribute('rx',rx.toFixed(1)); e.setAttribute('ry',ry.toFixed(1));
+      e.setAttribute('fill','none');
+      e.setAttribute('stroke', i%4===0 ? col : dimCol);
+      e.setAttribute('stroke-width', i%4===0 ? 1.4 : 0.8);
+      g.appendChild(e);
+
+      // 顶点刻度点（网格感）
+      if(i%2===0){
+        [-1,1].forEach(function(s){
+          const dot=document.createElementNS(NS,'circle');
+          dot.setAttribute('cx',(CX+s*rx).toFixed(1));
+          dot.setAttribute('cy',cy.toFixed(1));
+          dot.setAttribute('r',1.6);
+          dot.setAttribute('fill',col);
+          g.appendChild(dot);
+        });
+      }
+    }
+    // 中轴经线
+    const spine=document.createElementNS(NS,'path');
+    let d='';
+    for(let i=0;i<SLICES;i++){
+      const h=i/(SLICES-1);
+      const droop=t*16*Math.pow(h,2);
+      const y=TOP+(BOT-TOP)*h+droop;
+      d+=(i===0?'M':'L')+CX+' '+y.toFixed(1)+' ';
+    }
+    spine.setAttribute('d',d);
+    spine.setAttribute('stroke',col);
+    spine.setAttribute('stroke-width','1');
+    spine.setAttribute('fill','none');
+    spine.setAttribute('stroke-dasharray','1 4');
+    g.appendChild(spine);
+    svg.appendChild(g);
+  }
+
+  function update(){
+    const age = parseInt(slider.value,10);
+    const t = (age-20)/50; // w ∈ [0,1]
+    ageNum.textContent = age;
+    tagAge.textContent = 'w ' + t.toFixed(2);
+    slider.style.setProperty('--fill', (t*100)+'%');
+    drawFace(t);
+  }
+  slider.addEventListener('input', update);
+  update();
+})();
+</script>
+</body>
+</html>

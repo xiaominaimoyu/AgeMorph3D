@@ -1,0 +1,48 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ===== 模型与数据（大文件不入库，README 记录获取方式）=====
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.safetensors
+*.bin
+*.mat
+*.h5
+*.npz
+*.npy
+*.pkl
+*.ply
+*.obj
+*.fbx
+datasets/
+data/
+
+# ===== 输出与日志 =====
+output/
+outputs/
+logs/
+*.log
+
+# ===== IDE / AI 本地配置与会话缓存 =====
+.claude/
+.workbuddy/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# ===== 环境 =====
+.env
+.env.*
+!.env.example
+
+# ===== 系统 =====
+node_modules/
+dist/
+Thumbs.db
