@@ -1,6 +1,8 @@
 # AgeMorph3D 本地后端
 
-第一批 B1 服务实现：FastAPI 能在没有模型时启动，并向前端准确报告不可用能力。**尚未接入真实检测、三维重建、年龄形状或年龄纹理模型**；合法推理请求返回 `503 MODEL_NOT_READY`，不会返回演示网格。B0 模型可行性、B2/B3 真实照片重建与 GLB 发布仍待实施。
+第一批 B1 服务实现：FastAPI 能在没有模型时启动，并向前端准确报告不可用能力。**HTTP/WS 尚未接入真实模型**；合法推理请求返回 `503 MODEL_NOT_READY`，不会返回演示网格。独立 B0 CPU 探针已运行真实 YOLO 五点检测与 3DDFA/BFM 重建；服务 lifecycle、B2/B3 真实照片 GLB 发布仍待接入。
+
+2026-10-19基础服务限定范围已通过阶段验收，实际证据、两项传输层边界和后续出口见[基础服务验收报告](../docs/基础服务验收报告.md)。这不代表整个后端或完整G0已验收。
 
 ## 启动
 
@@ -43,9 +45,13 @@ $env:AGEMORPH_ALLOWED_ORIGINS = 'http://127.0.0.1:5174,http://localhost:5174'
 
 HTTP 错误统一提供字符串 `detail` 和稳定 `code`。API与输入错误不回显原图、文件名或完整参数。HTTP 响应设置 `Cache-Control: no-store`。WS 坏帧和模型缺失会先发送一次终结 `error`，再关闭连接；没有实现成功 `face_state` 推理。
 
+上述错误约定限于进入应用的请求和帧。Uvicorn连接达到16上限时可能直接返回无CORS的纯文本503；超过2 MiB的WS消息在协议层以1009关闭，不产生JSON终结消息。这两项已作为非阻断边界记录，完整G0收口时继续处理。
+
 OpenAPI JSON 位于 `/openapi.json`；本批关闭需要外部 CDN 的 Swagger/ReDoc 页面。完整协议见 [接口文档](../docs/api.md)。
 
 ## 验证与后续开发
+
+B0 的可选推理依赖安装、模型清单、旧资产受限转换、真实检测和重建命令见 [B0 模型验证与复现](../docs/B0模型验证与复现.md)。运行探针需要 `uv sync --locked --extra inference`；不安装该 extra 时仍可启动无模型 API，推理模块的数值测试会明确跳过。探针独立于 API，不会因研究样例运行成功自动把服务改成 `ready`。
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
@@ -55,6 +61,6 @@ OpenAPI JSON 位于 `/openapi.json`；本批关闭需要外部 CDN 的 Swagger/R
 
 测试只在测试目录中构造图片，不使用真实人物照片或权重。`test_inputs.py` 验证解码、schema 和配置，`test_api.py` 验证 HTTP/WS 契约，`test_runtime.py` 验证并发、超时和取消后的真实槽位生命周期。
 
-下一步按 [后端计划](../docs/后端任务计划.md) 核验 YOLO 人脸权重及五点来源、3DDFA/BFM 与固定拓扑，接入实际算法后才能把相应能力设为可用。静态资产模式、GLB编码、源年龄、年龄方向与UV纹理均不能靠将健康状态改为 `ready` 完成。资产状态见 [模型台账](../docs/model-assets.md)。
+下一步按 [后端计划](../docs/后端任务计划.md) 收口 B0 条款/五点定义与 canonical 坐标，接入真实模型加载及自检后才能把相应服务能力设为可用。静态资产模式、GLB 编码、源年龄、年龄方向与 UV 纹理均不能靠将健康状态改为 `ready` 完成。资产状态见 [模型台账](../docs/model-assets.md)。
 
 服务资源通过 [FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/) 创建和关闭；图像校验使用 [Pillow Image](https://pillow.readthedocs.io/en/stable/reference/Image.html)。实际验证证据与剩余事项见 [本批开发记录](../docs/后端开发记录.md)。

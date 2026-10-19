@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "model_id": "yolov5n-0.5-face-clibdev-1.0.0",
+  "backend": "yolov5_face_onnx",
+  "revision": "release:1.0.0@24e19511583ca557d467d75648afda4c68984579; reviewed-source:d3246815d8747d26a91bf980afef2485bc29f839; exact-exporter-unverified",
+  "code_license": "GPL-3.0 (upstream/publisher code; not a separate weight permission)",
+  "code_license_url": "https://github.com/deepcam-cn/yolov5-face/blob/152c688d551aefb973b7b589fb0691c93dab3564/LICENSE",
+  "weights_license": "Unresolved: publisher supplies ONNX and matching original PT hash; independent weight/derived-export terms not established",
+  "weights_license_url": "https://github.com/clibdev/yolov5-face/blob/d3246815d8747d26a91bf980afef2485bc29f839/README.md",
+  "license_status": "unresolved",
+  "artifacts": [
+    {
+      "path": "yolov5n-0.5-face.onnx",
+      "source_url": "https://github.com/clibdev/yolov5-face/releases/download/1.0.0/yolov5n-0.5-face.onnx",
+      "sha256": "269eb1e54313f9d1f7941ed9939fa247767539bca5801fc7aa7895960e93ca43",
+      "size_bytes": 5928024,
+      "role": "detector"
+    }
+  ]
+}
