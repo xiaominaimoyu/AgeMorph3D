@@ -60,6 +60,9 @@ class Settings:
     frame_timeout_seconds: float = 6
     detector_manifest: Path | None = None
     reconstructor_manifest: Path | None = None
+    asset_cache_bytes: int = 512 * 1024**2
+    asset_cache_entries: int = 128
+    asset_ttl_seconds: float = 1800
 
     def __post_init__(self) -> None:
         for name in ("detector_manifest", "reconstructor_manifest"):
@@ -78,11 +81,13 @@ class Settings:
             "max_frame_bytes",
             "max_frame_side",
             "max_json_bytes",
+            "asset_cache_bytes",
+            "asset_cache_entries",
         ):
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer.")
-        for name in ("http_timeout_seconds", "frame_timeout_seconds"):
+        for name in ("http_timeout_seconds", "frame_timeout_seconds", "asset_ttl_seconds"):
             value = getattr(self, name)
             if type(value) not in {int, float} or not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be a positive finite number.")
@@ -97,6 +102,18 @@ class Settings:
                 if not value.strip() or "\x00" in value:
                     raise ValueError(f"{name} must be a nonempty manifest path.")
                 manifests[name] = Path(value)
+        cache = {}
+        for field, variable, convert in (
+            ("asset_cache_bytes", "AGEMORPH_ASSET_MAX_BYTES", int),
+            ("asset_cache_entries", "AGEMORPH_ASSET_MAX_ENTRIES", int),
+            ("asset_ttl_seconds", "AGEMORPH_ASSET_TTL_SECONDS", float),
+        ):
+            value = os.environ.get(variable)
+            if value is not None:
+                try:
+                    cache[field] = convert(value)
+                except ValueError:
+                    raise ValueError(f"{variable} must be a valid positive number.") from None
         return cls(
             allowed_origins=(
                 DEFAULT_ALLOWED_ORIGINS
@@ -104,4 +121,5 @@ class Settings:
                 else tuple(value.strip() for value in origins.split(","))
             ),
             **manifests,
+            **cache,
         )

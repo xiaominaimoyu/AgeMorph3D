@@ -1,28 +1,45 @@
-"""Lifespan-owned state and a bounded worker for CPU image validation."""
+"""Lifespan-owned models, one CPU worker and bounded static asset publication."""
 
 import asyncio
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from . import __version__
+from .asset_cache import (
+    AssetCache,
+    AssetCacheClosed,
+    AssetCapacityError,
+    AssetLease,
+    AssetNotFound,
+)
 from .config import Settings
 from .errors import ApiError
+from .images import decode_image
 from .model_lifecycle import ModelLifecycle
-from .schemas import Capabilities, Health
+from .schemas import Capabilities, Health, Reconstruction, SourceAge
+
+if TYPE_CHECKING:
+    from .reconstruction import PreparedReconstruction
 
 T = TypeVar("T")
 
 
 class Runtime:
     def __init__(self, settings: Settings | None = None) -> None:
+        self._settings = settings or Settings()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agemorph3d")
         self._active = False
         self._closed = False
         self._started = False
         self._initialization: asyncio.Future[None] | None = None
         self._shutdown: asyncio.Task[None] | None = None
-        self._models = ModelLifecycle(settings or Settings())
+        self._models = ModelLifecycle(self._settings)
+        self._assets = AssetCache(
+            max_bytes=self._settings.asset_cache_bytes,
+            max_entries=self._settings.asset_cache_entries,
+            ttl_seconds=self._settings.asset_ttl_seconds,
+        )
 
     async def start(self) -> None:
         """Schedule initialization once without blocking API startup or health."""
@@ -35,14 +52,52 @@ class Runtime:
             self._initialization = self._submit(self._models.initialize)
 
     def health(self) -> Health:
+        models = self._models.snapshot()
         return Health(
             api_version="1.2",
             version=__version__,
             device="cpu",
-            models=self._models.snapshot(),
-            # Individual operators do not establish the unpublished HTTP/WS chain.
-            capabilities=Capabilities(),
+            models=models,
+            capabilities=Capabilities(
+                reconstruction=not self._closed
+                and all(models[name].state == "ready" for name in ("detector", "reconstructor")),
+            ),
         )
+
+    async def prepare_static(
+        self, data: bytes, media_type: str, source_age: SourceAge, budget_seconds: float
+    ) -> "PreparedReconstruction":
+        def work():
+            # Decode first even without models: input errors retain their contract.
+            with decode_image(data, media_type, self._settings) as image:
+                models = self._models.reconstruction_models()
+                if models is None:
+                    raise model_not_ready()
+                import numpy as np
+
+                from .reconstruction import reconstruct_static
+
+                return reconstruct_static(np.asarray(image).copy(), *models, source_age)
+
+        return await self.run(work, budget_seconds)
+
+    def publish_static(self, prepared: "PreparedReconstruction") -> Reconstruction:
+        """No await between final caller checks and atomic cache publication."""
+        if self._closed:
+            raise model_not_ready()
+        try:
+            mesh_id = self._assets.publish(prepared.glb)
+        except AssetCapacityError:
+            raise ApiError(429, "BUSY", "模型资产缓存已满，请等待读取完成或稍后重试。") from None
+        except AssetCacheClosed:
+            raise model_not_ready() from None
+        return prepared.result.model_copy(update={"mesh_id": mesh_id})
+
+    def acquire_mesh(self, mesh_id: str) -> AssetLease:
+        try:
+            return self._assets.acquire(mesh_id)
+        except (AssetNotFound, AssetCacheClosed):
+            raise ApiError(404, "ASSET_NOT_FOUND", "模型资产不存在或已过期，请重新重建。") from None
 
     def _submit(self, work: Callable[[], T]) -> asyncio.Future[T]:
         self._active = True
@@ -76,6 +131,7 @@ class Runtime:
     async def close(self) -> None:
         if self._shutdown is None:
             self._closed = True
+            self._assets.close()
             self._models.stop()
             # A single cleanup job follows the actual running worker. No model
             # inference can be admitted after stop, and late models cannot publish.

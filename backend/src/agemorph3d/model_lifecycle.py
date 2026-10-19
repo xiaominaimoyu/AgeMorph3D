@@ -109,6 +109,10 @@ def reconstructor_selftest(model: object) -> None:
     ):
         if projected.shape != expected or not np.isfinite(projected).all():
             raise ValueError("Invalid image projection selftest output.")
+    from .static_mesh import build_static_mesh
+
+    # A model must also support the actual canonical/GLB operator chain before ready.
+    build_static_mesh(result, {"value": None, "method": "unknown", "calibration_id": None})
 
 
 def load_model(name: ModelName, path: Path) -> LoadedModel:
@@ -189,6 +193,19 @@ class ModelLifecycle:
     def snapshot(self) -> dict[str, ModelStatus]:
         with self._lock:
             return {name: status.model_copy() for name, status in self._status.items()}
+
+    def reconstruction_models(self) -> tuple[object, object] | None:
+        """Borrow loaded instances only for work on the owned executor."""
+        with self._lock:
+            if self._stopping:
+                return None
+            instances = []
+            for name in ("detector", "reconstructor"):
+                model = self._models.get(name)
+                if self._status[name].state != "ready" or model is None or model.instance is None:
+                    return None
+                instances.append(model.instance)
+            return instances[0], instances[1]
 
     def initialize(self) -> None:
         # All filesystem IO, imports, hashing, inference and disposal run here.

@@ -321,7 +321,7 @@ def test_detector_selftest_rejects_nonfinite_outputs(field: str) -> None:
         detector_selftest(SimpleNamespace(detect=lambda _rgb: [SimpleNamespace(**values)]))
 
 
-@pytest.mark.parametrize("failure", [None, "shape", "triangle", "projection"])
+@pytest.mark.parametrize("failure", [None, "shape", "triangle", "projection", "canonical_pose"])
 def test_reconstructor_selftest_runs_image_projection_and_validates_mesh(
     failure: str | None,
 ) -> None:
@@ -330,14 +330,19 @@ def test_reconstructor_selftest_runs_image_projection_and_validates_mesh(
     pytest.importorskip("onnxruntime")
     from agemorph3d.tddfa import TddfaResult
 
+    projection = np.eye(3, 4, dtype=np.float32)
+    if failure == "projection":
+        projection[:] = np.nan
+    elif failure == "canonical_pose":
+        projection[2, 2] = -1
     result = TddfaResult(
         shape=np.zeros(40 if failure != "shape" else 39),
         expr=np.zeros(10),
         vertices=np.array([[1, 20, 3], [61, 80, 8], [5, 10, 5]], dtype=np.float32),
         triangles=np.array([[0, 1, 2 if failure != "triangle" else 3]]),
-        projection=np.eye(3, 4, dtype=np.float32) * (1 if failure != "projection" else np.nan),
+        projection=projection,
         roi=(0, 0, 120, 120),
-        topology_sha256="synthetic-only",
+        topology_sha256="ab" * 32,
     )
     calls = []
 
@@ -348,7 +353,7 @@ def test_reconstructor_selftest_runs_image_projection_and_validates_mesh(
 
     model = SimpleNamespace(
         reconstruct=reconstruct,
-        topology_sha256="synthetic-only",
+        topology_sha256="ab" * 32,
         keypoint_coordinates=(np.arange(204) % 9).reshape(68, 3),
     )
     if failure:

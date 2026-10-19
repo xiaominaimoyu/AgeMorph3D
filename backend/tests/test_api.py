@@ -332,7 +332,7 @@ async def test_receive_and_image_decode_share_one_http_deadline(
         Event().wait(0.13)
         return decode_image(*args, **kwargs)
 
-    monkeypatch.setattr("agemorph3d.app.decode_image", slow_decode)
+    monkeypatch.setattr("agemorph3d.runtime.decode_image", slow_decode)
     body = (
         b'--test-boundary\r\nContent-Disposition: form-data; name="image"; filename="a.png"'
         b"\r\nContent-Type: image/png\r\n\r\n" + picture() + b"\r\n--test-boundary--\r\n"
@@ -342,7 +342,8 @@ async def test_receive_and_image_decode_share_one_http_deadline(
     async def receive():
         nonlocal delivered
         if delivered:
-            return {"type": "http.disconnect"}
+            # This client stays connected while the worker uses its remaining budget.
+            await asyncio.Future()
         delivered = True
         await asyncio.sleep(0.13)
         return {"type": "http.request", "body": body, "more_body": False}
@@ -585,7 +586,7 @@ def test_unexpected_http_failure_has_private_safe_error(monkeypatch: pytest.Monk
     def failed_decode(*args, **kwargs):
         raise RuntimeError("private-original-photo-and-local-path")
 
-    monkeypatch.setattr("agemorph3d.app.decode_image", failed_decode)
+    monkeypatch.setattr("agemorph3d.runtime.decode_image", failed_decode)
     with TestClient(create_app(), base_url=BASE_URL, raise_server_exceptions=False) as client:
         response = client.post(
             "/api/reconstruct",
@@ -633,7 +634,7 @@ def test_health_remains_responsive_during_cpu_work(monkeypatch: pytest.MonkeyPat
             raise AssertionError("The test did not release its blocked worker.")
         return decode_image(*args, **kwargs)
 
-    monkeypatch.setattr("agemorph3d.app.decode_image", blocked_decode)
+    monkeypatch.setattr("agemorph3d.runtime.decode_image", blocked_decode)
     with TestClient(create_app(), base_url=BASE_URL) as client:
         with ThreadPoolExecutor(max_workers=2) as requests:
             reconstruction = requests.submit(

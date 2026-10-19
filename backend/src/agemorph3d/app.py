@@ -1,4 +1,4 @@
-"""B1 service contract. Production never substitutes a synthetic reconstruction."""
+"""Local photo-to-static-GLB service with strict model readiness and bounded assets."""
 
 import asyncio
 import json
@@ -9,15 +9,32 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 from starlette.formparsers import MultiPartException, MultiPartParser
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from . import __version__
+from .asset_cache import AssetLease
 from .config import Settings
 from .errors import ApiError, ErrorResponse
 from .images import decode_image
 from .middleware import LocalRequestMiddleware, private_error_headers
 from .runtime import Runtime, model_not_ready
 from .schemas import AgingRequest, Health, Reconstruction, SourceAge
+
+
+class MeshResponse(Response):
+    """Pin immutable bytes until ASGI send finishes, including cancellation."""
+
+    media_type = "model/gltf-binary"
+
+    def __init__(self, lease: AssetLease):
+        self._lease = lease
+        super().__init__(content=lease.data, media_type=self.media_type)
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._lease.close()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -151,20 +168,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise ApiError(400, "BAD_INPUT", "image 字段必须为图片文件。")
             ages = [value for name, value in fields if name == "source_age"]
             try:
-                SourceAge.from_form(ages[0] if ages else None)
+                source_age = SourceAge.from_form(ages[0] if ages else None)
             except ValueError as exc:
                 raise ApiError(422, "BAD_INPUT", "源年龄必须为 20—70 岁的十进制数值。") from exc
             data = await upload.read(settings.max_image_bytes + 1)
 
-            def validate() -> None:
-                with decode_image(data, upload.content_type or "", settings):
-                    pass
-
             budget = request.state.http_deadline - asyncio.get_running_loop().time()
             if budget <= 0:
                 raise ApiError(504, "TIMEOUT", "本地处理超时，请稍后重试。")
-            await request.app.state.runtime.run(validate, budget)
-            raise model_not_ready()
+            runtime = request.app.state.runtime
+
+            async def disconnected() -> None:
+                # The bounded middleware/form parser consumed the complete body.
+                while True:
+                    message = await request.receive()
+                    if message["type"] == "http.disconnect":
+                        return
+
+            work = asyncio.create_task(
+                runtime.prepare_static(data, upload.content_type or "", source_age, budget)
+            )
+            connection = asyncio.create_task(disconnected())
+            try:
+                await asyncio.wait({work, connection}, return_when=asyncio.FIRST_COMPLETED)
+                if connection.done():
+                    # Cancelling the waiter leaves the actual worker's slot occupied.
+                    raise ApiError(499, "CANCELLED", "请求连接已断开，请重新提交。")
+                prepared = work.result()
+                if asyncio.get_running_loop().time() >= request.state.http_deadline:
+                    raise ApiError(504, "TIMEOUT", "本地处理超时，请稍后重试。")
+                # Publication happens only on the event loop after successful waiting.
+                return runtime.publish_static(prepared)
+            finally:
+                work.cancel()
+                connection.cancel()
+                await asyncio.gather(work, connection, return_exceptions=True)
         finally:
             await form.close()
 
@@ -173,9 +211,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         raise model_not_ready()
 
     @app.get("/api/assets/{mesh_id}/mesh.glb")
-    async def mesh_asset(mesh_id: str):
-        # No filesystem mount: assets only become available after B2/B3 publishes them.
-        raise ApiError(404, "ASSET_NOT_FOUND", "模型资产不存在或已过期，请重新重建。")
+    async def mesh_asset(mesh_id: str, request: Request):
+        return MeshResponse(request.app.state.runtime.acquire_mesh(mesh_id))
 
     @app.websocket("/ws/frame")
     async def frame(socket: WebSocket):

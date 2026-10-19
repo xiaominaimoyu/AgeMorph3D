@@ -1,6 +1,6 @@
 # 前端与本地后端接口契约 v1.2
 
-更新日期：2026-10-19。B1 已接入严格模型加载/CPU 自检及生命周期，冻结显式静态成功结果、结果级能力和源年龄。前端已具备对应的静态加载/导出路径；服务端成功重建、GLB 发布及实时/年龄推理仍待 B2/B3/B6/B4/B5，不能把契约示例或浏览器夹具当作真实 G1。
+更新日期：2026-10-19。B2/B3 已接入照片解码、单人检测/重建、canonical 静态 GLB 和有界资产缓存，复用 B1 的 v1.2 契约。现有研究清单许可仍为 unresolved，正式服务加载它们仍失败；真实 CPU 离线网格和双浏览器往返已验证，完整 G1 尚未签收。实测与复现见 [B23 开发记录](B23真实静态链路开发记录.md)。实时与年龄推理仍待 B6/B4/B5。
 
 ## 地址与数据边界
 
@@ -23,18 +23,18 @@
 
 `/api/health` 的 `models` 固定列出 `detector`、`reconstructor`、`age_shape`、`age_texture`。每项为 `{state, backend, provider, detail}`，`state` 取 `missing/loading/ready/error`，`backend/provider` 为字符串或 `null`，`detail` 为脱敏可读原因。HTTP 200 表示服务存活，不表示推理可用。
 
-服务在 lifespan 内创建单个 Runtime：未配置模型或配置清单不存在为 `missing`；已配置时先 `loading`，在同一个工作线程内严格核验条款、文件哈希、实例和 CPU 算子。全部通过才为对应模型 `ready`，依赖/条款/完整性/加载/自检失败为 `error`。部分模型失败不覆盖其他模型的状态。无推理依赖也可启动无模型服务。当前未接年龄模型，两项仍为 `missing`。
+服务在 lifespan 内创建单个 Runtime：未配置模型或配置清单不存在为 `missing`；已配置时先 `loading`，在同一个工作线程内严格核验条款、文件哈希、实例和 CPU 算子。重建自检还执行 canonical/纯旋转/GLB 构建。全部通过才为对应模型 `ready`，依赖/条款/完整性/加载/自检失败为 `error`。部分模型失败不覆盖其他模型的状态。无推理依赖也可启动无模型服务。当前未接年龄模型，两项仍为 `missing`。
 
-`capabilities` 完整提供四个布尔字段：`reconstruction`、`age_morph`、`age_texture`、`realtime`。B1 尚无成功资产发布或实时链路，因此四项仍为 `false`，即使单个算子模型已 `ready` 也不开放对应端点。前端接受 v1.1/v1.2 健康声明；版本未知、能力缺失或类型非法时禁用推理，不根据模型键名猜测能力。真实加载中的健康状态可观察；关闭先取消就绪状态，再等实际线程完成并释放实例。`device: cpu` 不表示已验证 GPU 不可用。
+`capabilities` 完整提供四个布尔字段：`reconstruction`、`age_morph`、`age_texture`、`realtime`。B2/B3 的 `reconstruction` 仅在检测与重建两模型均严格加载/自检通过、服务未关闭时为 true，另外三项保持 false。现有研究清单得到许可 error，实际四项仍 false。前端接受 v1.1/v1.2 健康声明；版本未知、能力缺失或类型非法时禁用推理，不根据模型键名猜测能力。真实加载中的健康状态可观察；关闭先取消就绪状态，再等实际线程完成并释放实例。`device: cpu` 不表示已验证 GPU 不可用。
 
-`source_age` 请求字段省略时为未知；提供时必须是最长32字符的 ASCII 普通十进制文本，数值在20—70之间，如 `42.5`。不接受布尔、科学计数法、非有限值、空值或任意其他表单字段。合法请求在 B1 仍返回 `503 MODEL_NOT_READY`，不产生重建结果。`LocalApi.reconstruct(file, signal?, sourceAge?)` 已可显式发送源年龄，当前界面尚无源年龄输入控件，默认省略；演示目标年龄不会被当作照片源年龄。
+`source_age` 请求字段省略时为未知；提供时必须是最长32字符的 ASCII 普通十进制文本，数值在20—70之间，如 `42.5`。不接受布尔、科学计数法、非有限值、空值或任意其他表单字段。合法图片先解码并纠正 EXIF，模型未就绪返回 `503 MODEL_NOT_READY`；就绪后仅单人继续重建，无脸/多人分别为422 `NO_FACE/MULTI_FACE`，不选择其中一人。成功返回200和已发布的静态资产标识。`LocalApi.reconstruct(file, signal?, sourceAge?)` 已可显式发送源年龄，当前界面尚无源年龄输入控件，默认省略；演示目标年龄不会被当作照片源年龄。
 
 重建结果示例（数组维度只作格式示意，真实后端使用模型定义的维度）：
 
 ```json
 {
   "mesh_id": "subject-session-opaque-id",
-  "topology_id": "bfm-noneck-v3-topology-id",
+  "topology_id": "tddfa-bfm-canon-v1-cc449ed7efa2860bed64be0a7e29ad8944912148c69f938ff768c8766d65e7cb",
   "asset_mode": "static",
   "capabilities": { "age_morph": false, "age_texture": false },
   "source_age": { "value": null, "method": "unknown", "calibration_id": null },
@@ -46,7 +46,7 @@
 
 `mesh_id` 最长 100 字符，首位为字母或数字，其余只允许字母、数字、下划线和短横线。前端从该标识构造 GLB 路径，不接受任意 `model_url`。可选 `texture_url` 必须与当前本地 API 同源且位于 `/api/assets/` 下。旋转矩阵 `R` 为行优先的 9 个数值，平移 `t` 为 3 个数值。
 
-成功结果的四个新增字段均必填：`topology_id` 与 mesh_id 使用相同标识语法，表示后端固定的拓扑/顶点序版本；实际与 GLB/基哈希的对应验证留待 B2/B3。`asset_mode` 仅为 `static | age_morph`，结果 `capabilities` 必须含两个布尔 `age_morph/age_texture`，全局能力不能替代本次结果能力。
+成功结果的四个新增字段均必填：`topology_id` 与 mesh_id 使用相同标识语法。当前 `tddfa-bfm-canon-v1-{source_topology_sha256}` 明确固定顶点/面顺序及逐面绕序反转；源哈希和转换写入 GLB 元数据。`asset_mode` 仅为 `static | age_morph`，结果 `capabilities` 必须含两个布尔 `age_morph/age_texture`，全局能力不能替代本次结果能力。B2/B3 只生成 static、两项结果能力 false、texture_url=null。
 
 `source_age.value` 为有限的20—70数值或 `null`，`method` 为 `unknown | user | estimated`，`calibration_id` 为标识或 `null`，三个字段均必填。`unknown` 必须两个值都为 null；`user` 必须有值且校准标识为 null；`estimated` 必须有值及非空校准标识，不能用没有依据的默认年龄代替估计器。校准标识本身不是质量证明。
 
@@ -54,7 +54,17 @@
 
 图片仅接受非空 JPG、PNG、WebP，最大 10 MiB、1600 万像素。JSON 请求超时为 30 秒、响应最大 128 KiB；前端不发送凭证、不缓存照片响应、不跟随重定向。HTTP 错误消息使用 FastAPI 常见的 `{ "detail": "可读说明" }` 格式。
 
-接口对应代码为 `frontend/src/contracts.ts`、`frontend/src/services.ts` 以及 `backend/src/agemorph3d/`；首批契约测试位于 `backend/tests/`。合法图片和年龄请求当前返回503，资产路由返回404，两个服务端导出预留路由尚未实现。
+接口对应代码为 `frontend/src/contracts.ts`、`frontend/src/services.ts` 以及 `backend/src/agemorph3d/`。照片成功与缓存集成测试使用明确的合成适配器，真实 CPU 权重另经离线探针验证；两类证据不替代严格模型服务 G1。年龄请求仍503，两个服务端导出预留路由尚未实现。
+
+## 静态几何、缓存与取消
+
+3DDFA 的身份40维、表情10维已经应用在返回的38365顶点上，网格为裁剪的开放人脸表面。canonical 沿原始模型 X、Y向上、正面+Z，按 `q=(v-bbox_center)/bbox_height` 等比归一化。保存源中心、高度和尺度以便还原；顶点及面顺序保持，原始每面 `[a,b,c]` 固定改为 `[a,c,b]`，形成单面材质的外向法线。
+
+这是一件高度为1的归一化展示物体。glTF标准按米解释容器中的线性单位，但本项目没有证明裁剪 BFM 的原始物理单位，不能由此推断真实人脸高1米或据此测量人体。GLB 的 `coordinate_metadata` 明确 `canonical_unit=dimensionless`、`source_units=unverified`、`metric_scale_verified=false`。姿态从投影3×3块通过 SVD/polar 获得正交旋转，显式拒绝反射/奇异块；不把尺度或剪切写入 R，不把图像平移冒充米制平移，t为三个0。该旋转未烘入 canonical 网格，HTTP前端也不再次施加它。
+
+成功后分配128位随机资产ID（当前为32位小写十六进制）。`GET /api/assets/{mesh_id}/mesh.glb` 仅从登记的内存缓存读取，Content-Type为 `model/gltf-binary`，设置Content-Length和no-store；不挂载目录。默认TTL1800秒、总容量512MiB、最多128项、单项64MiB。TTL从发布开始、不因访问延长；满时淘汰未被读取固定的LRU项，无法容纳时429/BUSY。过期、淘汰、进程重启或未知ID返回404/ASSET_NOT_FOUND。
+
+读取租约固定不可变字节，直到ASGI发送完成、失败或取消才释放；资产过期后拒绝新读取，已开始的读取可以完成。原图只短暂保留在有界内存，服务不写照片或派生网格临时文件。关闭清除缓存，新进程没有旧资产；生成失败、调用者取消、超时或观测到断开时不发布迟到资产。实际原生算子仍运行至结束，期间保持单工作线程忙状态。发布前再次核对HTTP绝对截止时间；已经观测到的断开以499/CANCELLED终结，不要求断开的浏览器收到它。
 
 ## 当前可接入的三维资产
 
@@ -63,7 +73,7 @@ v1.2 仅接收**自包含 GLB**。`static` 接收没有 morph target 的原始�
 - `age_morph` 的 morph target 必须以 `age_20`、`age_45`、`age_70` 命名；前端将目标年龄映射到相邻两档并线性插值。缺失、损坏或用静态模式加载带 morph 的年龄网格均拒绝，不静默降级。
 - 三个 target 与基准网格顶点编号、数量和拓扑一致。位移是相对基准网格的偏移。
 - 后端返回的 GLB 必须已经应用该次重建的身份形状和表情；当前前端不会根据 `shape/expr` 数组和形状基重算网格。
-- 坐标系统采用右手 Y-up、面向 +Z；单位和姿态缩放应由后端统一，避免把毫米平移直接用于米制网格。
+- 坐标系统采用右手 Y-up、面向 +Z；当前输出为明确标注的非米制人体测量网格，采用上文的统一归一化尺度；不能把原始图像平移当作空间米制平移。
 - 接收静态 Mesh，不支持 SkinnedMesh；总顶点不超过 150 万。模型加载后居中，最大包围盒边长归一化为视口单位 2.8。实时姿态应用 `R` 旋转，`t` 仅保存为元数据，等待后端完成相机和尺度标定。
 - GLB 最大 64 MiB；独立纹理最大 16 MiB、1600 万像素；加载最长 30 秒，取消、切换示例和销毁视口会中止未完成请求。资产请求也禁止凭证和重定向。
 - 重建返回的 `texture_url` 作为基础纹理，同时用于目标与基准模型；`/api/aging` 纹理仅覆盖目标模型，改变目标年龄后恢复基础纹理。
@@ -107,4 +117,4 @@ v1.2 仅接收**自包含 GLB**。`static` 接收没有 morph target 的原始�
 
 错误码至少包含 `NO_FACE`、`MULTI_FACE`、`TIMEOUT`、`BAD_INPUT`、`MODEL_NOT_READY`。HTTP 使用对应失败状态码并提供可读消息；WebSocket 使用 `error` 消息。用户取消、网络失败、响应格式错误和资产加载失败需要有不同处理，不应统一转成成功演示。
 
-HTTP错误响应为`{"detail":"可读说明","code":"稳定错误码"}`。本批使用400坏图/坏multipart、403来源或Host拒绝、413超限、415格式不支持、422字段无效、429忙、503模型未就绪、504超时；JSON和实际流入字节均受限。忙时带`Retry-After: 1`。HTTP响应禁止缓存。推理成功、资源发布/TTL、真实摄像头尺寸映射和GLB导出再导入检查仍待后续阶段。
+HTTP错误响应为`{"detail":"可读说明","code":"稳定错误码"}`。本批使用400坏图/坏multipart、403来源或Host拒绝、404资产不存在、413超限、415格式不支持、422字段无效或无人/多人、429忙、503模型未就绪、504超时，推理/几何失败为500/RECONSTRUCTION_FAILED；JSON和实际流入字节均受限。忙时带`Retry-After: 1`。HTTP响应禁止缓存。真实服务 G1 仍需条款收口后的获准照片成功链路，实体摄像头尺寸映射留待B6。
