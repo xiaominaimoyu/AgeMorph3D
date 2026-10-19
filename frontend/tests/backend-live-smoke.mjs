@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 
 // Explicit opt-in smoke: start the backend and a production preview before running this file.
 const frontend = process.env.AGEMORPH_SMOKE_FRONTEND ?? "http://127.0.0.1:4173";
-const api = "http://127.0.0.1:8000";
-const output = fileURLToPath(new URL("../../output/backend-verification/", import.meta.url));
+const api = process.env.AGEMORPH_SMOKE_API ?? "http://127.0.0.1:8000";
+const output = process.env.AGEMORPH_SMOKE_OUTPUT
+  ? resolve(process.env.AGEMORPH_SMOKE_OUTPUT)
+  : fileURLToPath(new URL("../../output/backend-verification/", import.meta.url));
 await mkdir(output, { recursive: true });
 const results = [];
 
@@ -44,12 +47,13 @@ for (const channel of ["chrome", "msedge"]) {
     await expect(page.locator("#photo-preview")).toBeVisible();
     await page.locator("#photo-consent").check();
     await page.locator("#settings-open").click();
+    await page.locator("#api-url").fill(api);
     const response = page.waitForResponse(`${api}/api/health`);
     await page.locator("#connect-api").click();
     const healthResponse = await response;
     assert.equal(healthResponse.status(), 200);
     const health = await healthResponse.json();
-    assert.equal(health.api_version, "1.1");
+    assert.equal(health.api_version, "1.2");
     assert.deepEqual(health.capabilities, {
       reconstruction: false, age_morph: false, age_texture: false, realtime: false,
     });
@@ -58,7 +62,7 @@ for (const channel of ["chrome", "msedge"]) {
       await expect(page.locator("#health-status")).toContainText(`${name}: state=missing`);
     }
     await expect(page.locator("#connection-label")).toHaveText("本地服务已连接");
-    await page.locator("#health-status").screenshot({ path: `${output}health-${channel}.png` });
+    await page.locator("#health-status").screenshot({ path: join(output, `health-${channel}.png`) });
     await page.keyboard.press("Escape");
     await expect(page.locator("#reconstruct")).toBeDisabled();
     await expect(page.locator("#apply-texture")).toBeDisabled();
@@ -70,7 +74,7 @@ for (const channel of ["chrome", "msedge"]) {
     await expect(page.locator("#stream-toggle")).toBeDisabled();
     await expect(page.locator("#stream-status")).toContainText("实时检测能力不可用");
     await expect(page.locator("#texture-hint")).toContainText("年龄纹理能力不可用");
-    await page.screenshot({ path: `${output}disabled-${channel}.png`, fullPage: true });
+    await page.screenshot({ path: join(output, `disabled-${channel}.png`), fullPage: true });
     assert.deepEqual(requests, [{ method: "GET", url: `${api}/api/health` }]);
     assert.deepEqual(errors, []);
     await page.locator("#camera-toggle").click();
@@ -82,7 +86,7 @@ for (const channel of ["chrome", "msedge"]) {
     await browser.close();
   }
 }
-await writeFile(`${output}live-browser-smoke.json`, JSON.stringify({
+await writeFile(join(output, "live-browser-smoke.json"), JSON.stringify({
   frontend, backend: api, media: "Chromium synthetic camera device", routeMocks: false, results,
 }, null, 2));
 console.log(JSON.stringify({ browsers: results.map(({ channel, version }) => ({ channel, version })), passed: results.length, output }));

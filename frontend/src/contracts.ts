@@ -1,4 +1,4 @@
-/** Draft API v1. Coefficient dimensions remain model-dependent until backend freeze. */
+/** API 1.2. Coefficient dimensions remain model-dependent until backend freeze. */
 export interface Pose {
   /** Row-major 3 × 3 rotation matrix. */
   R: number[];
@@ -29,8 +29,18 @@ export interface Health {
   capabilities: Capabilities | null;
 }
 
+export interface SourceAge {
+  value: number | null;
+  method: "unknown" | "user" | "estimated";
+  calibration_id: string | null;
+}
+
 export interface Reconstruction {
   mesh_id: string;
+  topology_id: string;
+  asset_mode: "static" | "age_morph";
+  capabilities: Pick<Capabilities, "age_morph" | "age_texture">;
+  source_age: SourceAge;
   shape: number[];
   expr: number[];
   pose: Pose;

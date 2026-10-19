@@ -5,6 +5,37 @@ import { readFile } from "node:fs/promises";
 const API = "http://127.0.0.1:8000";
 const IDENTITY = { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0] };
 const failures = new WeakMap<Page, string[]>();
+const ageResultFields = {
+  topology_id: "test_topology",
+  asset_mode: "age_morph",
+  capabilities: { age_morph: true, age_texture: true },
+  source_age: { value: 30, method: "user", calibration_id: null },
+};
+
+/** Synthetic triangle used only to verify the static API/viewer contract, not real G1. */
+function staticGlb(normalMorphOnly = false): Buffer {
+  const bin = Buffer.alloc(68);
+  [-0.8, -1, 0, 0.8, -1, 0, 0, 1, 0].forEach((value, index) => bin.writeFloatLE(value, index * 4));
+  [0, 1, 2].forEach((value, index) => bin.writeUInt16LE(value, 36 + index * 2));
+  [0, 0, 1, 0, 0.5, 1].forEach((value, index) => bin.writeFloatLE(value, 44 + index * 4));
+  const json = Buffer.from(JSON.stringify({
+    asset: { version: "2.0", generator: "AgeMorph3D synthetic static test fixture" },
+    scene: 0, scenes: [{ nodes: [0] }],
+    nodes: [{ mesh: 0, name: "Synthetic_Static_Triangle", extras: { synthetic: true } }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, TEXCOORD_0: 2, ...(normalMorphOnly ? { NORMAL: 0 } : {}) }, indices: 1, material: 0, ...(normalMorphOnly ? { targets: [{ NORMAL: 0 }] } : {}) }] }],
+    materials: [{ doubleSided: true, pbrMetallicRoughness: { metallicFactor: 0, roughnessFactor: 1 } }],
+    buffers: [{ byteLength: bin.length }],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36, target: 34962 }, { buffer: 0, byteOffset: 36, byteLength: 6, target: 34963 }, { buffer: 0, byteOffset: 44, byteLength: 24, target: 34962 }],
+    accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: "VEC3", min: [-0.8, -1, 0], max: [0.8, 1, 0] }, { bufferView: 1, componentType: 5123, count: 3, type: "SCALAR" }, { bufferView: 2, componentType: 5126, count: 3, type: "VEC2" }],
+  }));
+  const padded = Buffer.alloc(Math.ceil(json.length / 4) * 4, 32);
+  json.copy(padded);
+  const glb = Buffer.alloc(12 + 8 + padded.length + 8 + bin.length);
+  glb.write("glTF"); glb.writeUInt32LE(2, 4); glb.writeUInt32LE(glb.length, 8);
+  glb.writeUInt32LE(padded.length, 12); glb.writeUInt32LE(0x4e4f534a, 16); padded.copy(glb, 20);
+  glb.writeUInt32LE(bin.length, 20 + padded.length); glb.writeUInt32LE(0x004e4942, 24 + padded.length); bin.copy(glb, 28 + padded.length);
+  return glb;
+}
 
 function serviceHealth(capabilities = { reconstruction: true, age_morph: true, age_texture: true, realtime: true }) {
   const model = (ready: boolean) => ({
@@ -14,7 +45,7 @@ function serviceHealth(capabilities = { reconstruction: true, age_morph: true, a
     detail: ready ? "Test model ready." : "Model is not installed.",
   });
   return {
-    api_version: "1.1",
+    api_version: "1.2",
     models: {
       detector: model(capabilities.realtime || capabilities.reconstruction),
       reconstructor: model(capabilities.reconstruction),
@@ -119,6 +150,114 @@ function parseGlb(bytes: Buffer): Record<string, any> {
       .trim(),
   );
 }
+
+async function mockReconstruction(page: Page, result: Record<string, unknown>, fixture: Buffer): Promise<void> {
+  await page.route(`${API}/**`, async (route) => {
+    const headers = { "Access-Control-Allow-Origin": "*" };
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/health") await route.fulfill({ headers, json: serviceHealth() });
+    else if (path === "/api/reconstruct") await route.fulfill({ headers, json: result });
+    else if (path.endsWith("/mesh.glb")) await route.fulfill({ headers, contentType: "model/gltf-binary", body: fixture });
+    else await route.abort();
+  });
+  await connectLocalApi(page);
+  await uploadTinyPng(page);
+  await page.locator("#photo-consent").check();
+  await page.locator("#reconstruct").click();
+}
+
+test("静态契约模拟资产保留未知源年龄，禁用年龄动作且导出不伪造年龄", async ({ page }) => {
+  await openStudio(page);
+  await mockReconstruction(page, {
+    mesh_id: "static_unknown", topology_id: "triangle_fixture", asset_mode: "static",
+    capabilities: { age_morph: false, age_texture: false },
+    source_age: { value: null, method: "unknown", calibration_id: null },
+    shape: [0], expr: [0], pose: IDENTITY,
+  }, staticGlb());
+  await expect(page.locator("#model-badge")).toHaveText("本地重建");
+  await expect(page.locator("#source-status")).toContainText("原始重建，年龄变换不可用");
+  await expect(page.locator("#age-output")).toHaveText("—");
+  await expect(page.locator("#info-age")).toHaveText("未知");
+  for (const selector of ["#age-slider", "#age-reset", "[data-age=\"60\"]", "#compare-toggle", "#apply-texture"])
+    await expect(page.locator(selector)).toBeDisabled();
+  await page.evaluate(() => {
+    for (const id of ["age-reset", "compare-toggle"]) {
+      const control = document.getElementById(id) as HTMLButtonElement;
+      control.disabled = false; control.click();
+    }
+    const slider = document.getElementById("age-slider") as HTMLInputElement;
+    slider.disabled = false; slider.value = "60"; slider.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator("#info-age")).toHaveText("未知");
+  await expect(page.locator("#comparison-labels")).toBeHidden();
+  const pending = page.waitForEvent("download");
+  await page.locator("#export-glb").click();
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe("AgeMorph3D-local-original.glb");
+  const exported = parseGlb(await readFile((await download.path())!));
+  const root = exported.nodes.find((node: any) => node.name === "AgeMorph3D_Loaded_Model");
+  expect(root.extras.asset_mode).toBe("static");
+  expect(root.extras.topology_id).toBe("triangle_fixture");
+  expect(root.extras.source_age).toEqual({ value: null, method: "unknown", calibration_id: null });
+  for (const field of ["age", "ageAnchors", "displayAge"])
+    expect(root.extras[field]).toBeUndefined();
+  expect(exported.meshes.every((mesh: any) => mesh.primitives.every((primitive: any) => primitive.targets === undefined))).toBe(true);
+  await page.locator("#photo-remove").click();
+  await expect(page.locator("#model-badge")).toHaveText("演示模型");
+  await expect(page.locator("#age-output")).toHaveText("30");
+  await expect(page.locator("#age-slider")).toBeEnabled();
+});
+
+test("年龄资产以真实声明的源年龄重置和对照，不沿用演示的30岁", async ({ page }) => {
+  await openStudio(page);
+  const fixture = await downloadBytes(page, "#export-glb");
+  await mockReconstruction(page, {
+    ...ageResultFields, mesh_id: "calibrated", shape: [0], expr: [0], pose: IDENTITY,
+    capabilities: { age_morph: true, age_texture: false },
+    source_age: { value: 42.5, method: "estimated", calibration_id: "calibration_fixture" },
+  }, fixture);
+  await expect(page.locator("#model-badge")).toHaveText("本地重建");
+  await expect(page.locator("#info-age")).toHaveText("42.5");
+  await expect(page.locator("#age-slider")).toHaveValue("42.5");
+  await page.locator('[data-age="60"]').click();
+  await page.locator("#compare-toggle").click();
+  await expect(page.locator("#compare-source-age")).toHaveText("42.5");
+  await page.locator("#age-reset").click();
+  await expect(page.locator("#age-output")).toHaveText("42.5");
+  await expect(page.locator("#age-slider")).toHaveValue("42.5");
+  const exported = parseGlb(await downloadBytes(page, "#export-glb"));
+  const root = exported.nodes.find((node: any) => node.name === "AgeMorph3D_Loaded_Model");
+  expect(root.extras.age).toBe(42.5);
+  expect(root.extras.source_age.value).toBe(42.5);
+  await page.locator("#load-demo").click();
+  await expect(page.locator("#age-slider")).toHaveValue("30");
+  await expect(page.locator("#age-slider")).toHaveAttribute("step", "1");
+});
+
+for (const mode of ["static", "age_morph"] as const) {
+  test(`显式${mode}模式拒绝不匹配资产，损坏年龄资产不降级`, async ({ page }) => {
+    await openStudio(page);
+    const fixture = mode === "static" ? await downloadBytes(page, "#export-glb") : staticGlb();
+    await mockReconstruction(page, {
+      ...ageResultFields, mesh_id: "mismatched", shape: [0], expr: [0], pose: IDENTITY,
+      asset_mode: mode, capabilities: { age_morph: mode === "age_morph", age_texture: false },
+    }, fixture);
+    await expect(page.locator("#source-status")).toContainText(mode === "static" ? "静态重建资产不能包含形变目标" : "未找到带 age_20");
+    await expect(page.locator("#viewer")).toHaveAttribute("data-source", "demo");
+    await expect(page.locator("#model-badge")).toHaveText("演示模型");
+  });
+}
+
+test("静态模式拒绝仅含法线的形变目标，不能用缺少position目标绕过契约", async ({ page }) => {
+  await openStudio(page);
+  await mockReconstruction(page, {
+    mesh_id: "normal_morph", topology_id: "triangle_fixture", asset_mode: "static",
+    capabilities: { age_morph: false, age_texture: false }, source_age: { value: null, method: "unknown", calibration_id: null },
+    shape: [0], expr: [0], pose: IDENTITY,
+  }, staticGlb(true));
+  await expect(page.locator("#source-status")).toContainText("静态重建资产不能包含形变目标");
+  await expect(page.locator("#viewer")).toHaveAttribute("data-source", "demo");
+});
 
 test("离线演示启动，无外部请求，年龄滑块支持键盘并保持读数一致", async ({
   page,
@@ -409,9 +548,11 @@ test("符合约定的 GLB 可加载，纹理失败可恢复，移除照片清理
         headers,
         json: {
           mesh_id: "test_subject",
+          ...ageResultFields,
           shape: [0],
           expr: [0],
           pose: IDENTITY,
+          texture_url: "/api/assets/test_subject/base.png",
         },
       });
     else if (request.url().endsWith("/api/assets/test_subject/mesh.glb"))
@@ -545,6 +686,7 @@ test("取消重建后，迟到的响应不能替换演示模型", async ({ page 
         headers,
         json: {
           mesh_id: "late_subject",
+          ...ageResultFields,
           shape: [0],
           expr: [0],
           pose: IDENTITY,
@@ -569,112 +711,237 @@ test("取消重建后，迟到的响应不能替换演示模型", async ({ page 
   expect(assets).toBe(0);
 });
 
-test("年龄纹理应用后，改变年龄恢复后端基础纹理，导出包含实际纹理", async ({
-  page,
-}) => {
-  await openStudio(page);
-  const fixture = await downloadBytes(page, "#export-glb");
-  const png = async (color: string): Promise<Buffer> =>
-    Buffer.from(
-      await page.evaluate((fill) => {
-        const canvas = document.createElement("canvas");
-        canvas.width = 4;
-        canvas.height = 4;
-        const ctx = canvas.getContext("2d")!;
-        ctx.fillStyle = fill;
-        ctx.fillRect(0, 0, 4, 4);
-        return canvas.toDataURL("image/png").split(",")[1]!;
-      }, color),
-      "base64",
-    );
-  const base = await png("#28c864");
-  const aged = await png("#dc643c");
-  await page.route(`${API}/**`, async (route) => {
-    const headers = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "content-type",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+for (const assetMode of ["static", "age_morph"] as const) {
+  test(`${assetMode}资产年龄纹理应用后，改变年龄恢复基础纹理，导出保留实际纹理与目标`, async ({
+    page,
+  }) => {
+    await openStudio(page);
+    const fixture = assetMode === "static" ? staticGlb() : await downloadBytes(page, "#export-glb");
+    const png = async (color: string): Promise<Buffer> =>
+      Buffer.from(
+        await page.evaluate((fill) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 4;
+          canvas.height = 4;
+          const ctx = canvas.getContext("2d")!;
+          ctx.fillStyle = fill;
+          ctx.fillRect(0, 0, 4, 4);
+          return canvas.toDataURL("image/png").split(",")[1]!;
+        }, color),
+        "base64",
+      );
+    const base = await png("#28c864");
+    const aged = await png("#dc643c");
+    await page.route(`${API}/**`, async (route) => {
+      const headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "content-type",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      };
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (request.method() === "OPTIONS")
+        await route.fulfill({ status: 204, headers });
+      else if (path === "/api/health")
+        await route.fulfill({
+          headers,
+          json: serviceHealth(),
+        });
+      else if (path === "/api/reconstruct")
+        await route.fulfill({
+          headers,
+          json: {
+            mesh_id: "texture_subject",
+            ...ageResultFields,
+            asset_mode: assetMode,
+            capabilities: { age_morph: assetMode === "age_morph", age_texture: true },
+            shape: [0],
+            expr: [0],
+            pose: IDENTITY,
+            texture_url: "/api/assets/texture_subject/base.png",
+          },
+        });
+      else if (path.endsWith("/mesh.glb"))
+        await route.fulfill({
+          headers,
+          contentType: "model/gltf-binary",
+          body: fixture,
+        });
+      else if (path.endsWith("/base.png"))
+        await route.fulfill({ headers, contentType: "image/png", body: base });
+      else if (path.endsWith("/aged.png"))
+        await route.fulfill({ headers, contentType: "image/png", body: aged });
+      else if (path === "/api/aging")
+        await route.fulfill({
+          headers,
+          json: {
+            shape_aged: [0],
+            texture_url: "/api/assets/texture_subject/aged.png",
+          },
+        });
+      else await route.abort();
+    });
+    const firstTextureColor = async (bytes: Buffer): Promise<number[]> => {
+      const glb = parseGlb(bytes);
+      expect(glb.images.length).toBeGreaterThan(0);
+      const view = glb.bufferViews[glb.images[0].bufferView];
+      const binOffset = 20 + bytes.readUInt32LE(12) + 8;
+      const image = bytes.subarray(
+        binOffset + (view.byteOffset ?? 0),
+        binOffset + (view.byteOffset ?? 0) + view.byteLength,
+      );
+      return page.evaluate(
+        async (data) => {
+          const bitmap = await createImageBitmap(
+            new Blob([new Uint8Array(data)], { type: "image/png" }),
+          );
+          const canvas = document.createElement("canvas");
+          canvas.width = 4;
+          canvas.height = 4;
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(bitmap, 0, 0);
+          bitmap.close();
+          return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3);
+        },
+        [...image],
+      );
     };
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    if (request.method() === "OPTIONS")
-      await route.fulfill({ status: 204, headers });
-    else if (path === "/api/health")
-      await route.fulfill({
-        headers,
-        json: serviceHealth(),
-      });
-    else if (path === "/api/reconstruct")
-      await route.fulfill({
-        headers,
-        json: {
-          mesh_id: "texture_subject",
-          shape: [0],
-          expr: [0],
-          pose: IDENTITY,
-          texture_url: "/api/assets/texture_subject/base.png",
-        },
-      });
-    else if (path.endsWith("/mesh.glb"))
-      await route.fulfill({
-        headers,
-        contentType: "model/gltf-binary",
-        body: fixture,
-      });
-    else if (path.endsWith("/base.png"))
-      await route.fulfill({ headers, contentType: "image/png", body: base });
-    else if (path.endsWith("/aged.png"))
-      await route.fulfill({ headers, contentType: "image/png", body: aged });
-    else if (path === "/api/aging")
-      await route.fulfill({
-        headers,
-        json: {
-          shape_aged: [0],
-          texture_url: "/api/assets/texture_subject/aged.png",
-        },
-      });
+    await connectLocalApi(page);
+    await uploadTinyPng(page);
+    await page.locator("#photo-consent").check();
+    await page.locator("#reconstruct").click();
+    await expect(page.locator("#apply-texture")).toBeEnabled();
+    await page.locator('[data-age="60"]').click();
+    await page.locator("#apply-texture").click();
+    await expect(page.locator("#texture-hint")).toContainText("已应用 60 岁");
+    const agedExport = await downloadBytes(page, "#export-glb");
+    expect(await firstTextureColor(agedExport)).toEqual([220, 100, 60]);
+    const exportedRoot = parseGlb(agedExport).nodes.find((node: any) => node.name === "AgeMorph3D_Loaded_Model");
+    expect(exportedRoot.extras.texture_age).toBe(60);
+    if (assetMode === "static") {
+      expect(exportedRoot.extras.age).toBeUndefined();
+      expect(exportedRoot.extras.displayAge).toBeUndefined();
+      await expect(page.locator("#compare-toggle")).toBeDisabled();
+      await expect(page.locator("#age-description")).toContainText("三维形状保持原始重建");
+    }
+    await page.locator('[data-age="50"]').click();
+    expect(
+      await firstTextureColor(await downloadBytes(page, "#export-glb")),
+    ).toEqual([40, 200, 100]);
+  });
+}
+
+for (const finalState of ["ready", "error"] as const) {
+  test(`连接仅刷新loading状态，转为${finalState}后更新能力并停止轮询`, async ({ page }) => {
+    let checks = 0;
+    const loading = serviceHealth({ reconstruction: false, age_morph: false, age_texture: false, realtime: false });
+    loading.models.reconstructor.state = "loading";
+    loading.models.reconstructor.detail = "Fixture model loading.";
+    const terminal = serviceHealth({ reconstruction: finalState === "ready", age_morph: false, age_texture: false, realtime: false });
+    terminal.models.reconstructor.state = finalState;
+    terminal.models.reconstructor.detail = `Fixture model ${finalState}.`;
+    await page.route(`${API}/api/health`, async (route) => {
+      checks++;
+      await route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: checks === 1 ? loading : terminal });
+    });
+    await openStudio(page);
+    await uploadTinyPng(page);
+    await page.locator("#photo-consent").check();
+    await connectLocalApi(page);
+    await expect(page.locator("#health-status")).toContainText("state=loading");
+    await expect(page.locator("#reconstruct")).toBeDisabled();
+    await expect(page.locator("#health-status")).toContainText(`Fixture model ${finalState}.`);
+    if (finalState === "ready") await expect(page.locator("#reconstruct")).toBeEnabled();
+    else await expect(page.locator("#reconstruct")).toBeDisabled();
+    await page.waitForTimeout(750);
+    expect(checks).toBe(2);
+  });
+}
+
+test("断开loading连接取消状态刷新，迟到ready响应不能恢复能力或覆盖演示", async ({ page }) => {
+  let checks = 0;
+  let delivered = false;
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => { release = resolve; });
+  const loading = serviceHealth({ reconstruction: false, age_morph: false, age_texture: false, realtime: false });
+  loading.models.reconstructor.state = "loading";
+  await page.route(`${API}/api/health`, async (route) => {
+    checks++;
+    if (checks > 1) await waiting;
+    await route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: checks === 1 ? loading : serviceHealth() });
+    if (checks > 1) delivered = true;
+  });
+  await openStudio(page);
+  await uploadTinyPng(page);
+  await page.locator("#photo-consent").check();
+  await connectLocalApi(page);
+  await expect.poll(() => checks).toBe(2);
+  await page.locator("#settings-open").click();
+  await page.locator("#disconnect").click();
+  release();
+  await expect.poll(() => delivered).toBe(true);
+  await page.waitForTimeout(750);
+  expect(checks).toBe(2);
+  await expect(page.locator("#health-status")).toHaveText("当前使用程序化演示模型。");
+  await expect(page.locator("#connection-label")).toHaveText("本地演示模式");
+  await expect(page.locator("#reconstruct")).toBeDisabled();
+  await expect(page.locator("#viewer")).toHaveAttribute("data-source", "demo");
+});
+
+test("loading健康刷新结束时保留已载入的静态个人模型", async ({ page }) => {
+  let checks = 0;
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => { release = resolve; });
+  const loading = serviceHealth({ reconstruction: true, age_morph: false, age_texture: false, realtime: false });
+  loading.models.age_shape.state = "loading";
+  const ready = serviceHealth({ reconstruction: true, age_morph: false, age_texture: false, realtime: false });
+  ready.models.age_shape.detail = "Fixture loading completed.";
+  await page.route(`${API}/**`, async (route) => {
+    const headers = { "Access-Control-Allow-Origin": "*" };
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/health") {
+      checks++;
+      if (checks > 1) await waiting;
+      await route.fulfill({ headers, json: checks === 1 ? loading : ready });
+    } else if (path === "/api/reconstruct") await route.fulfill({ headers, json: {
+      mesh_id: "static_during_loading", topology_id: "triangle_fixture", asset_mode: "static",
+      capabilities: { age_morph: false, age_texture: false }, source_age: { value: null, method: "unknown", calibration_id: null },
+      shape: [0], expr: [0], pose: IDENTITY,
+    } });
+    else if (path.endsWith("/mesh.glb")) await route.fulfill({ headers, contentType: "model/gltf-binary", body: staticGlb() });
     else await route.abort();
   });
-  const firstTextureColor = async (bytes: Buffer): Promise<number[]> => {
-    const glb = parseGlb(bytes);
-    expect(glb.images.length).toBeGreaterThan(0);
-    const view = glb.bufferViews[glb.images[0].bufferView];
-    const binOffset = 20 + bytes.readUInt32LE(12) + 8;
-    const image = bytes.subarray(
-      binOffset + (view.byteOffset ?? 0),
-      binOffset + (view.byteOffset ?? 0) + view.byteLength,
-    );
-    return page.evaluate(
-      async (data) => {
-        const bitmap = await createImageBitmap(
-          new Blob([new Uint8Array(data)], { type: "image/png" }),
-        );
-        const canvas = document.createElement("canvas");
-        canvas.width = 4;
-        canvas.height = 4;
-        const ctx = canvas.getContext("2d")!;
-        ctx.drawImage(bitmap, 0, 0);
-        bitmap.close();
-        return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3);
-      },
-      [...image],
-    );
-  };
+  await openStudio(page);
   await connectLocalApi(page);
   await uploadTinyPng(page);
   await page.locator("#photo-consent").check();
   await page.locator("#reconstruct").click();
-  await expect(page.locator("#apply-texture")).toBeEnabled();
-  await page.locator('[data-age="60"]').click();
-  await page.locator("#apply-texture").click();
-  await expect(page.locator("#texture-hint")).toContainText("已应用 60 岁");
-  expect(
-    await firstTextureColor(await downloadBytes(page, "#export-glb")),
-  ).toEqual([220, 100, 60]);
-  await page.locator('[data-age="50"]').click();
-  expect(
-    await firstTextureColor(await downloadBytes(page, "#export-glb")),
-  ).toEqual([40, 200, 100]);
+  await expect(page.locator("#model-badge")).toHaveText("本地重建");
+  release();
+  await expect(page.locator("#health-status")).toContainText("Fixture loading completed.");
+  await expect(page.locator("#viewer")).toHaveAttribute("data-source", "reconstruction");
+  await expect(page.locator("#info-source")).toHaveText("static_during_loading");
+  await expect(page.locator("#info-age")).toHaveText("未知");
+  await expect(page.locator("#source-status")).toContainText("原始重建，年龄变换不可用");
+});
+
+test("loading自动刷新到30秒预算后停止，不对稳定未就绪服务持续轮询", async ({ page }) => {
+  let checks = 0;
+  const loading = serviceHealth({ reconstruction: false, age_morph: false, age_texture: false, realtime: false });
+  loading.models.reconstructor.state = "loading";
+  await page.route(`${API}/api/health`, async (route) => {
+    checks++;
+    await route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: loading });
+  });
+  await openStudio(page);
+  await page.clock.install();
+  await connectLocalApi(page);
+  await page.clock.fastForward(30_001);
+  await expect(page.locator("#health-status")).toContainText("自动刷新已结束");
+  const stoppedAt = checks;
+  await page.clock.fastForward(10_000);
+  expect(checks).toBe(stoppedAt);
+  await expect(page.locator("#reconstruct")).toBeDisabled();
 });
 
 for (const scenario of ["missing", "legacy", "invalid"] as const) {
@@ -743,7 +1010,7 @@ test("部分能力就绪时按能力启禁，已有重建模型也不能调用�
     if (path === "/api/health")
       await route.fulfill({ headers, json: serviceHealth({ reconstruction: true, age_morph: true, age_texture: false, realtime: true }) });
     else if (path === "/api/reconstruct")
-      await route.fulfill({ headers, json: { mesh_id: "partial", shape: [0], expr: [0], pose: IDENTITY } });
+      await route.fulfill({ headers, json: { ...ageResultFields, capabilities: { age_morph: true, age_texture: false }, mesh_id: "partial", shape: [0], expr: [0], pose: IDENTITY } });
     else if (path.endsWith("mesh.glb"))
       await route.fulfill({ headers, contentType: "model/gltf-binary", body: fixture });
     else {

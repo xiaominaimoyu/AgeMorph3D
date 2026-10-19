@@ -7,6 +7,7 @@ import type {
   ModelStatus,
   Pose,
   Reconstruction,
+  SourceAge,
 } from "./contracts";
 
 const REQUEST_TIMEOUT = 30_000;
@@ -80,7 +81,7 @@ function cancelled(): DOMException {
   return new DOMException("操作已取消。", "AbortError");
 }
 
-/** Legacy health can be displayed, but only a complete v1.1 capability set enables inference. */
+/** Legacy health can be displayed; inference needs all four v1.1/1.2 booleans. */
 export function parseHealth(value: unknown): Health {
   const data = record(value, "服务状态");
   const validText = (item: unknown): item is string | null =>
@@ -120,7 +121,7 @@ export function parseHealth(value: unknown): Health {
   let capabilities: Capabilities | null = null;
   const flags = data.capabilities;
   if (
-    apiVersion === "1.1" &&
+    (apiVersion === "1.1" || apiVersion === "1.2") &&
     flags !== null &&
     typeof flags === "object" &&
     !Array.isArray(flags)
@@ -146,6 +147,24 @@ export function parseHealth(value: unknown): Health {
     api_version: apiVersion,
     capabilities,
   };
+}
+
+function sourceAge(value: unknown): SourceAge {
+  const data = record(value, "源年龄");
+  if (data.method === "unknown") {
+    if (data.value !== null || data.calibration_id !== null)
+      throw new Error("未知源年龄必须使用空年龄和空校准标识。");
+    return { value: null, method: "unknown", calibration_id: null };
+  }
+  if (data.method !== "user" && data.method !== "estimated")
+    throw new Error("源年龄方法必须为 unknown、user 或 estimated。");
+  const age = finite(data.value, "源年龄", 20, 70);
+  if (data.method === "user") {
+    if (data.calibration_id !== null)
+      throw new Error("用户提供的源年龄不能带模型校准标识。");
+    return { value: age, method: "user", calibration_id: null };
+  }
+  return { value: age, method: "estimated", calibration_id: meshId(data.calibration_id) };
 }
 
 /** All photo traffic stays on an explicitly selected loopback origin. */
@@ -204,11 +223,11 @@ export class LocalApi {
     return `${this.baseUrl}/api/assets/${encodeURIComponent(meshId(id))}/mesh.glb`;
   }
 
-  async health(): Promise<Health> {
-    return parseHealth(await this.request("/api/health"));
+  async health(signal?: AbortSignal): Promise<Health> {
+    return parseHealth(await this.request("/api/health", {}, signal));
   }
 
-  async reconstruct(file: Blob, signal?: AbortSignal): Promise<Reconstruction> {
+  async reconstruct(file: Blob, signal?: AbortSignal, sourceAgeValue?: number): Promise<Reconstruction> {
     if (
       !IMAGE_TYPES.has(file.type) ||
       file.size === 0 ||
@@ -224,6 +243,8 @@ export class LocalApi {
           ? "webp"
           : "jpg";
     form.append("image", file, `portrait.${extension}`);
+    if (sourceAgeValue !== undefined)
+      form.append("source_age", String(finite(sourceAgeValue, "源年龄", 20, 70)));
     const data = record(
       await this.request(
         "/api/reconstruct",
@@ -234,15 +255,31 @@ export class LocalApi {
     );
     const result: Reconstruction = {
       mesh_id: meshId(data.mesh_id),
+      topology_id: meshId(data.topology_id),
+      asset_mode: data.asset_mode as Reconstruction["asset_mode"],
+      capabilities: { age_morph: false, age_texture: false },
+      source_age: sourceAge(data.source_age),
       shape: vector(data.shape, "形状参数"),
       expr: vector(data.expr, "表情参数"),
       pose: pose(data.pose),
     };
+    if (data.asset_mode !== "static" && data.asset_mode !== "age_morph")
+      throw new Error("重建结果缺少有效资产模式，请检查 API 1.2 契约。");
+    const flags = record(data.capabilities, "结果能力");
+    if (typeof flags.age_morph !== "boolean" || typeof flags.age_texture !== "boolean")
+      throw new Error("结果能力必须提供 age_morph 和 age_texture 布尔值。");
+    result.capabilities = { age_morph: flags.age_morph, age_texture: flags.age_texture };
+    if ((data.asset_mode === "age_morph") !== flags.age_morph)
+      throw new Error("资产模式与年龄形变能力不一致。");
+    if ((flags.age_morph || flags.age_texture) && result.source_age.value === null)
+      throw new Error("年龄能力必须有已知源年龄，不能使用默认年龄代替。");
     if (data.texture_url !== undefined && data.texture_url !== null) {
       result.texture_url = this.safeAssetUrl(
         boundedString(data.texture_url, "纹理地址", 2048),
       );
     }
+    if (flags.age_texture && !result.texture_url)
+      throw new Error("年龄纹理能力需要提供基础纹理资产。");
     return result;
   }
 

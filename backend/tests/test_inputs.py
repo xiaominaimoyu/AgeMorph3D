@@ -189,6 +189,10 @@ def test_invalid_pose_rejected(rotation: list[object], translation: list[object]
 def reconstruction(**changes: object) -> Reconstruction:
     values = {
         "mesh_id": "subject",
+        "topology_id": "test-topology-v1",
+        "asset_mode": "static",
+        "capabilities": {"age_morph": False, "age_texture": False},
+        "source_age": {"value": None, "method": "unknown", "calibration_id": None},
         "shape": [0],
         "expr": [0],
         "pose": {"R": IDENTITY, "t": [0, 0, 0]},
@@ -240,7 +244,7 @@ def test_health_is_explicitly_unready_without_capabilities() -> None:
         device="cpu",
         version="0.1.0",
     )
-    assert health.api_version == "1.1"
+    assert health.api_version == "1.2"
     assert health.capabilities == Capabilities()
     assert not any(health.capabilities.model_dump().values())
     assert health.models["detector"].provider is None

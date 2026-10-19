@@ -4,6 +4,9 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { createDemoHead } from "./demo-head";
 import { getAgeWeights } from "./age";
 import { LocalApi } from "./services";
+import type { Reconstruction } from "./contracts";
+
+export type ModelOptions = Pick<Reconstruction, "asset_mode" | "source_age" | "topology_id">;
 
 type Mode = "solid" | "wireframe" | "points";
 type ViewerCallbacks = {
@@ -162,6 +165,8 @@ export class FaceViewer {
   private readonly originalTextures = new Set<THREE.Texture>();
   private uploadedTexture: THREE.Texture | null = null;
   private age = 30;
+  private assetMode: Reconstruction["asset_mode"] = "age_morph";
+  private referenceAge: number | null = 30;
   private mode: Mode = "solid";
   private compare = false;
   private disposed = false;
@@ -350,7 +355,7 @@ export class FaceViewer {
     this.releaseModel();
     this.model = root;
     this.reference = root.clone(true);
-    this.reference.name = `${root.name}_Reference30`;
+    this.reference.name = `${root.name}_Reference`;
     const referenceMaterials = new Map<THREE.Material, THREE.Material>();
     this.reference.traverse((node) => {
       if (!(node instanceof THREE.Mesh)) return;
@@ -379,7 +384,8 @@ export class FaceViewer {
           3,
       0,
     );
-    this.applyWeights(this.referenceBindings, 30);
+    if (this.assetMode === "age_morph" && this.referenceAge !== null)
+      this.applyWeights(this.referenceBindings, this.referenceAge);
     this.setAge(this.age);
     this.setMode(this.mode);
     this.setCompare(this.compare);
@@ -401,6 +407,7 @@ export class FaceViewer {
   }
 
   setAge(age: number): void {
+    if (this.assetMode === "static") return;
     getAgeWeights(age); // Validate before mutating the currently displayed model.
     this.age = THREE.MathUtils.clamp(age, 20, 70);
     this.applyWeights(this.bindings, this.age);
@@ -421,6 +428,7 @@ export class FaceViewer {
   }
 
   setCompare(enabled: boolean): void {
+    enabled = enabled && this.assetMode === "age_morph";
     const changed = this.compare !== enabled;
     this.compare = enabled;
     if (!this.model || !this.reference) return;
@@ -507,6 +515,9 @@ export class FaceViewer {
     this.textureRequest?.abort();
     this.loadVersion++;
     this.textureVersion++;
+    this.assetMode = "age_morph";
+    this.referenceAge = 30;
+    this.age = 30;
     const root = new THREE.Group();
     root.name = "AgeMorph3D_Demo";
     root.userData = {
@@ -519,7 +530,11 @@ export class FaceViewer {
     this.resetView();
   }
 
-  async loadModel(url: string): Promise<void> {
+  async loadModel(url: string, options: ModelOptions): Promise<void> {
+    if (options.asset_mode !== "static" && options.asset_mode !== "age_morph")
+      throw new Error("必须明确指定静态或年龄形变资产模式。");
+    if (options.asset_mode === "age_morph" && options.source_age.value === null)
+      throw new Error("年龄形变资产必须有已知源年龄。");
     const version = ++this.loadVersion;
     this.modelRequest?.abort();
     const controller = new AbortController();
@@ -566,7 +581,9 @@ export class FaceViewer {
           if (!Number.isFinite(positions.array[index]))
             throw new Error("模型包含无效顶点坐标。");
         const targets = node.geometry.morphAttributes.position;
-        if (targets?.length) {
+        if (options.asset_mode === "static" && Object.values(node.geometry.morphAttributes).some((attributes) => Array.isArray(attributes) && attributes.length > 0))
+          throw new Error("静态重建资产不能包含形变目标，请检查资产模式。");
+        if (options.asset_mode === "age_morph" && targets?.length) {
           if (
             !AGES.every(
               (age) => node.morphTargetDictionary?.[`age_${age}`] !== undefined,
@@ -586,7 +603,9 @@ export class FaceViewer {
           morphCount++;
         }
       });
-      if (!meshCount || !morphCount)
+      if (!meshCount)
+        throw new Error("未找到有效三维网格。");
+      if (options.asset_mode === "age_morph" && !morphCount)
         throw new Error("未找到带 age_20 / age_45 / age_70 的有效年龄网格。");
       const bounds = new THREE.Box3().setFromObject(asset);
       const size = bounds.getSize(new THREE.Vector3());
@@ -604,11 +623,17 @@ export class FaceViewer {
       root.userData = {
         source: "loaded-glb",
         synthetic,
-        ageAnchors: [...AGES],
+        asset_mode: options.asset_mode,
+        source_age: { ...options.source_age },
+        topology_id: options.topology_id,
+        ...(options.asset_mode === "age_morph" ? { ageAnchors: [...AGES] } : {}),
       };
       root.add(normalization);
       this.textureVersion++;
       this.textureRequest?.abort();
+      this.assetMode = options.asset_mode;
+      this.referenceAge = options.source_age.value;
+      if (options.source_age.value !== null) this.age = options.source_age.value;
       this.replaceModel(root);
       this.resetView();
     } catch (error) {
@@ -626,11 +651,13 @@ export class FaceViewer {
     this.uploadedTexture = null;
   }
 
-  async setTexture(url: string | null, asBase = false): Promise<void> {
+  async setTexture(url: string | null, asBase = false, targetAge?: number): Promise<void> {
+    if (targetAge !== undefined) getAgeWeights(targetAge);
     const version = ++this.textureVersion;
     this.textureRequest?.abort();
     if (!url) {
       this.restoreTexture();
+      if (this.model) delete this.model.userData.texture_age;
       return;
     }
     const controller = new AbortController();
@@ -661,6 +688,7 @@ export class FaceViewer {
     );
     this.restoreTexture();
     if (asBase) {
+      if (this.model) delete this.model.userData.texture_age;
       this.originalTextures.add(texture);
       this.originalMaps.forEach((_map, material) => {
         this.originalMaps.set(material, texture);
@@ -670,6 +698,10 @@ export class FaceViewer {
       return;
     }
     this.uploadedTexture = texture;
+    if (this.model) {
+      if (targetAge === undefined) delete this.model.userData.texture_age;
+      else this.model.userData.texture_age = targetAge;
+    }
     const materials = new Set(
       this.bindings.flatMap((binding) =>
         Array.isArray(binding.material) ? binding.material : [binding.material],
@@ -744,8 +776,9 @@ export class FaceViewer {
       snapshot.userData = {
         ...snapshot.userData,
         generator: "AgeMorph3D frontend",
-        age: this.age,
-        ageAnchors: [...AGES],
+        ...(this.assetMode === "age_morph"
+          ? { age: this.age, ageAnchors: [...AGES] }
+          : {}),
         generatedAt: new Date().toISOString(),
       };
       const { GLTFExporter } =

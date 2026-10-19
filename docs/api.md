@@ -1,6 +1,6 @@
-# 前端与本地后端接口契约 v1.1
+# 前端与本地后端接口契约 v1.2
 
-更新日期：2026-10-19。本批实现服务骨架、健康能力、输入/错误契约及前端能力启禁；真实模型推理和成功GLB/纹理/实时输出尚未接入。除健康状态扩展外，成功资产仍沿用v1年龄GLB约定；静态模式属于下一批提案，尚未实施。
+更新日期：2026-10-19。B1 已接入严格模型加载/CPU 自检及生命周期，冻结显式静态成功结果、结果级能力和源年龄。前端已具备对应的静态加载/导出路径；服务端成功重建、GLB 发布及实时/年龄推理仍待 B2/B3/B6/B4/B5，不能把契约示例或浏览器夹具当作真实 G1。
 
 ## 地址与数据边界
 
@@ -12,8 +12,8 @@
 
 | 方法 | 路径 | 请求 | 响应用途 |
 |---|---|---|---|
-| GET | `/api/health` | 无 | `{models, device, version, api_version: "1.1", capabilities}` |
-| POST | `/api/reconstruct` | `multipart/form-data`，图片字段 `image` | `{mesh_id, shape, expr, pose, texture_url?}` |
+| GET | `/api/health` | 无 | `{models, device, version, api_version: "1.2", capabilities}` |
+| POST | `/api/reconstruct` | `multipart/form-data`，图片字段 `image`，可选 `source_age` | `{mesh_id, topology_id, asset_mode, capabilities, source_age, shape, expr, pose, texture_url?}` |
 | POST | `/api/aging` | JSON，含 `mesh_id`、`age` | `{shape_aged, texture_url?}` |
 | GET | `/api/assets/{mesh_id}/mesh.glb` | 无 | 自包含 GLB，详见下文 |
 | POST | `/api/export/gltf` | 当前模型与年龄 | 后端导出预留；前端本身支持本地 GLB 导出 |
@@ -21,15 +21,23 @@
 
 `age` 为 20—70 范围内数值。参数字段以 `shape`、`expr`、`shape_aged` 为规范名称，旧文档的 `beta`、`psi` 不应作为第二套新协议继续扩展。参数数组必须非空、最多 300 个有限数值，维度由对应模型定义；当前前端校验和保留数组，但不会据此重建几何。
 
-本批 `/api/health` 中 `models` 固定列出 `detector`、`reconstructor`、`age_shape`、`age_texture`。每项为 `{state, backend, provider, detail}`，`state` 取 `missing/loading/ready/error`，`backend/provider` 为字符串或 `null`，`detail` 为可读原因。HTTP 200表示服务存活，不表示推理可用。当前全部为 `missing`。
+`/api/health` 的 `models` 固定列出 `detector`、`reconstructor`、`age_shape`、`age_texture`。每项为 `{state, backend, provider, detail}`，`state` 取 `missing/loading/ready/error`，`backend/provider` 为字符串或 `null`，`detail` 为脱敏可读原因。HTTP 200 表示服务存活，不表示推理可用。
 
-`capabilities` 必须完整提供四个布尔字段：`reconstruction`、`age_morph`、`age_texture`、`realtime`，当前均为 `false`。前端根据对应能力启禁重建、纹理和实时操作。版本不为 `1.1`、能力缺失或字段类型非法时，所有能力保持禁用并提示核查版本；不根据模型键名推断已就绪。`device: cpu` 当前仅指服务校验设备。
+服务在 lifespan 内创建单个 Runtime：未配置模型或配置清单不存在为 `missing`；已配置时先 `loading`，在同一个工作线程内严格核验条款、文件哈希、实例和 CPU 算子。全部通过才为对应模型 `ready`，依赖/条款/完整性/加载/自检失败为 `error`。部分模型失败不覆盖其他模型的状态。无推理依赖也可启动无模型服务。当前未接年龄模型，两项仍为 `missing`。
+
+`capabilities` 完整提供四个布尔字段：`reconstruction`、`age_morph`、`age_texture`、`realtime`。B1 尚无成功资产发布或实时链路，因此四项仍为 `false`，即使单个算子模型已 `ready` 也不开放对应端点。前端接受 v1.1/v1.2 健康声明；版本未知、能力缺失或类型非法时禁用推理，不根据模型键名猜测能力。真实加载中的健康状态可观察；关闭先取消就绪状态，再等实际线程完成并释放实例。`device: cpu` 不表示已验证 GPU 不可用。
+
+`source_age` 请求字段省略时为未知；提供时必须是最长32字符的 ASCII 普通十进制文本，数值在20—70之间，如 `42.5`。不接受布尔、科学计数法、非有限值、空值或任意其他表单字段。合法请求在 B1 仍返回 `503 MODEL_NOT_READY`，不产生重建结果。`LocalApi.reconstruct(file, signal?, sourceAge?)` 已可显式发送源年龄，当前界面尚无源年龄输入控件，默认省略；演示目标年龄不会被当作照片源年龄。
 
 重建结果示例（数组维度只作格式示意，真实后端使用模型定义的维度）：
 
 ```json
 {
   "mesh_id": "subject-session-opaque-id",
+  "topology_id": "bfm-noneck-v3-topology-id",
+  "asset_mode": "static",
+  "capabilities": { "age_morph": false, "age_texture": false },
+  "source_age": { "value": null, "method": "unknown", "calibration_id": null },
   "shape": [0],
   "expr": [0],
   "pose": { "R": [1, 0, 0, 0, 1, 0, 0, 0, 1], "t": [0, 0, 0] }
@@ -38,15 +46,21 @@
 
 `mesh_id` 最长 100 字符，首位为字母或数字，其余只允许字母、数字、下划线和短横线。前端从该标识构造 GLB 路径，不接受任意 `model_url`。可选 `texture_url` 必须与当前本地 API 同源且位于 `/api/assets/` 下。旋转矩阵 `R` 为行优先的 9 个数值，平移 `t` 为 3 个数值。
 
+成功结果的四个新增字段均必填：`topology_id` 与 mesh_id 使用相同标识语法，表示后端固定的拓扑/顶点序版本；实际与 GLB/基哈希的对应验证留待 B2/B3。`asset_mode` 仅为 `static | age_morph`，结果 `capabilities` 必须含两个布尔 `age_morph/age_texture`，全局能力不能替代本次结果能力。
+
+`source_age.value` 为有限的20—70数值或 `null`，`method` 为 `unknown | user | estimated`，`calibration_id` 为标识或 `null`，三个字段均必填。`unknown` 必须两个值都为 null；`user` 必须有值且校准标识为 null；`estimated` 必须有值及非空校准标识，不能用没有依据的默认年龄代替估计器。校准标识本身不是质量证明。
+
+`static` 必须 `age_morph=false`；`age_morph` 模式必须 `age_morph=true` 且源年龄已知。纹理能力独立于形状，`age_texture=true` 还要求已知源年龄及有效基础 `texture_url`，其真实可用性与年尺度仍需 B5 验收。缺少新字段的旧成功响应被明确拒绝，不自动猜静态。未知源年龄不显示为30/45岁，静态原始结果不带虚构年龄标签。
+
 图片仅接受非空 JPG、PNG、WebP，最大 10 MiB、1600 万像素。JSON 请求超时为 30 秒、响应最大 128 KiB；前端不发送凭证、不缓存照片响应、不跟随重定向。HTTP 错误消息使用 FastAPI 常见的 `{ "detail": "可读说明" }` 格式。
 
 接口对应代码为 `frontend/src/contracts.ts`、`frontend/src/services.ts` 以及 `backend/src/agemorph3d/`；首批契约测试位于 `backend/tests/`。合法图片和年龄请求当前返回503，资产路由返回404，两个服务端导出预留路由尚未实现。
 
 ## 当前可接入的三维资产
 
-v1 仅接收**自包含 GLB**：网格、材质/纹理和年龄 morph target 包含在同一个文件内。不要依赖远程纹理、外部 buffer、未配置的压缩解码器或浏览器侧下载模型权重。
+v1.2 仅接收**自包含 GLB**。`static` 接收没有 morph target 的原始静态网格；`age_morph` 仍严格要求年龄目标。不要依赖远程纹理、外部 buffer、未配置的压缩解码器或浏览器侧下载模型权重。
 
-- morph target 必须以 `age_20`、`age_45`、`age_70` 命名；前端将目标年龄映射到相邻两档并线性插值。
+- `age_morph` 的 morph target 必须以 `age_20`、`age_45`、`age_70` 命名；前端将目标年龄映射到相邻两档并线性插值。缺失、损坏或用静态模式加载带 morph 的年龄网格均拒绝，不静默降级。
 - 三个 target 与基准网格顶点编号、数量和拓扑一致。位移是相对基准网格的偏移。
 - 后端返回的 GLB 必须已经应用该次重建的身份形状和表情；当前前端不会根据 `shape/expr` 数组和形状基重算网格。
 - 坐标系统采用右手 Y-up、面向 +Z；单位和姿态缩放应由后端统一，避免把毫米平移直接用于米制网格。
@@ -54,6 +68,8 @@ v1 仅接收**自包含 GLB**：网格、材质/纹理和年龄 morph target 包
 - GLB 最大 64 MiB；独立纹理最大 16 MiB、1600 万像素；加载最长 30 秒，取消、切换示例和销毁视口会中止未完成请求。资产请求也禁止凭证和重定向。
 - 重建返回的 `texture_url` 作为基础纹理，同时用于目标与基准模型；`/api/aging` 纹理仅覆盖目标模型，改变目标年龄后恢复基础纹理。
 - 当前前端可以展示演示网格、导出它，并接收符合约定的真实 GLB。加载失败应明确显示错误，不能将演示网格当作本次真实重建结果。
+
+纯静态结果显示“原始重建，年龄变换不可用”，禁用年龄、预设、重置及年龄对照。若未来只有纹理能力可用，可选择纹理目标年龄，但不声明几何变化。静态导出名含 `original`，GLB 来源保留 `asset_mode/source_age/topology_id`，不写 `age/ageAnchors/displayAge`；已应用年龄纹理时另记 `texture_age`。年龄模式重置和对照采用已知源年龄，演示仍为30岁。静态夹具浏览器测试不证明真实照片 G1。
 
 旧技术文档中的 `manifest.json` + `morph/*.bin` 管线属于后续扩展，**本轮不交付独立 manifest/位移加载器**。`shape/expr` 逐帧应用也需等形状基资产协议定义后再实施。
 

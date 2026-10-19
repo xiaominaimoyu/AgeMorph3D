@@ -49,6 +49,10 @@ class VideoStream {
 function reconstruction() {
   return {
     mesh_id: "face_001",
+    topology_id: "test_topology",
+    asset_mode: "age_morph",
+    capabilities: { age_morph: true, age_texture: true },
+    source_age: { value: 30, method: "user", calibration_id: null },
     shape: [0, 0.5],
     expr: [0],
     pose: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0] },
@@ -81,6 +85,7 @@ test("health preserves missing and partial model states without deriving capabil
   partial.capabilities.realtime = true;
   assert.deepEqual(parseHealth(partial), partial);
   assert.equal(parseHealth(partial).capabilities?.reconstruction, false);
+  assert.deepEqual(parseHealth({ ...partial, api_version: "1.2" }).capabilities, partial.capabilities);
 });
 
 test("legacy, missing, incomplete and non-boolean capability declarations never enable inference", () => {
@@ -193,6 +198,7 @@ test(
       const file = init.body.get("image");
       assert.ok(file instanceof Blob);
       assert.equal(file.type, "image/jpeg");
+      assert.equal(init.body.has("source_age"), false);
       return Response.json(reconstruction());
     });
     const result = await new LocalApi().reconstruct(photo());
@@ -202,6 +208,85 @@ test(
       result.texture_url,
       "http://127.0.0.1:8000/api/assets/face_001/texture.png",
     );
+  },
+);
+
+test(
+  "optional user source age is sent explicitly and never taken from a demo age",
+  { concurrency: false },
+  async (t) => {
+    replaceGlobal(t, "window", globalThis);
+    let requests = 0;
+    replaceGlobal(t, "fetch", async (_url: string, init: RequestInit) => {
+      requests++;
+      assert.ok(init.body instanceof FormData);
+      assert.equal(init.body.get("source_age"), "42.5");
+      return Response.json(reconstruction());
+    });
+    const api = new LocalApi();
+    await api.reconstruct(photo(), undefined, 42.5);
+    for (const invalid of [19, 71, NaN, Infinity, true])
+      await assert.rejects(api.reconstruct(photo(), undefined, invalid as number), /源年龄/);
+    assert.equal(requests, 1);
+  },
+);
+
+test(
+  "static results preserve unknown source age and independently declare texture ability",
+  { concurrency: false },
+  async (t) => {
+    replaceGlobal(t, "window", globalThis);
+    let payload: unknown = {
+      ...reconstruction(), asset_mode: "static", capabilities: { age_morph: false, age_texture: false },
+      source_age: { value: null, method: "unknown", calibration_id: null }, texture_url: undefined,
+    };
+    replaceGlobal(t, "fetch", async () => Response.json(payload));
+    const result = await new LocalApi().reconstruct(photo());
+    assert.equal(result.asset_mode, "static");
+    assert.deepEqual(result.source_age, { value: null, method: "unknown", calibration_id: null });
+    assert.equal(result.texture_url, undefined);
+    payload = {
+      ...reconstruction(), asset_mode: "static", capabilities: { age_morph: false, age_texture: true },
+      source_age: { value: 42.5, method: "estimated", calibration_id: "calibration_v1" },
+    };
+    assert.equal((await new LocalApi().reconstruct(photo())).capabilities.age_texture, true);
+  },
+);
+
+test(
+  "reconstruction rejects legacy successes, contradictory modes and uncalibrated age capabilities",
+  { concurrency: false },
+  async (t) => {
+    replaceGlobal(t, "window", globalThis);
+    let payload: unknown;
+    replaceGlobal(t, "fetch", async () => Response.json(payload));
+    const unknownAge = { value: null, method: "unknown", calibration_id: null };
+    const invalid: unknown[] = [
+      { mesh_id: "legacy", shape: [0], expr: [0], pose: reconstruction().pose },
+      { ...reconstruction(), asset_mode: "static" },
+      { ...reconstruction(), asset_mode: "other" },
+      { ...reconstruction(), capabilities: { age_morph: false, age_texture: true } },
+      { ...reconstruction(), capabilities: { age_morph: true } },
+      { ...reconstruction(), capabilities: { age_morph: true, age_texture: "true" } },
+      { ...reconstruction(), topology_id: "../mesh" },
+      { ...reconstruction(), topology_id: "a".repeat(101) },
+      { ...reconstruction(), source_age: unknownAge },
+      { ...reconstruction(), source_age: { value: 30, method: "unknown", calibration_id: null } },
+      { ...reconstruction(), source_age: { value: 19, method: "user", calibration_id: null } },
+      { ...reconstruction(), source_age: { value: 71, method: "user", calibration_id: null } },
+      { ...reconstruction(), source_age: { value: 30, method: "user", calibration_id: "not_null" } },
+      { ...reconstruction(), source_age: { value: 30, method: "estimated", calibration_id: null } },
+      { ...reconstruction(), source_age: { value: 30, method: "estimated", calibration_id: "../id" } },
+      { ...reconstruction(), source_age: { value: 30, method: "other", calibration_id: null } },
+      { ...reconstruction(), texture_url: undefined },
+      { ...reconstruction(), asset_mode: "static", capabilities: { age_morph: false, age_texture: true }, source_age: unknownAge },
+    ];
+    for (const field of ["topology_id", "asset_mode", "capabilities", "source_age"]) {
+      const missing = { ...reconstruction() } as Record<string, unknown>;
+      delete missing[field];
+      invalid.push(missing);
+    }
+    for (payload of invalid) await assert.rejects(new LocalApi().reconstruct(photo()));
   },
 );
 

@@ -46,7 +46,7 @@ def test_default_health_reports_four_missing_models(client: TestClient) -> None:
     response = client.get("/api/health")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["api_version"] == "1.1"
+    assert payload["api_version"] == "1.2"
     assert payload["device"] == "cpu"
     assert payload["version"]
     assert set(payload["models"]) == {"detector", "reconstructor", "age_shape", "age_texture"}

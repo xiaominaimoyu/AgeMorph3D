@@ -17,7 +17,7 @@ from .errors import ApiError, ErrorResponse
 from .images import decode_image
 from .middleware import LocalRequestMiddleware, private_error_headers
 from .runtime import Runtime, model_not_ready
-from .schemas import AgingRequest, Health
+from .schemas import AgingRequest, Health, Reconstruction, SourceAge
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -25,8 +25,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        app.state.runtime = Runtime()
+        app.state.runtime = Runtime(settings)
         try:
+            await app.state.runtime.start()
             yield
         finally:
             await app.state.runtime.close()
@@ -90,6 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post(
         "/api/reconstruct",
+        response_model=Reconstruction,
         openapi_extra={
             "requestBody": {
                 "required": True,
@@ -98,7 +100,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "schema": {
                             "type": "object",
                             "required": ["image"],
-                            "properties": {"image": {"type": "string", "format": "binary"}},
+                            "properties": {
+                                "image": {"type": "string", "format": "binary"},
+                                "source_age": {
+                                    "type": "string",
+                                    "pattern": r"^[0-9]+(?:\.[0-9]+)?$",
+                                    "maxLength": 32,
+                                    "description": (
+                                        "Optional user source age, 20–70; omitted means unknown."
+                                    ),
+                                },
+                            },
+                            "additionalProperties": False,
                         },
                     },
                 },
@@ -113,7 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             request.headers,
             request.stream(),
             max_files=1,
-            max_fields=0,
+            max_fields=1,
             max_part_size=settings.max_image_bytes,
         )
         # Keep the original photo in a bounded memory spool, never a temporary disk file.
@@ -121,12 +134,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             form = await parser.parse()
         except (MultiPartException, ValueError) as exc:
-            raise ApiError(400, "BAD_INPUT", "上传格式无效，只允许一个 image 图片字段。") from exc
+            raise ApiError(
+                400, "BAD_INPUT", "上传格式无效，只允许 image 和可选 source_age 字段。"
+            ) from exc
         try:
             fields = form.multi_items()
-            if len(fields) != 1 or fields[0][0] != "image" or not hasattr(fields[0][1], "read"):
+            if any(name not in {"image", "source_age"} for name, _ in fields):
+                raise ApiError(
+                    422 if len(fields) == 1 else 400, "BAD_INPUT", "上传包含不支持的字段。"
+                )
+            images = [value for name, value in fields if name == "image"]
+            if len(images) != 1:
                 raise ApiError(422, "BAD_INPUT", "需要且只允许一个 image 图片文件。")
-            upload = fields[0][1]
+            upload = images[0]
+            if not hasattr(upload, "read"):
+                raise ApiError(400, "BAD_INPUT", "image 字段必须为图片文件。")
+            ages = [value for name, value in fields if name == "source_age"]
+            try:
+                SourceAge.from_form(ages[0] if ages else None)
+            except ValueError as exc:
+                raise ApiError(422, "BAD_INPUT", "源年龄必须为 20—70 岁的十进制数值。") from exc
             data = await upload.read(settings.max_image_bytes + 1)
 
             def validate() -> None:

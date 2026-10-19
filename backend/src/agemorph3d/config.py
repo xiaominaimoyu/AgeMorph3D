@@ -4,6 +4,7 @@ import math
 import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
 
 DEFAULT_ALLOWED_ORIGINS = (
@@ -57,8 +58,14 @@ class Settings:
     max_json_bytes: int = 128 * 1024
     http_timeout_seconds: float = 25
     frame_timeout_seconds: float = 6
+    detector_manifest: Path | None = None
+    reconstructor_manifest: Path | None = None
 
     def __post_init__(self) -> None:
+        for name in ("detector_manifest", "reconstructor_manifest"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, Path) or value == Path(".")):
+                raise ValueError(f"{name} must be a nonempty manifest Path or None.")
         if not isinstance(self.allowed_origins, tuple) or not self.allowed_origins:
             raise ValueError("allowed_origins must be a nonempty tuple.")
         origins = tuple(_local_origin(origin) for origin in self.allowed_origins)
@@ -83,6 +90,18 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         origins = os.environ.get("AGEMORPH_ALLOWED_ORIGINS")
-        if origins is None:
-            return cls()
-        return cls(allowed_origins=tuple(value.strip() for value in origins.split(",")))
+        manifests = {}
+        for name in ("detector_manifest", "reconstructor_manifest"):
+            value = os.environ.get(f"AGEMORPH_{name.upper()}")
+            if value is not None:
+                if not value.strip() or "\x00" in value:
+                    raise ValueError(f"{name} must be a nonempty manifest path.")
+                manifests[name] = Path(value)
+        return cls(
+            allowed_origins=(
+                DEFAULT_ALLOWED_ORIGINS
+                if origins is None
+                else tuple(value.strip() for value in origins.split(","))
+            ),
+            **manifests,
+        )
