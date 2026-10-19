@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
-import { CameraController, FrameStream, LocalApi } from "../src/services.ts";
+import { CameraController, FrameStream, LocalApi, parseHealth } from "../src/services.ts";
 import type { FaceState } from "../src/contracts.ts";
 
 function replaceGlobal(t: TestContext, name: string, value: unknown): void {
@@ -55,6 +55,51 @@ function reconstruction() {
     texture_url: "/api/assets/face_001/texture.png",
   };
 }
+
+function serviceHealth() {
+  return {
+    api_version: "1.1",
+    models: {
+      detector: { state: "missing", backend: null, provider: null, detail: "Detector is not installed." },
+      reconstructor: { state: "missing", backend: null, provider: null, detail: "Reconstructor is not installed." },
+      age_shape: { state: "missing", backend: null, provider: null, detail: "Age model is not installed." },
+      age_texture: { state: "missing", backend: null, provider: null, detail: "Texture model is not installed." },
+    },
+    capabilities: { reconstruction: false, age_morph: false, age_texture: false, realtime: false },
+    device: "cpu",
+    version: "0.1",
+  };
+}
+
+test("health preserves missing and partial model states without deriving capabilities from model names", () => {
+  const missing = serviceHealth();
+  assert.deepEqual(parseHealth(missing), missing);
+  const partial = serviceHealth();
+  partial.models.detector = {
+    state: "ready", backend: "detector-cpu", provider: "CPUExecutionProvider", detail: "Ready for local frames.",
+  };
+  partial.capabilities.realtime = true;
+  assert.deepEqual(parseHealth(partial), partial);
+  assert.equal(parseHealth(partial).capabilities?.reconstruction, false);
+});
+
+test("legacy, missing, incomplete and non-boolean capability declarations never enable inference", () => {
+  const good = serviceHealth();
+  for (const payload of [
+    { models: { detector: { loaded: true } }, device: "cpu", version: "legacy" },
+    { ...good, capabilities: undefined },
+    { ...good, api_version: undefined },
+    { ...good, api_version: "1.0", capabilities: { ...good.capabilities, reconstruction: true } },
+    { ...good, capabilities: { reconstruction: true } },
+    { ...good, capabilities: { ...good.capabilities, reconstruction: "true" } },
+    { ...good, capabilities: { ...good.capabilities, realtime: 1 } },
+    { ...good, capabilities: [] },
+    { ...good, capabilities: null },
+  ]) assert.equal(parseHealth(payload).capabilities, null);
+  const legacy = parseHealth({ models: { detector: "ready" }, device: "cpu", version: "legacy" });
+  assert.equal(legacy.models.detector.state, "unknown");
+  assert.match(legacy.models.detector.detail, /API 版本/);
+});
 
 class Clock {
   private id = 0;
@@ -167,11 +212,7 @@ test(
     replaceGlobal(t, "window", globalThis);
     replaceGlobal(t, "fetch", async (url: string, init: RequestInit) => {
       if (url.endsWith("/api/health")) {
-        return Response.json({
-          models: { detector: { loaded: false } },
-          device: "cpu",
-          version: "0.1",
-        });
+        return Response.json(serviceHealth());
       }
       assert.equal(url, "http://127.0.0.1:8000/api/aging");
       assert.equal(init.method, "POST");
@@ -182,9 +223,7 @@ test(
       return Response.json({ shape_aged: [1, 2] });
     });
     const api = new LocalApi();
-    assert.deepEqual((await api.health()).models, {
-      detector: { loaded: false },
-    });
+    assert.deepEqual(await api.health(), serviceHealth());
     assert.deepEqual(await api.aging("face_001", 45), { shape_aged: [1, 2] });
     await assert.rejects(api.aging("face_001", 71), /年龄/);
   },

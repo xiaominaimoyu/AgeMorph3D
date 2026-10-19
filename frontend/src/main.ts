@@ -3,7 +3,7 @@ import { layout } from "./layout";
 import { icon } from "./icons";
 import { FaceViewer } from "./viewer";
 import { CameraController, FrameStream, LocalApi } from "./services";
-import type { FaceState } from "./contracts";
+import type { Capabilities, FaceState, Health } from "./contracts";
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = layout;
 const el = <T extends HTMLElement = HTMLElement>(id: string): T =>
@@ -19,6 +19,7 @@ const camera = new CameraController(video, () => {
 });
 let viewer: FaceViewer | undefined;
 let api: LocalApi | undefined;
+let health: Health | undefined;
 let stream: FrameStream | undefined;
 let source: Blob | undefined;
 let sourceUrl: string | undefined;
@@ -63,25 +64,37 @@ function setPressed(id: string, active: boolean): void {
   button(id).setAttribute("aria-pressed", String(active));
 }
 
+function supports(capability: keyof Capabilities): boolean {
+  return Boolean(api && health?.capabilities?.[capability] === true);
+}
+
 function refreshActions(): void {
   button("reconstruct").disabled =
-    !source || !api || !input("photo-consent").checked || busy || !viewer;
+    !source || !supports("reconstruction") || !input("photo-consent").checked || busy || !viewer;
   button("reconstruct").setAttribute("aria-busy", String(busy));
   button("reconstruct").querySelector("span")!.textContent = busy
     ? "正在生成三维模型…"
     : "开始三维重建";
   button("cancel-reconstruct").hidden = !busy;
   button("apply-texture").disabled =
-    !meshId || !api || textureBusy || busy || !viewer;
+    !meshId || !supports("age_texture") || textureBusy || busy || !viewer;
   button("apply-texture").setAttribute("aria-busy", String(textureBusy));
   button("export-glb").disabled = !viewer || busy || exporting;
   button("export-png").disabled = !viewer || busy || exporting;
   button("camera-capture").disabled = !camera.active || busy;
   button("stream-toggle").disabled =
-    !camera.active || !api || !input("photo-consent").checked || busy;
+    !camera.active || !supports("realtime") || !input("photo-consent").checked || busy;
   button("camera-toggle").disabled = cameraStarting;
   el("flow-reconstruct").classList.toggle("active", busy || Boolean(meshId));
   el("flow-explore").classList.toggle("active", Boolean(viewer) && !busy);
+  if (api && !supports("age_texture"))
+    el("texture-hint").textContent = health?.capabilities
+      ? "当前服务的年龄纹理能力不可用，请在连接设置中查看模型状态。"
+      : "年龄纹理能力未知，请检查 API 版本（需要 1.1）。";
+  if (api && !supports("realtime"))
+    el("stream-status").textContent = health?.capabilities
+      ? "当前服务的实时检测能力不可用，请在连接设置中查看模型状态。"
+      : "实时检测能力未知，请检查 API 版本（需要 1.1）。";
 }
 
 function markDemo(): void {
@@ -287,9 +300,13 @@ async function acceptPhoto(blob: Blob, name: string): Promise<void> {
         : `${Math.max(1, Math.round(blob.size / 1024))} KB`;
     el("photo-preview").hidden = false;
     button("upload-trigger").hidden = true;
-    el("source-status").textContent = api
-      ? "照片已就绪，确认使用授权后即可开始重建。"
-      : "照片已准备。连接本地服务后可重建；当前视口仍为演示模型。";
+    el("source-status").textContent = !api
+      ? "照片已准备。连接本地服务后可重建；当前视口仍为演示模型。"
+      : !health?.capabilities
+        ? "重建能力未知，请检查连接设置中的 API 版本（需要 1.1）。"
+        : !supports("reconstruction")
+          ? "当前服务的三维重建能力不可用，请在连接设置中查看模型状态。"
+          : "照片已就绪，确认使用授权后即可开始重建。";
     refreshActions();
   } catch (error) {
     if (version === sourceVersion)
@@ -426,7 +443,7 @@ on("stream-toggle", "click", () => {
     stopStream();
     return;
   }
-  if (!api || !camera.active || !input("photo-consent").checked) return;
+  if (!api || !supports("realtime") || !camera.active || !input("photo-consent").checked) return;
   stream = new FrameStream(api, video, {
     onState: drawDetection,
     onStatus: (status) => {
@@ -443,7 +460,7 @@ on("stream-toggle", "click", () => {
 });
 
 on("reconstruct", "click", () => {
-  if (!api || !source || !input("photo-consent").checked || !viewer || busy)
+  if (!api || !supports("reconstruction") || !source || !input("photo-consent").checked || !viewer || busy)
     return;
   stopStream();
   cancelTask();
@@ -501,7 +518,7 @@ on("cancel-reconstruct", "click", () => {
   notify("已取消当前重建任务。");
 });
 on("apply-texture", "click", () => {
-  if (!meshId || !api || !viewer || textureBusy) return;
+  if (!meshId || !api || !supports("age_texture") || !viewer || textureBusy) return;
   const requestedAge = age;
   const requestedMesh = meshId;
   const client = api;
@@ -611,28 +628,45 @@ for (const name of ["settings", "guide", "about"]) {
 }
 on("connect-api", "click", () => {
   const version = ++connectionVersion;
+  api = undefined;
+  health = undefined;
+  stopStream();
+  resetDemo();
+  el("connection-label").textContent = "正在检查本地服务";
+  el("connection-dot").classList.remove("connected");
   button("connect-api").disabled = true;
   el("health-status").textContent = "正在检查本地服务…";
   void (async () => {
     try {
       const client = new LocalApi(input("api-url").value.trim());
-      const health = await client.health();
+      const status = await client.health();
       if (version !== connectionVersion) return;
-      stopStream();
-      if (api?.baseUrl !== client.baseUrl) resetDemo();
       api = client;
+      health = status;
       input("api-url").value = client.baseUrl;
       el("connection-label").textContent = "本地服务已连接";
       el("connection-dot").classList.add("connected");
       el("health-status").textContent =
-        `连接成功 · ${health.device} · v${health.version}\n模型：${Object.keys(health.models).join("、") || "尚未加载，请检查后端状态"}`;
-      el("source-status").textContent = source
-        ? "照片已就绪，确认使用授权后开始重建。"
-        : "本地服务已连接，请上传照片或拍摄人像。";
-      notify("本地服务连接成功。");
+        `连接成功 · ${status.device} · v${status.version} · API ${status.api_version ?? "未知"}\n` +
+        (status.capabilities
+          ? `能力：${Object.entries(status.capabilities).map(([name, ready]) => `${name}=${ready ? "可用" : "不可用"}`).join("；")}\n`
+          : "能力状态未知，请检查 API 版本（需要 1.1）与 capabilities 字段。推理操作已禁用。\n") +
+        (Object.entries(status.models).map(([name, model]) =>
+          `${name}: state=${model.state} · backend=${model.backend ?? "未配置"} · provider=${model.provider ?? "未配置"} · ${model.detail || "无补充说明"}`,
+        ).join("\n") || "模型状态：未提供，请检查后端状态。");
+      el("source-status").textContent = !status.capabilities
+        ? "重建能力未知，请检查连接设置中的 API 版本（需要 1.1）。"
+        : !status.capabilities.reconstruction
+          ? "本地服务已连接，三维重建能力不可用。请在连接设置中查看模型状态。"
+          : source
+            ? "照片已就绪，确认使用授权后开始重建。"
+            : "本地服务已连接，请上传照片或拍摄人像。";
+      notify(status.capabilities ? "本地服务已连接，功能可用性以模型状态为准。" : "本地服务已连接，能力未知，请检查 API 版本。", !status.capabilities);
     } catch (error) {
       if (version === connectionVersion) {
+        el("connection-label").textContent = "本地演示模式";
         el("health-status").textContent = message(error);
+        el("source-status").textContent = "本地服务连接失败，请检查连接设置后重试。";
         notify(message(error), true);
       }
     } finally {
@@ -646,6 +680,7 @@ on("connect-api", "click", () => {
 on("disconnect", "click", () => {
   connectionVersion++;
   api = undefined;
+  health = undefined;
   stopStream();
   resetDemo();
   button("connect-api").disabled = false;

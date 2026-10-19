@@ -6,6 +6,27 @@ const API = "http://127.0.0.1:8000";
 const IDENTITY = { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0] };
 const failures = new WeakMap<Page, string[]>();
 
+function serviceHealth(capabilities = { reconstruction: true, age_morph: true, age_texture: true, realtime: true }) {
+  const model = (ready: boolean) => ({
+    state: ready ? "ready" : "missing",
+    backend: ready ? "test-backend" : null,
+    provider: ready ? "CPUExecutionProvider" : null,
+    detail: ready ? "Test model ready." : "Model is not installed.",
+  });
+  return {
+    api_version: "1.1",
+    models: {
+      detector: model(capabilities.realtime || capabilities.reconstruction),
+      reconstructor: model(capabilities.reconstruction),
+      age_shape: model(capabilities.age_morph),
+      age_texture: model(capabilities.age_texture),
+    },
+    capabilities,
+    device: "cpu",
+    version: "test-v1",
+  };
+}
+
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
   failures.set(page, errors);
@@ -49,11 +70,24 @@ async function connectLocalApi(page: Page): Promise<void> {
   await page.locator("#settings-open").click();
   await page.locator("#api-url").fill(API);
   await page.locator("#connect-api").click();
-  await expect(page.locator("#connection-label")).not.toHaveText(
-    "本地演示模式",
-  );
+  await expect(page.locator("#connection-label")).toHaveText("本地服务已连接");
   if (await page.locator("#settings-dialog").isVisible())
     await page.keyboard.press("Escape");
+}
+
+async function fakeCamera(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: async () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 32;
+        canvas.height = 32;
+        canvas.getContext("2d")!.fillRect(0, 0, 32, 32);
+        return canvas.captureStream(10);
+      },
+    });
+  });
 }
 
 async function downloadBytes(
@@ -318,11 +352,7 @@ test("本地服务连接和授权门槛生效，重建错误可恢复且不冒�
     if (route.request().url().endsWith("/api/health")) {
       await route.fulfill({
         headers,
-        json: {
-          models: { detector: "ready", reconstruction: "ready" },
-          device: "cpu",
-          version: "test-v1",
-        },
+        json: serviceHealth(),
       });
     } else if (route.request().url().endsWith("/api/reconstruct")) {
       uploads++;
@@ -372,11 +402,7 @@ test("符合约定的 GLB 可加载，纹理失败可恢复，移除照片清理
     else if (request.url().endsWith("/api/health"))
       await route.fulfill({
         headers,
-        json: {
-          models: { detector: "ready", reconstruction: "ready" },
-          device: "cpu",
-          version: "test-v1",
-        },
+        json: serviceHealth(),
       });
     else if (request.url().endsWith("/api/reconstruct"))
       await route.fulfill({
@@ -510,7 +536,7 @@ test("取消重建后，迟到的响应不能替换演示模型", async ({ page 
     if (route.request().url().endsWith("/api/health"))
       await route.fulfill({
         headers,
-        json: { models: {}, device: "cpu", version: "test" },
+        json: serviceHealth(),
       });
     else if (route.request().url().endsWith("/api/reconstruct")) {
       requested = true;
@@ -576,7 +602,7 @@ test("年龄纹理应用后，改变年龄恢复后端基础纹理，导出包�
     else if (path === "/api/health")
       await route.fulfill({
         headers,
-        json: { models: {}, device: "cpu", version: "test" },
+        json: serviceHealth(),
       });
     else if (path === "/api/reconstruct")
       await route.fulfill({
@@ -649,4 +675,145 @@ test("年龄纹理应用后，改变年龄恢复后端基础纹理，导出包�
   expect(
     await firstTextureColor(await downloadBytes(page, "#export-glb")),
   ).toEqual([40, 200, 100]);
+});
+
+for (const scenario of ["missing", "legacy", "invalid"] as const) {
+  test(`健康检查 ${scenario} 不授予推理能力，已授权照片和已开启摄像头也不可绕过`, async ({ page }) => {
+    await fakeCamera(page);
+    const disabled = serviceHealth({ reconstruction: false, age_morph: false, age_texture: false, realtime: false });
+    const payload = scenario === "missing"
+      ? disabled
+      : scenario === "legacy"
+        ? { models: { detector: "ready", reconstructor: "ready" }, device: "cpu", version: "legacy" }
+        : { ...serviceHealth(), capabilities: { ...serviceHealth().capabilities, realtime: "true" } };
+    const inference: string[] = [];
+    const sockets: string[] = [];
+    page.on("websocket", (socket) => {
+      if (new URL(socket.url()).origin === API.replace("http:", "ws:"))
+        sockets.push(socket.url());
+    });
+    await page.route(`${API}/**`, async (route) => {
+      if (!route.request().url().endsWith("/api/health")) inference.push(route.request().url());
+      await route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: payload });
+    });
+    await openStudio(page);
+    await connectLocalApi(page);
+    await uploadTinyPng(page);
+    await page.locator("#photo-consent").check();
+    await expect(page.locator("#reconstruct")).toBeDisabled();
+    await expect(page.locator("#apply-texture")).toBeDisabled();
+    await page.locator("#settings-open").click();
+    if (scenario === "missing") {
+      await expect(page.locator("#health-status")).toContainText("reconstruction=不可用");
+      await expect(page.locator("#health-status")).toContainText("reconstructor: state=missing");
+      await expect(page.locator("#health-status")).toContainText("backend=未配置");
+      await expect(page.locator("#health-status")).toContainText("Model is not installed.");
+    } else {
+      await expect(page.locator("#health-status")).toContainText("能力状态未知");
+      await expect(page.locator("#health-status")).toContainText("检查 API 版本");
+      await expect(page.locator("#source-status")).toContainText("重建能力未知");
+    }
+    await page.keyboard.press("Escape");
+    await page.locator("#camera-tab").click();
+    await page.locator("#camera-toggle").click();
+    await expect(page.locator("#camera-toggle")).toHaveText("关闭摄像头");
+    await expect(page.locator("#stream-toggle")).toBeDisabled();
+    await page.evaluate(() => {
+      for (const id of ["reconstruct", "apply-texture", "stream-toggle"]) {
+        const target = document.getElementById(id) as HTMLButtonElement;
+        target.disabled = false;
+        target.click();
+      }
+    });
+    expect(inference).toEqual([]);
+    expect(sockets).toEqual([]);
+    await expect(page.locator("#viewer")).toHaveAttribute("data-source", "demo");
+    await expect(page.locator("#camera-capture")).toBeEnabled();
+  });
+}
+
+test("部分能力就绪时按能力启禁，已有重建模型也不能调用未就绪纹理", async ({ page }) => {
+  await fakeCamera(page);
+  await openStudio(page);
+  const fixture = await downloadBytes(page, "#export-glb");
+  let agingRequests = 0;
+  await page.route(`${API}/**`, async (route) => {
+    const headers = { "Access-Control-Allow-Origin": "*" };
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/health")
+      await route.fulfill({ headers, json: serviceHealth({ reconstruction: true, age_morph: true, age_texture: false, realtime: true }) });
+    else if (path === "/api/reconstruct")
+      await route.fulfill({ headers, json: { mesh_id: "partial", shape: [0], expr: [0], pose: IDENTITY } });
+    else if (path.endsWith("mesh.glb"))
+      await route.fulfill({ headers, contentType: "model/gltf-binary", body: fixture });
+    else {
+      agingRequests++;
+      await route.abort();
+    }
+  });
+  await connectLocalApi(page);
+  await uploadTinyPng(page);
+  await page.locator("#photo-consent").check();
+  await expect(page.locator("#reconstruct")).toBeEnabled();
+  await page.locator("#reconstruct").click();
+  await expect(page.locator("#model-badge")).toHaveText("本地重建");
+  await expect(page.locator("#apply-texture")).toBeDisabled();
+  await expect(page.locator("#texture-hint")).toContainText("年龄纹理能力不可用");
+  await page.evaluate(() => {
+    const target = document.getElementById("apply-texture") as HTMLButtonElement;
+    target.disabled = false;
+    target.click();
+  });
+  expect(agingRequests).toBe(0);
+  await page.locator("#camera-tab").click();
+  await page.locator("#camera-toggle").click();
+  await expect(page.locator("#stream-toggle")).toBeEnabled();
+});
+
+test("切换服务立即撤销旧能力，断开后的迟到健康响应和新服务失败不恢复能力", async ({ page }) => {
+  const secondApi = "http://127.0.0.1:8001";
+  let firstChecks = 0;
+  let secondChecks = 0;
+  let release!: () => void;
+  let delivered = false;
+  const waiting = new Promise<void>((resolve) => { release = resolve; });
+  const headers = { "Access-Control-Allow-Origin": "*" };
+  await page.route(`${API}/api/health`, async (route) => {
+    firstChecks++;
+    await route.fulfill({ headers, json: firstChecks === 1 ? serviceHealth() : serviceHealth({ reconstruction: false, age_morph: false, age_texture: false, realtime: false }) });
+  });
+  await page.route(`${secondApi}/api/health`, async (route) => {
+    secondChecks++;
+    if (secondChecks === 1) {
+      await waiting;
+      await route.fulfill({ headers, json: serviceHealth() });
+      delivered = true;
+    } else await route.fulfill({ headers, status: 503, json: { detail: "Second service unavailable." } });
+  });
+  await openStudio(page);
+  await connectLocalApi(page);
+  await uploadTinyPng(page);
+  await page.locator("#photo-consent").check();
+  await expect(page.locator("#reconstruct")).toBeEnabled();
+  await page.locator("#settings-open").click();
+  await page.locator("#api-url").fill(secondApi);
+  await page.locator("#connect-api").click();
+  await expect.poll(() => secondChecks).toBe(1);
+  await expect(page.locator("#reconstruct")).toBeDisabled();
+  await expect(page.locator("#connection-label")).toHaveText("正在检查本地服务");
+  await page.locator("#disconnect").click();
+  await connectLocalApi(page);
+  await expect(page.locator("#reconstruct")).toBeDisabled();
+  release();
+  await expect.poll(() => delivered).toBe(true);
+  await page.locator("#settings-open").click();
+  await expect(page.locator("#api-url")).toHaveValue(API);
+  await expect(page.locator("#health-status")).toContainText("reconstruction=不可用");
+  await expect(page.locator("#reconstruct")).toBeDisabled();
+  await page.locator("#api-url").fill(secondApi);
+  await page.locator("#connect-api").click();
+  await expect(page.locator("#health-status")).toContainText("Second service unavailable.");
+  await expect(page.locator("#connection-label")).toHaveText("本地演示模式");
+  await expect(page.locator("#reconstruct")).toBeDisabled();
+  await expect(page.locator("#apply-texture")).toBeDisabled();
 });

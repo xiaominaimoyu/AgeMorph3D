@@ -5,10 +5,28 @@ export interface Pose {
   t: number[];
 }
 
+export interface Capabilities {
+  reconstruction: boolean;
+  age_morph: boolean;
+  age_texture: boolean;
+  realtime: boolean;
+}
+
+export interface ModelStatus {
+  /** unknown is a frontend fallback for legacy or malformed model status. */
+  state: "missing" | "loading" | "ready" | "error" | "unknown";
+  backend: string | null;
+  provider: string | null;
+  detail: string;
+}
+
 export interface Health {
-  models: Record<string, unknown>;
+  models: Record<string, ModelStatus>;
   device: string;
   version: string;
+  api_version: string | null;
+  /** null means unknown; it must never grant access to inference actions. */
+  capabilities: Capabilities | null;
 }
 
 export interface Reconstruction {

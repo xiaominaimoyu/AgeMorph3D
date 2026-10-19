@@ -1,8 +1,10 @@
 import type {
   AgingResult,
+  Capabilities,
   FaceState,
   FrameCallbacks,
   Health,
+  ModelStatus,
   Pose,
   Reconstruction,
 } from "./contracts";
@@ -78,6 +80,74 @@ function cancelled(): DOMException {
   return new DOMException("操作已取消。", "AbortError");
 }
 
+/** Legacy health can be displayed, but only a complete v1.1 capability set enables inference. */
+export function parseHealth(value: unknown): Health {
+  const data = record(value, "服务状态");
+  const validText = (item: unknown): item is string | null =>
+    item === null || (typeof item === "string" && item.length <= 200);
+  const models = Object.fromEntries(
+    Object.entries(record(data.models, "模型状态")).map(([name, value]): [string, ModelStatus] => {
+      const status = value !== null && typeof value === "object" && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+      if (
+        typeof status.state === "string" &&
+        ["missing", "loading", "ready", "error"].includes(status.state) &&
+        validText(status.backend) &&
+        validText(status.provider) &&
+        typeof status.detail === "string" &&
+        status.detail.length <= 2000
+      ) {
+        return [name, {
+          state: status.state as ModelStatus["state"],
+          backend: status.backend,
+          provider: status.provider,
+          detail: status.detail,
+        }];
+      }
+      return [name, {
+        state: "unknown",
+        backend: null,
+        provider: null,
+        detail: "模型状态格式未知，请检查 API 版本。",
+      }];
+    }),
+  );
+  const apiVersion =
+    typeof data.api_version === "string" && data.api_version.length <= 80
+      ? data.api_version
+      : null;
+  let capabilities: Capabilities | null = null;
+  const flags = data.capabilities;
+  if (
+    apiVersion === "1.1" &&
+    flags !== null &&
+    typeof flags === "object" &&
+    !Array.isArray(flags)
+  ) {
+    const values = flags as Record<string, unknown>;
+    if (
+      ["reconstruction", "age_morph", "age_texture", "realtime"].every(
+        (key) => typeof values[key] === "boolean",
+      )
+    ) {
+      capabilities = {
+        reconstruction: values.reconstruction as boolean,
+        age_morph: values.age_morph as boolean,
+        age_texture: values.age_texture as boolean,
+        realtime: values.realtime as boolean,
+      };
+    }
+  }
+  return {
+    models,
+    device: boundedString(data.device, "推理设备", 80),
+    version: boundedString(data.version, "服务版本", 80),
+    api_version: apiVersion,
+    capabilities,
+  };
+}
+
 /** All photo traffic stays on an explicitly selected loopback origin. */
 export class LocalApi {
   readonly baseUrl: string;
@@ -135,12 +205,7 @@ export class LocalApi {
   }
 
   async health(): Promise<Health> {
-    const data = record(await this.request("/api/health"), "服务状态");
-    return {
-      models: record(data.models, "模型状态"),
-      device: boundedString(data.device, "推理设备", 80),
-      version: boundedString(data.version, "服务版本", 80),
-    };
+    return parseHealth(await this.request("/api/health"));
   }
 
   async reconstruct(file: Blob, signal?: AbortSignal): Promise<Reconstruction> {

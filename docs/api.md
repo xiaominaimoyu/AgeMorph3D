@@ -1,6 +1,6 @@
-# 前端与本地后端接口契约 v1
+# 前端与本地后端接口契约 v1.1
 
-更新日期：2026-10-18。本文描述本轮前端要接入的本地服务契约；后端实现和真实模型联调尚未交付。
+更新日期：2026-10-19。本批实现服务骨架、健康能力、输入/错误契约及前端能力启禁；真实模型推理和成功GLB/纹理/实时输出尚未接入。除健康状态扩展外，成功资产仍沿用v1年龄GLB约定；静态模式属于下一批提案，尚未实施。
 
 ## 地址与数据边界
 
@@ -12,7 +12,7 @@
 
 | 方法 | 路径 | 请求 | 响应用途 |
 |---|---|---|---|
-| GET | `/api/health` | 无 | `{models: object, device: string, version: string}` |
+| GET | `/api/health` | 无 | `{models, device, version, api_version: "1.1", capabilities}` |
 | POST | `/api/reconstruct` | `multipart/form-data`，图片字段 `image` | `{mesh_id, shape, expr, pose, texture_url?}` |
 | POST | `/api/aging` | JSON，含 `mesh_id`、`age` | `{shape_aged, texture_url?}` |
 | GET | `/api/assets/{mesh_id}/mesh.glb` | 无 | 自包含 GLB，详见下文 |
@@ -20,6 +20,10 @@
 | POST | `/api/export/image` | 当前模型与年龄 | 后端导出预留；前端本身支持 PNG 截图 |
 
 `age` 为 20—70 范围内数值。参数字段以 `shape`、`expr`、`shape_aged` 为规范名称，旧文档的 `beta`、`psi` 不应作为第二套新协议继续扩展。参数数组必须非空、最多 300 个有限数值，维度由对应模型定义；当前前端校验和保留数组，但不会据此重建几何。
+
+本批 `/api/health` 中 `models` 固定列出 `detector`、`reconstructor`、`age_shape`、`age_texture`。每项为 `{state, backend, provider, detail}`，`state` 取 `missing/loading/ready/error`，`backend/provider` 为字符串或 `null`，`detail` 为可读原因。HTTP 200表示服务存活，不表示推理可用。当前全部为 `missing`。
+
+`capabilities` 必须完整提供四个布尔字段：`reconstruction`、`age_morph`、`age_texture`、`realtime`，当前均为 `false`。前端根据对应能力启禁重建、纹理和实时操作。版本不为 `1.1`、能力缺失或字段类型非法时，所有能力保持禁用并提示核查版本；不根据模型键名推断已就绪。`device: cpu` 当前仅指服务校验设备。
 
 重建结果示例（数组维度只作格式示意，真实后端使用模型定义的维度）：
 
@@ -36,7 +40,7 @@
 
 图片仅接受非空 JPG、PNG、WebP，最大 10 MiB、1600 万像素。JSON 请求超时为 30 秒、响应最大 128 KiB；前端不发送凭证、不缓存照片响应、不跟随重定向。HTTP 错误消息使用 FastAPI 常见的 `{ "detail": "可读说明" }` 格式。
 
-接口对应代码为 `frontend/src/contracts.ts` 和 `frontend/src/services.ts`。后端开发开始前对以上字段编写契约测试；健康检查的 `models` 为对象，其值需要由后端进一步定义就绪/失败含义。
+接口对应代码为 `frontend/src/contracts.ts`、`frontend/src/services.ts` 以及 `backend/src/agemorph3d/`；首批契约测试位于 `backend/tests/`。合法图片和年龄请求当前返回503，资产路由返回404，两个服务端导出预留路由尚未实现。
 
 ## 当前可接入的三维资产
 
@@ -77,6 +81,8 @@ v1 仅接收**自包含 GLB**：网格、材质/纹理和年龄 morph target 包
 
 服务还可发送 `{ "type": "status", "device": "cpu", "fps": 8.5 }`；`fps` 可省略。状态消息不能替代帧回复，收到 `face_state` 或 `error` 才确认当前帧已处理。
 
+本批接入实现要求WS有白名单Origin和回环Host；输入只接受≤2 MiB、最长边≤640的JPEG二进制帧。连接先收到`status`，有效帧收到一次`MODEL_NOT_READY`错误后以1013关闭；坏帧收到错误后以1003关闭。客户端不会得到伪造框点。成功`face_state`、可恢复无人脸/多人脸推理留待B6；示例不是当前算法输出。
+
 ## 错误与状态
 
 ```json
@@ -85,4 +91,4 @@ v1 仅接收**自包含 GLB**：网格、材质/纹理和年龄 morph target 包
 
 错误码至少包含 `NO_FACE`、`MULTI_FACE`、`TIMEOUT`、`BAD_INPUT`、`MODEL_NOT_READY`。HTTP 使用对应失败状态码并提供可读消息；WebSocket 使用 `error` 消息。用户取消、网络失败、响应格式错误和资产加载失败需要有不同处理，不应统一转成成功演示。
 
-后端实现阶段需补齐请求字段与响应 schema 的契约测试、输入大小限制、模型加载状态、同源/回环资产访问、超时取消、真实摄像头尺寸映射及 GLB 导出再导入检查。
+HTTP错误响应为`{"detail":"可读说明","code":"稳定错误码"}`。本批使用400坏图/坏multipart、403来源或Host拒绝、413超限、415格式不支持、422字段无效、429忙、503模型未就绪、504超时；JSON和实际流入字节均受限。忙时带`Retry-After: 1`。HTTP响应禁止缓存。推理成功、资源发布/TTL、真实摄像头尺寸映射和GLB导出再导入检查仍待后续阶段。
