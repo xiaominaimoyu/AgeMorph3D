@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-ArtifactRole = Literal["detector", "regressor", "bfm", "param_stats"]
+ArtifactRole = Literal["detector", "regressor", "bfm", "param_stats", "uv"]
 HttpsUrl = Annotated[HttpUrl, UrlConstraints(allowed_schemes=["https"])]
 NonemptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 

@@ -39,6 +39,7 @@ from .schemas import SourceAge
 
 if TYPE_CHECKING:
     from .tddfa import TddfaResult
+    from .uv_texture import UvTexture
 
 MAX_GLB_BYTES = 64 * 1024**2
 _MAX_VERTICES = 1_500_000
@@ -103,7 +104,11 @@ def projection_rotation(projection: NDArray) -> tuple[NDArray, dict[str, Any]]:
 
 
 def _encode_glb(
-    vertices: NDArray, normals: NDArray, triangles: NDArray, extras: dict[str, Any]
+    vertices: NDArray,
+    normals: NDArray,
+    triangles: NDArray,
+    extras: dict[str, Any],
+    texture: UvTexture | None = None,
 ) -> bytes:
     positions_bytes = vertices.astype("<f4", copy=False).tobytes(order="C")
     normals_bytes = normals.astype("<f4", copy=False).tobytes(order="C")
@@ -173,6 +178,49 @@ def _encode_glb(
         ],
         "extras": extras,
     }
+    if texture is not None:
+        uv = _finite(texture.gltf_uv, "glTF UV", (len(vertices), 2))
+        if np.any(uv < 0) or np.any(uv > 1):
+            raise ValueError("glTF UV coordinates must lie within [0,1].")
+        png = texture.png
+        if (
+            type(png) is not bytes
+            or not png.startswith(b"\x89PNG\r\n\x1a\n")
+            or len(png) > 16 * 1024**2
+        ):
+            raise ValueError("Base texture must be a bounded PNG image.")
+        uv_bytes = uv.astype("<f4").tobytes(order="C")
+        uv_offset = len(binary)
+        binary += uv_bytes
+        image_offset = len(binary)
+        binary += png
+        binary += b"\0" * (-len(binary) % 4)
+        document["buffers"][0]["byteLength"] = len(binary)
+        document["bufferViews"].extend(
+            [
+                {
+                    "buffer": 0,
+                    "byteOffset": uv_offset,
+                    "byteLength": len(uv_bytes),
+                    "target": 34962,
+                },
+                {"buffer": 0, "byteOffset": image_offset, "byteLength": len(png)},
+            ]
+        )
+        document["accessors"].append(
+            {"bufferView": 3, "componentType": 5126, "count": len(vertices), "type": "VEC2"}
+        )
+        document["meshes"][0]["primitives"][0]["attributes"]["TEXCOORD_0"] = 3
+        document["images"] = [{"bufferView": 4, "mimeType": "image/png"}]
+        document["samplers"] = [
+            {"magFilter": 9729, "minFilter": 9729, "wrapS": 33071, "wrapT": 33071}
+        ]
+        document["textures"] = [{"sampler": 0, "source": 0}]
+        material = document["materials"][0]
+        material.update(name="Observed_Photo_Surface", alphaMode="MASK", alphaCutoff=0.5)
+        material["pbrMetallicRoughness"].update(
+            baseColorFactor=[1.0, 1.0, 1.0, 1.0], baseColorTexture={"index": 0, "texCoord": 0}
+        )
     encoded = json.dumps(document, allow_nan=False, separators=(",", ":")).encode("utf-8")
     if len(encoded) > _MAX_METADATA_BYTES:
         raise ValueError("GLB metadata exceeds its bounded JSON budget.")
@@ -192,7 +240,9 @@ def _encode_glb(
     )
 
 
-def build_static_mesh(result: TddfaResult, source_age: dict[str, Any]) -> StaticMesh:
+def build_static_mesh(
+    result: TddfaResult, source_age: dict[str, Any], *, texture: UvTexture | None = None
+) -> StaticMesh:
     """Validate a raw BFM result and encode its canonical static surface in memory.
 
     The caller owns model/license readiness, image decoding and request admission.
@@ -288,7 +338,9 @@ def build_static_mesh(result: TddfaResult, source_age: dict[str, Any]) -> Static
         "topology_id": topology_id,
         "coordinate_metadata": coordinates,
     }
-    glb = _encode_glb(vertices, normals, triangles, extras)
+    if texture is not None:
+        extras["base_texture"] = texture.metadata
+    glb = _encode_glb(vertices, normals, triangles, extras, texture)
     for array in (vertices, normals, triangles):
         array.setflags(write=False)
     return StaticMesh(glb, topology_id, pose, coordinates, vertices, normals, triangles)

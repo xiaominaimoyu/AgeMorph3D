@@ -13,19 +13,22 @@ const ageResultFields = {
 };
 
 /** Synthetic triangle used only to verify the static API/viewer contract, not real G1. */
-function staticGlb(normalMorphOnly = false): Buffer {
-  const bin = Buffer.alloc(68);
+function staticGlb(normalMorphOnly = false, uvMode: "valid" | "missing" | "invalid" = "valid", texture?: Buffer): Buffer {
+  const bin = Buffer.alloc(Math.ceil((68 + (texture?.length ?? 0)) / 4) * 4);
   [-0.8, -1, 0, 0.8, -1, 0, 0, 1, 0].forEach((value, index) => bin.writeFloatLE(value, index * 4));
   [0, 1, 2].forEach((value, index) => bin.writeUInt16LE(value, 36 + index * 2));
   [0, 0, 1, 0, 0.5, 1].forEach((value, index) => bin.writeFloatLE(value, 44 + index * 4));
+  if (uvMode === "invalid") bin.writeFloatLE(NaN, 44);
+  texture?.copy(bin, 68);
   const json = Buffer.from(JSON.stringify({
     asset: { version: "2.0", generator: "AgeMorph3D synthetic static test fixture" },
     scene: 0, scenes: [{ nodes: [0] }],
     nodes: [{ mesh: 0, name: "Synthetic_Static_Triangle", extras: { synthetic: true } }],
-    meshes: [{ primitives: [{ attributes: { POSITION: 0, TEXCOORD_0: 2, ...(normalMorphOnly ? { NORMAL: 0 } : {}) }, indices: 1, material: 0, ...(normalMorphOnly ? { targets: [{ NORMAL: 0 }] } : {}) }] }],
-    materials: [{ doubleSided: true, pbrMetallicRoughness: { metallicFactor: 0, roughnessFactor: 1 } }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, ...(uvMode !== "missing" ? { TEXCOORD_0: 2 } : {}), ...(normalMorphOnly ? { NORMAL: 0 } : {}) }, indices: 1, material: 0, ...(normalMorphOnly ? { targets: [{ NORMAL: 0 }] } : {}) }] }],
+    materials: [{ doubleSided: true, pbrMetallicRoughness: { metallicFactor: 0, roughnessFactor: 1, ...(texture ? { baseColorTexture: { index: 0 } } : {}) } }],
+    ...(texture ? { textures: [{ source: 0 }], images: [{ bufferView: 3, mimeType: "image/png" }] } : {}),
     buffers: [{ byteLength: bin.length }],
-    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36, target: 34962 }, { buffer: 0, byteOffset: 36, byteLength: 6, target: 34963 }, { buffer: 0, byteOffset: 44, byteLength: 24, target: 34962 }],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36, target: 34962 }, { buffer: 0, byteOffset: 36, byteLength: 6, target: 34963 }, { buffer: 0, byteOffset: 44, byteLength: 24, target: 34962 }, ...(texture ? [{ buffer: 0, byteOffset: 68, byteLength: texture.length }] : [])],
     accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: "VEC3", min: [-0.8, -1, 0], max: [0.8, 1, 0] }, { bufferView: 1, componentType: 5123, count: 3, type: "SCALAR" }, { bufferView: 2, componentType: 5126, count: 3, type: "VEC2" }],
   }));
   const padded = Buffer.alloc(Math.ceil(json.length / 4) * 4, 32);
@@ -206,6 +209,140 @@ test("静态契约模拟资产保留未知源年龄，禁用年龄动作且导�
   await expect(page.locator("#model-badge")).toHaveText("演示模型");
   await expect(page.locator("#age-output")).toHaveText("30");
   await expect(page.locator("#age-slider")).toBeEnabled();
+});
+
+test("拍摄时年龄由用户显式填写，校验后随重建提交；换图和移除清空年龄", async ({ page }) => {
+  await openStudio(page);
+  const ages: (string | undefined)[] = [];
+  let finishFirst!: () => void;
+  const pending = new Promise<void>((resolve) => { finishFirst = resolve; });
+  await page.route(`${API}/**`, async (route) => {
+    const headers = { "Access-Control-Allow-Origin": "*" };
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/health") await route.fulfill({ headers, json: serviceHealth({ reconstruction: true, age_morph: false, age_texture: false, realtime: false }) });
+    else if (path.endsWith("/mesh.glb")) await route.fulfill({ headers, contentType: "model/gltf-binary", body: staticGlb() });
+    else if (path === "/api/reconstruct") {
+      const ageValue = /name="source_age"\r\n\r\n([^\r]+)/.exec(route.request().postData() ?? "")?.[1];
+      ages.push(ageValue);
+      if (ages.length === 1) await pending;
+      await route.fulfill({ headers, json: {
+        mesh_id: `source_age_${ages.length}`, topology_id: "triangle_fixture", asset_mode: "static",
+        capabilities: { age_morph: false, age_texture: false },
+        source_age: ageValue === undefined ? { value: null, method: "unknown", calibration_id: null } : { value: Number(ageValue), method: "user", calibration_id: null },
+        shape: [0], expr: [0], pose: IDENTITY,
+      } });
+    } else await route.abort();
+  });
+  await connectLocalApi(page);
+  await expect(page.locator("#source-age")).toBeDisabled();
+  await uploadTinyPng(page);
+  await page.locator("#photo-consent").check();
+  await expect(page.locator("#source-age")).toHaveValue("");
+  for (const invalid of ["19", "71"]) {
+    await page.locator("#source-age").fill(invalid);
+    await expect(page.locator("#reconstruct")).toBeDisabled();
+    await expect(page.locator("#source-age")).toHaveAttribute("aria-invalid", "true");
+  }
+  expect(ages).toEqual([]);
+  await page.locator("#source-age").fill("42.5");
+  await expect(page.locator("#reconstruct")).toBeEnabled();
+  await page.locator("#reconstruct").click();
+  await expect.poll(() => ages.length).toBe(1);
+  await expect(page.locator("#source-age")).toBeDisabled();
+  finishFirst();
+  await expect(page.locator("#model-badge")).toHaveText("本地重建");
+  await expect(page.locator("#age-output")).toHaveText("42.5");
+  await expect(page.locator("#source-age")).toBeEnabled();
+  await page.locator("#source-age").fill("55");
+  await expect(page.locator("#age-output")).toHaveText("42.5");
+  const exported = parseGlb(await downloadBytes(page, "#export-glb"));
+  expect(exported.nodes.find((node: any) => node.name === "AgeMorph3D_Loaded_Model").extras.source_age).toEqual({ value: 42.5, method: "user", calibration_id: null });
+  await uploadTinyPng(page);
+  await expect(page.locator("#source-age")).toHaveValue("");
+  await page.locator("#photo-consent").check();
+  await page.locator("#reconstruct").click();
+  await expect(page.locator("#age-output")).toHaveText("—");
+  expect(ages).toEqual(["42.5", undefined]);
+  await page.locator("#source-age").fill("50");
+  await page.locator("#photo-remove").click();
+  await expect(page.locator("#source-age")).toHaveValue("");
+  await expect(page.locator("#source-age")).toBeDisabled();
+});
+
+test("嵌入照片纹理的静态资产无需年龄能力，导出保留 UV 和内嵌图像", async ({ page }) => {
+  await openStudio(page);
+  const png = Buffer.from(await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 4;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#28c864"; context.fillRect(0, 0, 4, 2);
+    context.fillStyle = "#dc643c"; context.fillRect(0, 2, 4, 2);
+    return canvas.toDataURL("image/png").split(",")[1];
+  }), "base64");
+  await mockReconstruction(page, {
+    mesh_id: "embedded_texture", topology_id: "triangle_fixture", asset_mode: "static",
+    capabilities: { age_morph: false, age_texture: false },
+    source_age: { value: null, method: "unknown", calibration_id: null }, shape: [0], expr: [0], pose: IDENTITY,
+  }, staticGlb(false, "valid", png));
+  await expect(page.locator("#model-badge")).toHaveText("本地重建");
+  await expect(page.locator("#apply-texture")).toBeDisabled();
+  await expect(page.locator("#age-output")).toHaveText("—");
+  const bytes = await downloadBytes(page, "#export-glb");
+  const exported = parseGlb(bytes);
+  expect(exported.images).toHaveLength(1);
+  expect(exported.images[0].uri).toBeUndefined();
+  const primitive = exported.meshes[0].primitives[0];
+  expect(exported.materials[primitive.material].pbrMetallicRoughness.baseColorTexture).toBeDefined();
+  const accessor = exported.accessors[primitive.attributes.TEXCOORD_0];
+  const view = exported.bufferViews[accessor.bufferView];
+  const start = 20 + bytes.readUInt32LE(12) + 8 + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  expect(Array.from({ length: 6 }, (_, index) => bytes.readFloatLE(start + index * 4))).toEqual([0, 0, 1, 0, 0.5, 1]);
+});
+
+for (const uvMode of ["missing", "invalid"] as const) {
+  test(`嵌入纹理的静态资产拒绝${uvMode}UV，不将无效贴图当成成功`, async ({ page }) => {
+    await openStudio(page);
+    const png = Buffer.from(await page.evaluate(() => {
+      const canvas = document.createElement("canvas"); canvas.width = canvas.height = 1;
+      return canvas.toDataURL("image/png").split(",")[1];
+    }), "base64");
+    await mockReconstruction(page, {
+      mesh_id: "bad_uv", topology_id: "triangle_fixture", asset_mode: "static",
+      capabilities: { age_morph: false, age_texture: false },
+      source_age: { value: null, method: "unknown", calibration_id: null }, shape: [0], expr: [0], pose: IDENTITY,
+    }, staticGlb(false, uvMode, png));
+    await expect(page.locator("#source-status")).toContainText("UV");
+    await expect(page.locator("#model-badge")).toHaveText("演示模型");
+  });
+}
+
+test("外部基础纹理遇到缺少 UV 的资产时，在获取纹理前拒绝应用", async ({ page }) => {
+  await openStudio(page);
+  const requested: string[] = [];
+  page.on("request", (request) => { requested.push(request.url()); });
+  await mockReconstruction(page, {
+    mesh_id: "missing_external_uv", topology_id: "triangle_fixture", asset_mode: "static",
+    capabilities: { age_morph: false, age_texture: true },
+    source_age: { value: 40, method: "user", calibration_id: null }, shape: [0], expr: [0], pose: IDENTITY,
+    texture_url: "/api/assets/missing_external_uv/base.png",
+  }, staticGlb(false, "missing"));
+  await expect(page.locator("#model-badge")).toHaveText("演示模型");
+  await expect(page.locator("#source-status")).toContainText("UV");
+  expect(requested.some((url) => url.endsWith("/base.png"))).toBe(false);
+});
+
+test("基础纹理读取失败保留已加载网格和错误提示，成功通知不覆盖纹理错误", async ({ page }) => {
+  await openStudio(page);
+  await mockReconstruction(page, {
+    mesh_id: "base_texture_failure", topology_id: "triangle_fixture", asset_mode: "static",
+    capabilities: { age_morph: false, age_texture: false },
+    source_age: { value: null, method: "unknown", calibration_id: null }, shape: [0], expr: [0], pose: IDENTITY,
+    texture_url: "/api/assets/base_texture_failure/missing.png",
+  }, staticGlb());
+  await expect(page.locator("#model-badge")).toHaveText("本地重建");
+  await expect(page.locator("#toast-text")).toContainText("基础纹理未载入");
+  await expect(page.locator("#toast")).toHaveClass(/error/);
+  await expect(page.locator("#export-glb")).toBeEnabled();
 });
 
 test("年龄资产以真实声明的源年龄重置和对照，不沿用演示的30岁", async ({ page }) => {

@@ -322,6 +322,51 @@ def test_topology_hash_is_dtype_independent_and_sensitive_to_face_order(assets, 
     assert reordered.topology_sha256 != first.topology_sha256
 
 
+def test_optional_uv_is_readonly_bound_to_exact_topology_and_does_not_change_geometry(
+    assets, session
+):
+    model = TddfaOnnx(assets)
+    assert model.uv is None
+    uv = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
+    path = assets.paths["bfm"].parent / "uv.npz"
+    np.savez(path, uv=uv, topology_sha256=np.array(model.topology_sha256))
+    assets.paths["uv"] = path
+    textured = TddfaOnnx(assets)
+    np.testing.assert_array_equal(textured.uv, uv)
+    assert not textured.uv.flags.writeable
+    assert textured.topology_sha256 == model.topology_sha256
+    image = np.zeros((10, 10, 3), dtype=np.uint8)
+    np.testing.assert_array_equal(
+        model.reconstruct(image, (0, 0, 10, 10)).vertices,
+        textured.reconstruct(image, (0, 0, 10, 10)).vertices,
+    )
+
+
+@pytest.mark.parametrize(
+    "failure", ["unbound", "wrong_topology", "count", "range", "nan", "object"]
+)
+def test_uv_assets_reject_incompatible_or_unverified_correspondence(assets, session, failure):
+    topology = TddfaOnnx(assets).topology_sha256
+    data = {"uv": np.full((4, 2), 0.5), "topology_sha256": np.array(topology)}
+    if failure == "unbound":
+        del data["topology_sha256"]
+    elif failure == "wrong_topology":
+        data["topology_sha256"] = np.array("a" * 64)
+    elif failure == "count":
+        data["uv"] = np.zeros((3, 2))
+    elif failure == "range":
+        data["uv"][0, 0] = -0.01
+    elif failure == "nan":
+        data["uv"][0, 0] = np.nan
+    else:
+        data["uv"] = np.array([object()], dtype=object)
+    path = assets.paths["bfm"].parent / "uv.npz"
+    np.savez(path, **data)
+    assets.paths["uv"] = path
+    with pytest.raises(ValueError):
+        TddfaOnnx(assets)
+
+
 @pytest.mark.parametrize("change", ["backend", "missing_role", "extra_role"])
 def test_manifest_backend_and_exact_asset_roles_are_required(assets, session, change) -> None:
     if change == "backend":

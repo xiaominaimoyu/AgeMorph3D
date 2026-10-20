@@ -196,12 +196,13 @@ class TddfaOnnx:
     provider = "CPUExecutionProvider"
 
     def __init__(self, assets: VerifiedModelAssets) -> None:
-        if assets.manifest.backend != "3ddfa_v2_onnx" or set(assets.paths) != {
-            "regressor",
-            "bfm",
-            "param_stats",
-        }:
-            raise ValueError("3DDFA requires exactly regressor, bfm and param_stats artifacts.")
+        required = {"regressor", "bfm", "param_stats"}
+        if (
+            assets.manifest.backend != "3ddfa_v2_onnx"
+            or not required.issubset(assets.paths)
+            or set(assets.paths) - required - {"uv"}
+        ):
+            raise ValueError("3DDFA requires exactly regressor, bfm, param_stats and optional uv.")
         self.license_verified = assets.license_verified
         regressor_path = Path(assets.paths["regressor"])
         bfm_path = Path(assets.paths["bfm"])
@@ -247,6 +248,22 @@ class TddfaOnnx:
         ):
             digest.update(array.tobytes(order="C"))
         self.topology_sha256 = digest.hexdigest()
+
+        self.uv = None
+        if "uv" in assets.paths:
+            uv_data = _npz_arrays(Path(assets.paths["uv"]), ("uv", "topology_sha256"))
+            binding = uv_data["topology_sha256"]
+            if (
+                binding.shape != ()
+                or binding.dtype.kind != "U"
+                or binding.item() != self.topology_sha256
+            ):
+                raise ValueError("UV asset must bind to this exact ordered topology.")
+            uv = _finite_array(uv_data["uv"], "uv")
+            if uv.shape != (vertex_count, 2) or np.any(uv < 0) or np.any(uv > 1):
+                raise ValueError("UV must contain one finite [0,1] pair per mesh vertex.")
+            uv.setflags(write=False)
+            self.uv = uv
 
         stats = _npz_arrays(stats_path, ("mean", "std"))
         self._mean = _finite_array(stats["mean"], "mean")

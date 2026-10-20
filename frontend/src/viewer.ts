@@ -6,7 +6,7 @@ import { getAgeWeights } from "./age";
 import { LocalApi } from "./services";
 import type { Reconstruction } from "./contracts";
 
-export type ModelOptions = Pick<Reconstruction, "asset_mode" | "source_age" | "topology_id">;
+export type ModelOptions = Pick<Reconstruction, "asset_mode" | "source_age" | "topology_id"> & Partial<Pick<Reconstruction, "capabilities">>;
 
 type Mode = "solid" | "wireframe" | "points";
 type ViewerCallbacks = {
@@ -25,6 +25,16 @@ type MeshBinding = {
   anchors: number[] | null;
 };
 const AGES = [20, 45, 70] as const;
+
+function assertTextureUv(mesh: THREE.Mesh, channel = 0): void {
+  const positions = mesh.geometry.getAttribute("position");
+  const uv = mesh.geometry.getAttribute(channel === 0 ? "uv" : `uv${channel}`);
+  if (!positions || !uv || uv.itemSize !== 2 || uv.count !== positions.count)
+    throw new Error("纹理需要与网格顶点对应的 UV 坐标，请重新生成带 UV 的资产。");
+  for (let index = 0; index < uv.count; index++)
+    if (!Number.isFinite(uv.getX(index)) || !Number.isFinite(uv.getY(index)))
+      throw new Error("纹理 UV 包含无效坐标，请重新生成资产。");
+}
 
 async function localAsset(
   url: string,
@@ -580,6 +590,11 @@ export class FaceViewer {
         for (let index = 0; index < positions.array.length; index++)
           if (!Number.isFinite(positions.array[index]))
             throw new Error("模型包含无效顶点坐标。");
+        if (options.capabilities?.age_texture) assertTextureUv(node);
+        (Array.isArray(node.material) ? node.material : [node.material]).forEach((material) => {
+          if ((material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshBasicMaterial) && material.map)
+            assertTextureUv(node, material.map.channel);
+        });
         const targets = node.geometry.morphAttributes.position;
         if (options.asset_mode === "static" && Object.values(node.geometry.morphAttributes).some((attributes) => Array.isArray(attributes) && attributes.length > 0))
           throw new Error("静态重建资产不能包含形变目标，请检查资产模式。");
@@ -659,6 +674,13 @@ export class FaceViewer {
       this.restoreTexture();
       if (this.model) delete this.model.userData.texture_age;
       return;
+    }
+    if (!this.bindings.length) throw new Error("当前没有可应用纹理的网格。");
+    for (const binding of this.bindings) {
+      assertTextureUv(binding.mesh);
+      const materials = Array.isArray(binding.material) ? binding.material : [binding.material];
+      if (materials.some((material) => !(material instanceof THREE.MeshStandardMaterial) && !(material instanceof THREE.MeshBasicMaterial)))
+        throw new Error("当前网格材质不支持颜色纹理，请重新生成资产。");
     }
     const controller = new AbortController();
     this.textureRequest = controller;

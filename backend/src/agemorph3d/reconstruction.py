@@ -27,7 +27,13 @@ def reconstruct_static(
         if len(faces) != 1:
             raise ApiError(422, "MULTI_FACE", "检测到多张人脸，请上传只有一人的照片。")
         raw = reconstructor.reconstruct(rgb, faces[0].bbox)
-        mesh = build_static_mesh(raw, source_age.model_dump())
+        uv = getattr(reconstructor, "uv", None)
+        texture = None
+        if uv is not None:
+            from .uv_texture import project_photo_texture
+
+            texture = project_photo_texture(rgb, raw, uv)
+        mesh = build_static_mesh(raw, source_age.model_dump(), texture=texture)
         # Validate before publication. This internal identifier is never returned.
         result = Reconstruction(
             mesh_id="unpublished",

@@ -158,6 +158,27 @@ async def test_ready_models_enable_static_and_realtime(synthetic_service) -> Non
         assert response.status_code == 503
 
 
+async def test_configured_uv_embeds_observed_base_photo_in_cached_static_asset(synthetic_service):
+    async with synthetic_service() as service:
+        # Explicit synthetic UV, not an age model or real-weight acceptance.
+        service.reconstructor.uv = np.array([[0, 0], [0.5, 1], [1, 0]], dtype=np.float32)
+        response = await service.client.post("/api/reconstruct", files=image_upload())
+        assert response.status_code == 200
+        result = response.json()
+        assert result["asset_mode"] == "static"
+        assert result["source_age"]["value"] is None
+        assert result["capabilities"] == {"age_morph": False, "age_texture": False}
+        assert result["texture_url"] is None
+        mesh = await service.client.get(f"/api/assets/{result['mesh_id']}/mesh.glb")
+        assert mesh.status_code == 200 and mesh.headers["content-type"] == "model/gltf-binary"
+        document = glb_document(mesh.content)
+        assert document["images"][0]["mimeType"] == "image/png"
+        assert "TEXCOORD_0" in document["meshes"][0]["primitives"][0]["attributes"]
+        assert document["extras"]["base_texture"]["age_generated"] is False
+        assert document["materials"][0]["alphaMode"] == "MASK"
+        assert not any("uri" in item for item in document["images"] + document["buffers"])
+
+
 @pytest.mark.parametrize("source_age", [None, "42.5"])
 async def test_photo_produces_static_contract_and_standalone_glb(
     synthetic_service, source_age: str | None

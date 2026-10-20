@@ -473,6 +473,37 @@ h1 > span {
 .source-tips svg {
   color: #7b9e9c;
 }
+.source-age-field {
+  grid-column: 1/-1;
+  margin: 0 17px 13px;
+}
+.source-age-field label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 11px;
+  color: #a6b4c6;
+}
+.source-age-field label span {
+  margin-left: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.source-age-field input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #2b3b50;
+  border-radius: 3px;
+  background: #111a29;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.source-age-field input[aria-invalid="true"] {
+  border-color: #d58686;
+}
+.source-age-field .hint {
+  margin: 6px 0 0;
+}
 .consent {
   display: flex;
   align-items: flex-start;

@@ -85,6 +85,18 @@ function canAdjustAge(): boolean {
   return canMorph() || canTexture();
 }
 
+function validSourceAge(): boolean {
+  return input("source-age").validity.valid;
+}
+
+function showSourceAgeValidity(): void {
+  const valid = validSourceAge();
+  input("source-age").setAttribute("aria-invalid", String(!valid));
+  el("source-age-hint").textContent = valid
+    ? "填写 20–70 岁；仅记录你提供的年龄，不代表模型估计。修改后需重新重建。"
+    : "请输入 20–70 岁的有效年龄，或留空表示未知。";
+}
+
 function updateAgeDisplay(): void {
   const staticOnly = meshId && reconstruction?.asset_mode === "static" && !canTexture();
   const displayAge = staticOnly ? reconstruction?.source_age.value : age;
@@ -183,7 +195,8 @@ function refreshLoadingHealth(client: LocalApi, version: number): void {
 function refreshActions(): void {
   if (stream && !supports("realtime")) stopStream();
   button("reconstruct").disabled =
-    !source || !supports("reconstruction") || !input("photo-consent").checked || busy || !viewer;
+    !source || !supports("reconstruction") || !input("photo-consent").checked || !validSourceAge() || busy || !viewer;
+  input("source-age").disabled = !source || busy;
   button("reconstruct").setAttribute("aria-busy", String(busy));
   button("reconstruct").querySelector("span")!.textContent = busy
     ? "正在生成三维模型…"
@@ -391,6 +404,8 @@ function clearPhoto(): void {
   el("photo-preview").hidden = true;
   button("upload-trigger").hidden = false;
   input("photo-consent").checked = false;
+  input("source-age").value = "";
+  showSourceAgeValidity();
   resetDemo();
   el("source-status").textContent = "选择人像照片，或使用摄像头拍摄。";
 }
@@ -420,6 +435,8 @@ async function acceptPhoto(blob: Blob, name: string): Promise<void> {
     sourceUrl = URL.createObjectURL(blob);
     source = blob;
     input("photo-consent").checked = false;
+    input("source-age").value = "";
+    showSourceAgeValidity();
     el<HTMLImageElement>("source-image").src = sourceUrl;
     el("photo-name").textContent = name;
     el("photo-name").title = name;
@@ -475,6 +492,10 @@ on("photo-area", "drop", (event) => {
 });
 on("photo-consent", "change", () => {
   if (!input("photo-consent").checked) stopStream();
+  refreshActions();
+});
+on("source-age", "input", () => {
+  showSourceAgeValidity();
   refreshActions();
 });
 
@@ -589,13 +610,14 @@ on("stream-toggle", "click", () => {
 });
 
 on("reconstruct", "click", () => {
-  if (!api || !supports("reconstruction") || !source || !input("photo-consent").checked || !viewer || busy)
+  if (!api || !supports("reconstruction") || !source || !input("photo-consent").checked || !validSourceAge() || !viewer || busy)
     return;
   stopStream();
   cancelTask();
   const version = taskVersion;
   const client = api;
   const file = source;
+  const sourceAge = input("source-age").value === "" ? undefined : input("source-age").valueAsNumber;
   operation = new AbortController();
   const signal = operation.signal;
   busy = true;
@@ -603,7 +625,7 @@ on("reconstruct", "click", () => {
   refreshActions();
   void (async () => {
     try {
-      const result = await client.reconstruct(file, signal);
+      const result = await client.reconstruct(file, signal, sourceAge);
       if (version !== taskVersion || signal.aborted) return;
       el("source-status").textContent = "参数已返回，正在加载三维资产…";
       await viewer!.loadModel(client.assetUrl(result.mesh_id), result);
@@ -620,11 +642,12 @@ on("reconstruct", "click", () => {
       el("texture-hint").textContent = "可为当前目标年龄请求纹理。";
       updateAgeDisplay();
       if (canMorph()) viewer!.setAge(age);
+      let textureWarning: string | undefined;
       if (result.texture_url) {
         try {
           await viewer!.setTexture(result.texture_url, true);
         } catch (error) {
-          notify(`模型已加载，基础纹理未载入：${message(error)}`, true);
+          textureWarning = `模型已加载，基础纹理未载入：${message(error)}`;
         }
       }
       if (version !== taskVersion) return;
@@ -636,7 +659,7 @@ on("reconstruct", "click", () => {
           : canMorph()
             ? "三维重建已完成，可以调节年龄、对比与导出。"
             : "三维重建已完成，当前服务未启用年龄形变。可以旋转查看与导出。";
-      notify("已载入本地重建结果。");
+      notify(textureWarning ?? "已载入本地重建结果。", textureWarning !== undefined);
     } catch (error) {
       if (version !== taskVersion || isCancelled(error)) return;
       el("source-status").textContent = message(error);

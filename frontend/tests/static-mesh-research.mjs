@@ -14,6 +14,7 @@ const output = resolve(process.env.AGEMORPH_RESEARCH_OUTPUT ??
   fileURLToPath(new URL("../../output/backend/b23/browser/", import.meta.url)));
 const frontendPort = port("AGEMORPH_RESEARCH_VITE_PORT", 5175);
 const assetPort = port("AGEMORPH_RESEARCH_ASSET_PORT", 18003);
+const requireTexture = process.env.AGEMORPH_RESEARCH_REQUIRE_TEXTURE === "1";
 assert.notEqual(frontendPort, assetPort, "The owned servers need separate ports.");
 const frontend = `http://127.0.0.1:${frontendPort}`;
 const assets = `http://127.0.0.1:${assetPort}`;
@@ -25,16 +26,30 @@ const options = {
   asset_mode: "static",
   topology_id: metadata.topology_id,
   source_age: metadata.source_age,
+  ...(metadata.capabilities ? { capabilities: metadata.capabilities } : {}),
 };
 validateOptions(options);
 if (metadata.asset_mode !== undefined) assert.equal(metadata.asset_mode, "static");
 const originalJson = standaloneGlb(original);
+if (requireTexture) {
+  assert.ok(originalJson.images?.length, "Texture verification needs an embedded image.");
+  assert.equal(metadata.capabilities?.age_morph, false, "Photo UV evidence cannot enable age shape.");
+  assert.equal(metadata.capabilities?.age_texture, false, "Photo UV evidence cannot enable age texture.");
+  for (const mesh of originalJson.meshes ?? []) for (const primitive of mesh.primitives) {
+    assert.notEqual(primitive.attributes?.TEXCOORD_0, undefined, "Textured mesh needs atlas UV.");
+    assert.notEqual(originalJson.materials?.[primitive.material]?.pbrMetallicRoughness?.baseColorTexture?.index,
+      undefined, "Textured mesh needs an embedded base color map.");
+  }
+}
 await mkdir(output, { recursive: true });
 
 const report = {
   evidenceKind: "offline-real-model-asset-browser-roundtrip",
   serviceInferenceVerified: false,
   g1Accepted: false,
+  g3Accepted: false,
+  photoTextureVerification: requireTexture,
+  ageTextureVerified: false,
   routeMocks: false,
   productionBuild: false,
   renderer: "Chromium software WebGL (SwiftShader)",
@@ -104,6 +119,7 @@ try {
             #research-state{color:#70dfcb}</style><header>
             <h1>真实 CPU 网格 · 离线研究验证</h1>
             <p>使用实际 FaceViewer 查看、导出和再导入；未连接模型服务，G1 尚未签收。</p>
+            ${requireTexture ? "<p>照片 UV 贴图验证，未生成年龄纹理，G3 尚未签收。</p>" : ""}
             <p id="research-state">正在加载真实静态资产</p></header>
             <div id="research-viewer"></div></html>`);
         });
@@ -195,7 +211,7 @@ try {
     assert.deepEqual(root.extras.source_age, options.source_age);
     for (const key of ["age", "ageAnchors", "displayAge", "texture_age"])
       assert.equal(root.extras[key], undefined, `Static research export cannot invent ${key}.`);
-    const roundtrip = await page.evaluate(async ({ url, options }) => {
+    const roundtrip = await page.evaluate(async ({ url, options, requireTexture }) => {
       const { FaceViewer, GLTFLoader, THREE } = await import("/__research_modules.js");
       const bytes = await (await fetch(url, { cache: "no-store" })).arrayBuffer();
       const parsed = await new GLTFLoader().parseAsync(bytes, "");
@@ -208,6 +224,40 @@ try {
       const after = meshes(parsed.scene);
       if (before.length !== after.length) throw new Error("Roundtrip changed mesh count.");
       const comparisons = [];
+      const textureSummary = async (mesh) => {
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        const textures = [];
+        for (const material of materials) {
+          const texture = material.map;
+          if (!texture) {
+            if (requireTexture) throw new Error("Photo UV mesh is missing its base color texture.");
+            textures.push(null);
+            continue;
+          }
+          const image = texture.image;
+          const width = image?.width;
+          const height = image?.height;
+          if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width * height > 16_000_000)
+            throw new Error("Invalid decoded photo texture dimensions.");
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("Cannot inspect decoded texture pixels.");
+          context.drawImage(image, 0, 0);
+          const pixels = context.getImageData(0, 0, width, height).data;
+          const digest = await crypto.subtle.digest("SHA-256", pixels);
+          const rgbaSha256 = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+          textures.push({ width, height, rgbaSha256, flipY: texture.flipY,
+            colorSpace: texture.colorSpace, uvChannel: texture.channel,
+            offset: texture.offset.toArray(), repeat: texture.repeat.toArray(),
+            rotation: texture.rotation, wrapS: texture.wrapS, wrapT: texture.wrapT,
+            magFilter: texture.magFilter, minFilter: texture.minFilter,
+            material: { opacity: material.opacity, transparent: material.transparent,
+              alphaTest: material.alphaTest, side: material.side } });
+        }
+        return textures;
+      };
       for (let index = 0; index < before.length; index++) {
         const a = before[index].geometry;
         const b = after[index].geometry;
@@ -248,7 +298,13 @@ try {
         }
         if (Object.values(b.morphAttributes).some((targets) => targets.length))
           throw new Error("Static roundtrip unexpectedly contains morph targets.");
-        comparisons.push({ attributes, indexCount: a.index?.count ?? null, normalLengthError });
+        if (requireTexture && !attributes.uv) throw new Error("Photo UV mesh has no atlas coordinates.");
+        const originalTextures = await textureSummary(before[index]);
+        const exportedTextures = await textureSummary(after[index]);
+        if (JSON.stringify(originalTextures) !== JSON.stringify(exportedTextures))
+          throw new Error("Roundtrip changed decoded texture pixels or UV orientation metadata.");
+        comparisons.push({ attributes, indexCount: a.index?.count ?? null, normalLengthError,
+          textures: { original: originalTextures, exported: exportedTextures } });
       }
       const originalBounds = new THREE.Box3().setFromObject(window.researchOriginal.scene);
       const originalSize = originalBounds.getSize(new THREE.Vector3());
@@ -273,7 +329,7 @@ try {
       document.getElementById("research-state").textContent =
         `${options.topology_id} · 浏览器导出文件已再导入 · 正面`;
       return { comparisons, expectedSize, actualSize, center };
-    }, { url: exportedUrl, options });
+    }, { url: exportedUrl, options, requireTexture });
     await page.waitForFunction(({ vertices, triangles }) =>
       window.researchStats?.vertices === vertices && window.researchStats?.triangles === triangles,
     { vertices, triangles });
@@ -323,7 +379,8 @@ try {
 if (failure) throw failure;
 assert.equal(report.ownedServersClosed, true);
 console.log(JSON.stringify({ passed: report.results.length, output, evidenceKind: report.evidenceKind,
-  serviceInferenceVerified: false, g1Accepted: false, ownedServersClosed: report.ownedServersClosed }));
+  serviceInferenceVerified: false, g1Accepted: false, g3Accepted: false,
+  photoTextureVerification: requireTexture, ownedServersClosed: report.ownedServersClosed }));
 
 function requiredPath(name) {
   assert.ok(process.env[name], `Set ${name} to an explicit local file.`);

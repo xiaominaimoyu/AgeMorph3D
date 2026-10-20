@@ -1,6 +1,6 @@
 # AgeMorph3D 本地后端
 
-本地 FastAPI 服务已实现 v1.2、模型生命周期、B2/B3 静态 GLB 和 B6 实时框/五点/纯旋转。**现有研究清单仍为 unresolved，正式服务保持许可错误，完整 G1/G2 尚未签收。** 真实 CPU、实体摄像头、Chrome/Edge 及合成传输证据分别见 [B23 记录](../docs/B23真实静态链路开发记录.md) 和 [B6 记录](../docs/B6实时姿态开发记录.md)。年龄能力尚未实现。
+本地FastAPI已实现v1.2、静态GLB与B6实时。本批完成B4/B5现有资产范围的原生年龄方向研究、源年龄输入和真实基础照片UV，见 [B45记录](../docs/B45年龄方向与UV开发记录.md)。**年尺度校准、年龄纹理及身份保持尚未验收，两项年龄能力仍false；当前真实清单unresolved，完整G1/G2/G3未签收。** 历史证据见 [B23记录](../docs/B23真实静态链路开发记录.md) 和 [B6记录](../docs/B6实时姿态开发记录.md)。
 
 2026-10-19基础服务限定范围已通过阶段验收，实际证据、两项传输层边界和后续出口见[基础服务验收报告](../docs/基础服务验收报告.md)。这不代表整个后端或完整G0已验收。
 
@@ -35,6 +35,8 @@ $env:AGEMORPH_RECONSTRUCTOR_MANIFEST = 'D:\project file\AgeMorph3D\data\models\3
 加载需要先 `uv sync --locked --extra inference`。未配置/清单不存在为 `missing`，已配置先 `loading`，严格资产核验、实例构造和真实 CPU 算子自检通过才为 `ready`；失败为脱敏 `error`。现有两份 B0 研究清单仍为 `license_status=unresolved`，使用上面的路径会得到许可核验错误，服务不会偷偷启用研究绕过。用户提供的 BFM 非商业研究授权保留在台账中，这不是整套候选资产的分发条款证明。
 
 单个模型 `ready` 表示该算子通过加载/自检，重建自检还包含 canonical/纯旋转/GLB 构建。两模型均ready且服务未关闭时，reconstruction与realtime为true，两项年龄能力仍false。加载、HTTP和WS共用一个工作线程；忙时不排队，HTTP429/WS相关BUSY，健康状态可读取。退出先禁止新任务和迟到发布，再清除缓存、等待实际线程完成并清理实例。
+
+重建清单支持可选uv角色：严格核验后，其NPZ须含有限`uv:[N,2]`和匹配当前有序拓扑的标量`topology_sha256`；自检包括照片UV投影及内嵌PNG。结果是带观测遮罩的原照片基础纹理，保留static及年龄false，不新增磁盘/图片路由。当前实际两份研究清单未修改，没有配置UV时仍输出中性材质。
 
 ## 运行本机真实静态研究样例
 
@@ -112,6 +114,22 @@ B0 的可选推理依赖安装、模型清单、旧资产受限转换、真实�
 
 相机会短暂开启，帧仅在内存处理；不打开窗口/网络服务，不保存照片或逐帧参数，只写计数、尺寸、数值检查与耗时汇总。用`--image data/samples/astronaut.png`替换`--camera-index 0`可复验公开样例；帧数1—120，最长边640。相机循环15秒预算在原生调用间检查，不能硬中断阻塞的驱动read。默认不带研究开关则严格拒绝当前清单，报告始终service_ready=false、g2_complete=false。
 
-后续先收口候选权重条款及严格真实服务G1/G2，补人工左右转头/姿态质量和长时间恢复记录。年龄方向与UV纹理需B4/B5分别验收。参见 [后端计划](../docs/后端任务计划.md) 与 [模型台账](../docs/model-assets.md)。
+## 原生年龄方向与基础 UV 研究
+
+前端可选填拍摄时年龄20—70岁，空白仍为未知。它只记录用户提供的来源，不自动校准模型。原BFM年龄属性已证明可映射至裁剪网格，但强度没有年单位；研究使用−50到50，绝不标成20/45/70岁。
+
+派生方向需要授权原TGZ及明确哈希；转换器仅在离线阶段使用SciPy。可用临时uv环境运行，不修改服务依赖或锁文件，详细命令见 [B45复现](../docs/B45年龄方向与UV开发记录.md#3-复现)。派生NPZ不能公开随源码分发。
+
+已有本机研究产物时，从项目根目录执行（输出目录必须新建）：
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m agemorph3d.age_research_probe --detector-manifest data/models/yolov5n05-face/manifest.json --reconstructor-manifest data/models/3ddfa-v2/manifest.json --image data/samples/astronaut.png --direction output/backend/b45/prepared-age/age_direction.npz --direction-sha256 e94e8f294a2a36264a6751eaffdcd4854f7587800de1ccde31d4969424850b5b --uv data/models/3ddfa-v2/uv.npz --uv-sha256 d191871a33467b3b6c0565b62469b17e16241efd1683c681ea9550dc9c741228 --strengths=-50,0,50 --output-dir output/backend/b45/repro-combined --research-allow-unresolved
+```
+
+输出mesh.glb、result.json、逐强度GLB、base-atlas.png、绑定拓扑的uv_bound.npz和报告；全程同一源canonical坐标及基础照片纹理。零强度精确不变，往返数值误差和身份/表情系数单独记录；系数不变不是身份质量验收。报告始终service_ready/g3_complete/years_calibrated/age_texture_generated=false，正式服务不提供此研究开关。
+
+`test_prepare_bfm_age.py`、`test_age_shape.py`、`test_age_research_probe.py`覆盖输入pin、精确对应、原生强度、固定坐标、失败清理及关闭；`test_uv_texture.py`与`test_textured_mesh.py`覆盖自遮挡、UV方向、透明未知区、嵌入及缓存链路。真实单样例和Chrome/Edge像素往返见B45记录；没有下载SAM权重或开始训练。
+
+后续收口严格服务G1/G2，以及有获准样例支持的年尺度、真实年龄纹理和独立身份评估，再逐项签收G3。参见 [后端计划](../docs/后端任务计划.md) 与 [模型台账](../docs/model-assets.md)。
 
 服务资源通过 [FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/) 创建和关闭；图像校验使用 [Pillow Image](https://pillow.readthedocs.io/en/stable/reference/Image.html)。实际验证证据与剩余事项见 [本批开发记录](../docs/后端开发记录.md)。

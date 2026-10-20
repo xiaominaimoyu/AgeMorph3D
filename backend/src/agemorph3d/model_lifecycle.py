@@ -111,8 +111,15 @@ def reconstructor_selftest(model: object) -> None:
             raise ValueError("Invalid image projection selftest output.")
     from .static_mesh import build_static_mesh
 
-    # A model must also support the actual canonical/GLB operator chain before ready.
-    build_static_mesh(result, {"value": None, "method": "unknown", "calibration_id": None})
+    texture = None
+    if getattr(model, "uv", None) is not None:
+        from .uv_texture import project_photo_texture
+
+        texture = project_photo_texture(np.zeros((120, 120, 3), dtype=np.uint8), result, model.uv)
+    # Exercise configured base UV/PNG export too; this grants no age-texture capability.
+    build_static_mesh(
+        result, {"value": None, "method": "unknown", "calibration_id": None}, texture=texture
+    )
 
 
 def load_model(name: ModelName, path: Path) -> LoadedModel:
@@ -174,7 +181,7 @@ class ModelLifecycle:
                     state="missing", detail="尚未接入可追溯且经过校准的年龄形状资产。"
                 ),
                 "age_texture": ModelStatus(
-                    state="missing", detail="尚未接入年龄纹理模型及 UV 投影。"
+                    state="missing", detail="尚未接入经过校准和验证的年龄纹理模型。"
                 ),
             }
         )

@@ -18,6 +18,7 @@ export const layout = `
       </div>
       <div id="camera-area" hidden><div class="camera-preview"><video id="camera-video" autoplay muted playsinline aria-label="摄像头镜像预览"></video><canvas id="camera-overlay" aria-label="人脸检测框与关键点镜像叠加"></canvas><span id="camera-placeholder">${icon("camera", 28)}摄像头尚未开启</span></div><div class="camera-actions"><button class="secondary-button" id="camera-toggle">开启摄像头</button><button class="secondary-button" id="camera-capture" disabled>拍照</button></div><button class="text-button stream-button" id="stream-toggle" disabled>${icon("link", 14)} 连接实时检测</button><p class="hint">画面为镜像预览，拍照和本地检测使用原始画面。</p><p class="hint" id="stream-status">实时检测需要本地后端服务。</p></div>
       <div class="source-tips"><span>${icon("check", 14)} 正面、单人、光照均匀</span><span>${icon("check", 14)} 建议无遮挡的清晰成年面孔</span></div>
+      <div class="source-age-field"><label for="source-age">照片拍摄时年龄 <span>选填</span></label><input id="source-age" type="number" min="20" max="70" step="any" inputmode="decimal" placeholder="未知可留空" aria-describedby="source-age-hint" disabled /><p class="hint" id="source-age-hint">填写 20–70 岁；仅记录你提供的年龄，不代表模型估计。修改后需重新重建。</p></div>
       <label class="consent"><input type="checkbox" id="photo-consent" /><span>我已获得所选人像的使用授权</span></label>
       <button class="primary-button reconstruct-button" id="reconstruct" disabled>${icon("cube")}<span>开始三维重建</span>${icon("arrow", 16)}</button><button class="text-button" id="cancel-reconstruct" hidden>取消当前任务</button>
       <p class="hint source-status" id="source-status" role="status">连接本地服务后，即可重建你的人像。</p>
