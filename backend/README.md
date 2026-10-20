@@ -1,6 +1,6 @@
 # AgeMorph3D 本地后端
 
-本地 FastAPI 服务已实现 v1.2 契约、模型生命周期及 B2/B3 照片到静态 GLB 链路。检测/重建模型严格加载与自检通过后，可返回单人 canonical 网格和有界缓存中的 GLB。**现有研究清单仍为 unresolved，配置它们仍返回503，尚未通过真实服务 G1。** 真实 CPU 离线生成和 Chrome/Edge 网格往返已验证，见 [B23 开发记录](../docs/B23真实静态链路开发记录.md)。实时和年龄推理仍待实现。
+本地 FastAPI 服务已实现 v1.2、模型生命周期、B2/B3 静态 GLB 和 B6 实时框/五点/纯旋转。**现有研究清单仍为 unresolved，正式服务保持许可错误，完整 G1/G2 尚未签收。** 真实 CPU、实体摄像头、Chrome/Edge 及合成传输证据分别见 [B23 记录](../docs/B23真实静态链路开发记录.md) 和 [B6 记录](../docs/B6实时姿态开发记录.md)。年龄能力尚未实现。
 
 2026-10-19基础服务限定范围已通过阶段验收，实际证据、两项传输层边界和后续出口见[基础服务验收报告](../docs/基础服务验收报告.md)。这不代表整个后端或完整G0已验收。
 
@@ -20,7 +20,7 @@ uv --cache-dir ..\output\uv-cache sync --locked --python 3.11
 Invoke-RestMethod http://127.0.0.1:8000/api/health | ConvertTo-Json -Depth 5
 ```
 
-另一个终端从 `frontend/` 执行 `npm run dev`，在页面中连接本地服务。默认无模型配置时各项为 `missing`；配置后状态来自真实核验/加载/自检。只有检测与重建均就绪才开放静态重建；现有研究清单得到许可错误，入口仍禁用。实时和年龄能力保持禁用，演示模式可单独使用。
+另一个终端从 `frontend/` 执行 `npm run dev`，在页面中连接本地服务。默认无模型配置时各项为 `missing`；检测与重建均严格就绪才开放静态重建和实时检测。现有研究清单得到许可错误，入口仍禁用；年龄能力保持禁用。模型就绪后，勾选本地处理同意、切换摄像头、开启摄像头，再连接实时检测；停止、切换来源或离开页面会释放资源。
 
 ## 配置模型生命周期
 
@@ -34,7 +34,7 @@ $env:AGEMORPH_RECONSTRUCTOR_MANIFEST = 'D:\project file\AgeMorph3D\data\models\3
 
 加载需要先 `uv sync --locked --extra inference`。未配置/清单不存在为 `missing`，已配置先 `loading`，严格资产核验、实例构造和真实 CPU 算子自检通过才为 `ready`；失败为脱敏 `error`。现有两份 B0 研究清单仍为 `license_status=unresolved`，使用上面的路径会得到许可核验错误，服务不会偷偷启用研究绕过。用户提供的 BFM 非商业研究授权保留在台账中，这不是整套候选资产的分发条款证明。
 
-单个模型 `ready` 表示该算子通过加载/自检，重建自检还包含 canonical/纯旋转/GLB 构建。B2/B3 仅在两模型均ready、服务未关闭时将 reconstruction能力置为true，其他三项保持false。加载与请求共用一个工作线程，加载期间其他处理返回429；健康接口可读取状态。初始化不承诺硬超时或中断底层算子；退出先禁止新任务和迟到发布，再清除缓存、等待实际线程完成并清理实例。
+单个模型 `ready` 表示该算子通过加载/自检，重建自检还包含 canonical/纯旋转/GLB 构建。两模型均ready且服务未关闭时，reconstruction与realtime为true，两项年龄能力仍false。加载、HTTP和WS共用一个工作线程；忙时不排队，HTTP429/WS相关BUSY，健康状态可读取。退出先禁止新任务和迟到发布，再清除缓存、等待实际线程完成并清理实例。
 
 ## 运行本机真实静态研究样例
 
@@ -80,7 +80,7 @@ $env:AGEMORPH_ALLOWED_ORIGINS = 'http://127.0.0.1:5174,http://localhost:5174'
 
 缓存配置为 `AGEMORPH_ASSET_TTL_SECONDS`、`AGEMORPH_ASSET_MAX_BYTES` 和 `AGEMORPH_ASSET_MAX_ENTRIES`，均需正数，容量/项数必须整数。原图和成功派生网格只在有界内存中保留；不存在网格临时文件或磁盘重启清理任务。关闭清除缓存，旧ID失效。满时仅淘汰未固定的LRU项，容量被读取固定时429；新读取不得获取过期项，已开始的读取可正常完成。
 
-HTTP 错误统一提供字符串 `detail` 和稳定 `code`。API与输入错误不回显原图、文件名或完整参数。HTTP 响应设置 `Cache-Control: no-store`。WS 坏帧和模型缺失会先发送一次终结 `error`，再关闭连接；没有实现成功 `face_state` 推理。
+HTTP错误提供字符串detail和稳定code，禁止缓存且不回显照片/文件名/完整参数。WS成功为带seq的face_state，NO_FACE/MULTI_FACE/BUSY清除旧叠加后可继续；其他错误先回复再关闭。视频与叠加同时镜像，JPEG保持原方向，三维显示旋转使用S R S；t为未标定的0。逐帧不生成GLB/资产或年龄几何。流水发送会关闭而不排队，断开丢弃结果。工作与成功发送共享6秒绝对预算，发送另限1秒，错误发送/关闭各限1秒；发送超时不重复确认，详情见接口文档。
 
 上述错误约定限于进入应用的请求和帧。Uvicorn连接达到16上限时可能直接返回无CORS的纯文本503；超过2 MiB的WS消息在协议层以1009关闭，不产生JSON终结消息。这两项已作为非阻断边界记录，完整G0收口时继续处理。
 
@@ -102,6 +102,16 @@ B0 的可选推理依赖安装、模型清单、旧资产受限转换、真实�
 
 `test_static_mesh.py`、`test_asset_cache.py`、`test_static_api.py`、`test_static_probe.py` 覆盖本轮几何、GLB、TTL/LRU/租约、成功接口、断开/取消/超时/关闭及独立研究路径。自动化适配器为合成夹具，真实权重和浏览器证据另见 B23 记录。
 
-下一步按 [后端计划](../docs/后端任务计划.md) 收口候选权重条款，在正式服务以获准照片完成 G1并补充不同身份/侧脸质量证据，再转 B6实体相机。年龄方向与 UV纹理仍需 B4/B5 对应实现和验收。资产状态见 [模型台账](../docs/model-assets.md)。
+`test_realtime.py` 验证像素、五点、SVD旋转及失败脱敏；`test_realtime_api.py` 验证逐帧成功/恢复、HTTP/WS共享单飞、流水拒绝、断开/超时/关闭后的槽位与迟到结果；`test_realtime_probe.py` 验证独立研究CLI的严格许可、边界和相机释放。测试夹具不代表真实权重或G2。
+
+本机独立真实研究复现（从项目根目录运行，输出文件必须不存在）：
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m agemorph3d.realtime_probe --detector-manifest data/models/yolov5n05-face/manifest.json --reconstructor-manifest data/models/3ddfa-v2/manifest.json --camera-index 0 --frame-count 30 --output output/backend/b6/repro-camera.json --research-allow-unresolved
+```
+
+相机会短暂开启，帧仅在内存处理；不打开窗口/网络服务，不保存照片或逐帧参数，只写计数、尺寸、数值检查与耗时汇总。用`--image data/samples/astronaut.png`替换`--camera-index 0`可复验公开样例；帧数1—120，最长边640。相机循环15秒预算在原生调用间检查，不能硬中断阻塞的驱动read。默认不带研究开关则严格拒绝当前清单，报告始终service_ready=false、g2_complete=false。
+
+后续先收口候选权重条款及严格真实服务G1/G2，补人工左右转头/姿态质量和长时间恢复记录。年龄方向与UV纹理需B4/B5分别验收。参见 [后端计划](../docs/后端任务计划.md) 与 [模型台账](../docs/model-assets.md)。
 
 服务资源通过 [FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/) 创建和关闭；图像校验使用 [Pillow Image](https://pillow.readthedocs.io/en/stable/reference/Image.html)。实际验证证据与剩余事项见 [本批开发记录](../docs/后端开发记录.md)。

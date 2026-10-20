@@ -1,8 +1,8 @@
 """Strict local model loading, CPU operator checks and observable ownership.
 
 Inference dependencies are imported only inside the worker loader. Blank inputs
-exercise operators and array contracts; they do not establish face accuracy,
-canonical coordinates, photo reconstruction or any HTTP/WS capability.
+exercise operators, arrays and canonical export contracts; they do not establish
+face accuracy, physical-camera acceptance or age transformation quality.
 """
 
 from dataclasses import dataclass

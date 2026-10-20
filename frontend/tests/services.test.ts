@@ -620,16 +620,19 @@ function streamingEnvironment(t: TestContext) {
     videoHeight: 1080,
   };
   const states: FaceState[] = [];
+  const frameSizes: (readonly [number, number])[] = [];
   const errors: string[] = [];
+  const recoveries: string[] = [];
   stream = new FrameStream(
     new LocalApi(),
     video as unknown as HTMLVideoElement,
     {
-      onState: (state) => states.push(state),
+      onState: (state, size) => { states.push(state); frameSizes.push(size); },
       onError: (message) => errors.push(message),
+      onRecoverableError: (code) => recoveries.push(code),
     },
   );
-  return { clock, encodes, sockets, states, errors, stream, video };
+  return { clock, encodes, sockets, states, frameSizes, errors, recoveries, stream, video };
 }
 
 function frame(seq = 1) {
@@ -702,6 +705,7 @@ test(
       "x".repeat(1025),
       { ...frame(), landmarks: [[1, 2]] },
       { ...frame(), seq: 1.5 },
+      { ...frame(), pose: { R: [-1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0] } },
     ]) {
       await t.test(
         typeof data === "string" ? "oversized" : JSON.stringify(data),
@@ -723,6 +727,92 @@ test(
 );
 
 test(
+  "recoverable frame errors clear stale results, correlate sequence and preserve single flight",
+  { concurrency: false },
+  async (t) => {
+    const env = streamingEnvironment(t);
+    env.stream.start();
+    const socket = env.sockets[0]!;
+    socket.open();
+    env.encodes[0]!.resolve(photo());
+    await Promise.resolve();
+    socket.receive(frame(1));
+    for (const [index, code] of ["NO_FACE", "MULTI_FACE", "BUSY"].entries()) {
+      env.clock.tick();
+      env.encodes[index + 1]!.resolve(photo());
+      await Promise.resolve();
+      socket.receive({ type: "error", seq: 1, code: "NO_FACE", msg: "迟到错误" });
+      env.clock.tick();
+      assert.equal(env.encodes.length, index + 2, "stale error must not release pending frame");
+      assert.equal(env.recoveries.length, index);
+      socket.receive({ type: "error", seq: index + 2, code, msg: "请调整画面后继续。" });
+      assert.equal(socket.readyState, 1);
+      assert.equal(env.clock.timeouts.size, 0);
+    }
+    assert.deepEqual(env.recoveries, ["NO_FACE", "MULTI_FACE", "BUSY"]);
+    assert.deepEqual(env.errors, []);
+    env.clock.tick();
+    env.encodes[4]!.resolve(photo());
+    await Promise.resolve();
+    socket.receive(frame(5));
+    assert.equal(env.states.length, 2, "face detection resumes on the same connection");
+  },
+);
+
+test(
+  "frame bounds use encoded dimensions even after video resize and retain off-image fivepoints",
+  { concurrency: false },
+  async (t) => {
+    const env = streamingEnvironment(t);
+    env.stream.start();
+    const socket = env.sockets[0]!;
+    socket.open();
+    env.encodes[0]!.resolve(photo());
+    await Promise.resolve();
+    env.video.videoWidth = 480;
+    env.video.videoHeight = 640;
+    socket.receive({ ...frame(), landmarks: [[-1, 20], [650, 20], [25, 30], [20, 40], [30, 40]] });
+    assert.deepEqual(env.frameSizes, [[640, 360]]);
+    assert.deepEqual(env.states[0]!.landmarks[0], [-1, 20]);
+    env.clock.tick();
+    assert.deepEqual([env.encodes[1]!.width, env.encodes[1]!.height], [480, 640]);
+    env.encodes[1]!.resolve(photo());
+    await Promise.resolve();
+    socket.receive({ ...frame(2), bbox: [400, 10, 100, 100] });
+    assert.equal(socket.readyState, 3);
+    assert.match(env.errors[0]!, /超出/);
+  },
+);
+
+test(
+  "fatal model errors and uncorrelated replies stop the stream and release timers",
+  { concurrency: false },
+  async (t) => {
+    for (const reply of [
+      { type: "error", seq: 1, code: "MODEL_NOT_READY", msg: "模型未就绪。" },
+      { type: "error", seq: 1, code: "TIMEOUT", msg: "推理超时。" },
+      { type: "error", seq: 1, code: "POSE_FAILED", msg: "姿态失败。" },
+      { type: "error", code: "NO_FACE", msg: "缺少序号。" },
+      frame(2),
+    ]) {
+      await t.test(JSON.stringify(reply), { concurrency: false }, async (nested) => {
+        const env = streamingEnvironment(nested);
+        env.stream.start();
+        const socket = env.sockets[0]!;
+        socket.open();
+        env.encodes[0]!.resolve(photo());
+        await Promise.resolve();
+        socket.receive(reply);
+        assert.equal(socket.readyState, 3);
+        assert.equal(env.errors.length, 1);
+        assert.equal(env.clock.timeouts.size, 0);
+        assert.equal(env.clock.intervals.size, 0);
+      });
+    }
+  },
+);
+
+test(
   "stopping during frame encoding cannot send a late frame",
   { concurrency: false },
   async (t) => {
@@ -731,6 +821,25 @@ test(
     const socket = env.sockets[0]!;
     socket.open();
     env.stream.stop();
+    env.encodes[0]!.resolve(photo());
+    await Promise.resolve();
+    assert.equal(socket.sent.length, 0);
+    assert.equal(env.clock.timeouts.size, 0);
+    assert.equal(env.clock.intervals.size, 0);
+  },
+);
+
+test(
+  "stalled JPEG encoding expires and cannot send its late result",
+  { concurrency: false },
+  async (t) => {
+    const env = streamingEnvironment(t);
+    env.stream.start();
+    const socket = env.sockets[0]!;
+    socket.open();
+    env.clock.expire(8_000);
+    assert.equal(socket.readyState, 3);
+    assert.match(env.errors[0]!, /编码/);
     env.encodes[0]!.resolve(photo());
     await Promise.resolve();
     assert.equal(socket.sent.length, 0);

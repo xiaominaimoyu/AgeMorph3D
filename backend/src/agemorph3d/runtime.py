@@ -53,16 +53,38 @@ class Runtime:
 
     def health(self) -> Health:
         models = self._models.snapshot()
+        geometry_ready = not self._closed and all(
+            models[name].state == "ready" for name in ("detector", "reconstructor")
+        )
         return Health(
             api_version="1.2",
             version=__version__,
             device="cpu",
             models=models,
             capabilities=Capabilities(
-                reconstruction=not self._closed
-                and all(models[name].state == "ready" for name in ("detector", "reconstructor")),
+                reconstruction=geometry_ready,
+                realtime=geometry_ready,
             ),
         )
+
+    async def process_frame(self, data: bytes, budget_seconds: float) -> dict:
+        """Use the same owned model pair/worker without building or caching a GLB."""
+
+        def work():
+            with decode_image(data, "image/jpeg", self._settings, frame=True) as image:
+                models = self._models.reconstruction_models()
+                if models is None:
+                    raise model_not_ready()
+                import numpy as np
+
+                from .realtime import infer_realtime
+
+                return infer_realtime(np.asarray(image).copy(), *models)
+
+        result = await self.run(work, budget_seconds)
+        if self._closed:
+            raise model_not_ready()
+        return result
 
     async def prepare_static(
         self, data: bytes, media_type: str, source_age: SourceAge, budget_seconds: float

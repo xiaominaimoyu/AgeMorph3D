@@ -4,6 +4,7 @@ import { icon } from "./icons";
 import { FaceViewer } from "./viewer";
 import { CameraController, FrameStream, LocalApi } from "./services";
 import type { Capabilities, FaceState, Health, Reconstruction } from "./contracts";
+import { mirroredPose, type FrameSize } from "./realtime";
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = layout;
 const el = <T extends HTMLElement = HTMLElement>(id: string): T =>
@@ -491,9 +492,7 @@ function stopStream(): void {
   stream = undefined;
   button("stream-toggle").innerHTML = `${icon("link", 14)} 连接实时检测`;
   el("stream-status").textContent = "实时检测需要本地后端服务。";
-  const overlay = el<HTMLCanvasElement>("camera-overlay");
-  overlay.getContext("2d")?.clearRect(0, 0, overlay.width, overlay.height);
-  viewer?.setPose(identityPose);
+  clearDetection();
 }
 function stopCamera(): void {
   stopStream();
@@ -542,14 +541,15 @@ on("camera-capture", "click", () => {
     })
     .catch((error: unknown) => notify(message(error), true));
 });
-function drawDetection(state: FaceState): void {
+function clearDetection(): void {
   const canvas = el<HTMLCanvasElement>("camera-overlay");
-  const factor = Math.min(
-    1,
-    640 / Math.max(video.videoWidth, video.videoHeight),
-  );
-  canvas.width = Math.max(1, Math.round(video.videoWidth * factor));
-  canvas.height = Math.max(1, Math.round(video.videoHeight * factor));
+  canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+  viewer?.setPose(identityPose);
+}
+function drawDetection(state: FaceState, size: FrameSize): void {
+  const canvas = el<HTMLCanvasElement>("camera-overlay");
+  // Keep the actual submitted size even if the camera changed resolution meanwhile.
+  [canvas.width, canvas.height] = size;
   const context = canvas.getContext("2d");
   if (!context) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
@@ -562,7 +562,7 @@ function drawDetection(state: FaceState): void {
     context.arc(x, y, 3, 0, Math.PI * 2);
     context.fill();
   });
-  viewer?.setPose(state.pose);
+  viewer?.setPose(mirroredPose(state.pose));
   el("stream-status").textContent =
     `实时检测 · 置信度 ${(state.conf * 100).toFixed(1)}% · 帧 ${state.seq}`;
 }
@@ -574,6 +574,7 @@ on("stream-toggle", "click", () => {
   if (!api || !supports("realtime") || !camera.active || !input("photo-consent").checked) return;
   stream = new FrameStream(api, video, {
     onState: drawDetection,
+    onRecoverableError: () => clearDetection(),
     onStatus: (status) => {
       el("stream-status").textContent = status;
     },

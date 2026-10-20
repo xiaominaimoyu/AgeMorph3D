@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import type { Page, TestInfo } from "@playwright/test";
+import type { Page, TestInfo, WebSocketRoute } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 const API = "http://127.0.0.1:8000";
@@ -1083,4 +1083,131 @@ test("切换服务立即撤销旧能力，断开后的迟到健康响应和新�
   await expect(page.locator("#connection-label")).toHaveText("本地演示模式");
   await expect(page.locator("#reconstruct")).toBeDisabled();
   await expect(page.locator("#apply-texture")).toBeDisabled();
+});
+
+test("B6 合成摄像头与模拟 WS 验证镜像、单飞、错误恢复和释放（不代表实体 G2）", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    const state = window as Window & { __b6Streams: MediaStream[] };
+    state.__b6Streams = [];
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: async () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 360;
+        const context = canvas.getContext("2d")!;
+        context.fillStyle = "red";
+        context.fillRect(0, 0, 320, 360);
+        context.fillStyle = "blue";
+        context.fillRect(320, 0, 320, 360);
+        const stream = canvas.captureStream(10);
+        state.__b6Streams.push(stream);
+        return stream;
+      },
+    });
+  });
+  await page.route(`${API}/api/health`, (route) => route.fulfill({
+    headers: { "Access-Control-Allow-Origin": "*" },
+    json: serviceHealth({ reconstruction: false, age_morph: false, age_texture: false, realtime: true }),
+  }));
+  const sessions: { socket: WebSocketRoute; frames: Buffer[] }[] = [];
+  let closes = 0;
+  await page.routeWebSocket("ws://127.0.0.1:8000/ws/frame", (socket) => {
+    const session = { socket, frames: [] as Buffer[] };
+    sessions.push(session);
+    socket.onMessage((message) => {
+      if (Buffer.isBuffer(message)) session.frames.push(message);
+    });
+    socket.onClose(() => { closes++; });
+    socket.send(JSON.stringify({ type: "status", device: "synthetic-test" }));
+  });
+  const overlayInk = () => page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>("#camera-overlay")!;
+    return canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height)
+      .data.some((value, index) => index % 4 === 3 && value !== 0);
+  });
+  const send = (session: number, value: unknown) => sessions[session]!.socket.send(JSON.stringify(value));
+  const face = (seq: number) => {
+    const c = Math.cos(0.4), s = Math.sin(0.4);
+    return { type: "face_state", seq, ts: 1, bbox: [32, 25, 80, 90],
+      landmarks: [[42, 45], [92, 45], [67, 65], [47, 85], [87, 85]],
+      pose: { R: [c, 0, s, 0, 1, 0, -s, 0, c], t: [0, 0, 0] }, conf: 0.95 };
+  };
+  await openStudio(page);
+  await connectLocalApi(page);
+  await page.locator("#photo-consent").check();
+  await page.locator("#camera-tab").click();
+  await page.locator("#camera-toggle").click();
+  await expect(page.locator("#camera-toggle")).toHaveText("关闭摄像头");
+  await page.locator("#stream-toggle").click();
+  await expect.poll(() => sessions[0]?.frames.length).toBe(1);
+  await page.waitForTimeout(250);
+  expect(sessions[0]!.frames).toHaveLength(1);
+  const capture = await page.evaluate(async (bytes) => {
+    const image = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/jpeg" }));
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext("2d")!;
+    context.drawImage(image, 0, 0);
+    image.close();
+    return { width: canvas.width, height: canvas.height,
+      left: Array.from(context.getImageData(100, 100, 1, 1).data),
+      right: Array.from(context.getImageData(500, 100, 1, 1).data),
+      mirror: ["camera-video", "camera-overlay"].map((id) =>
+        new DOMMatrix(getComputedStyle(document.getElementById(id)!).transform).a),
+    };
+  }, Array.from(sessions[0]!.frames[0]!));
+  expect([capture.width, capture.height]).toEqual([640, 360]);
+  expect(capture.left[0]).toBeGreaterThan(230);
+  expect(capture.left[2]).toBeLessThan(30);
+  expect(capture.right[2]).toBeGreaterThan(230);
+  expect(capture.mirror).toEqual([-1, -1]);
+  send(0, face(1));
+  await expect(page.locator("#stream-status")).toContainText("帧 1");
+  expect(await overlayInk()).toBe(true);
+  const glb = parseGlb(await downloadBytes(page, "#export-glb"));
+  const root = glb.nodes.find((node: { name?: string }) => node.name === "AgeMorph3D_Demo");
+  expect(root.matrix[2]).toBeCloseTo(Math.sin(0.4), 5);
+  expect(root.matrix[8]).toBeCloseTo(-Math.sin(0.4), 5);
+  await page.screenshot({ path: testInfo.outputPath("synthetic-mirrored-frame.png") });
+  for (const [index, code] of ["NO_FACE", "MULTI_FACE", "BUSY"].entries()) {
+    await expect.poll(() => sessions[0]!.frames.length).toBe(index + 2);
+    send(0, { type: "error", seq: index + 2, code, msg: `合成夹具 ${code}` });
+    await expect(page.locator("#stream-status")).toHaveText(`合成夹具 ${code}`);
+    expect(await overlayInk()).toBe(false);
+    await expect(page.locator("#stream-toggle")).toContainText("停止实时检测");
+  }
+  await expect.poll(() => sessions[0]!.frames.length).toBe(5);
+  send(0, { type: "error", seq: 2, code: "NO_FACE", msg: "过期错误" });
+  send(0, face(3));
+  await page.waitForTimeout(250);
+  expect(sessions[0]!.frames).toHaveLength(5);
+  await expect(page.locator("#stream-status")).toHaveText("合成夹具 BUSY");
+  send(0, face(5));
+  await expect(page.locator("#stream-status")).toContainText("帧 5");
+  expect(await overlayInk()).toBe(true);
+  await page.locator("#stream-toggle").click();
+  await expect.poll(() => closes).toBe(1);
+  expect(await overlayInk()).toBe(false);
+  await expect(page.locator("#camera-toggle")).toHaveText("关闭摄像头");
+  await page.locator("#stream-toggle").click();
+  await expect.poll(() => sessions[1]?.frames.length).toBe(1);
+  send(1, { type: "error", seq: 1, code: "POSE_FAILED", msg: "合成致命错误" });
+  await expect(page.locator("#stream-toggle")).toContainText("连接实时检测");
+  await expect(page.locator("#stream-status")).toHaveText("合成致命错误");
+  await expect.poll(() => closes).toBe(2);
+  await page.locator("#stream-toggle").click();
+  await expect.poll(() => sessions[2]?.frames.length).toBe(1);
+  await page.locator("#photo-tab").click();
+  await expect.poll(() => closes).toBe(3);
+  expect(await page.evaluate(() => (window as Window & { __b6Streams: MediaStream[] }).__b6Streams
+    .every((stream) => stream.getTracks().every((track) => track.readyState === "ended")))).toBe(true);
+  await page.locator("#camera-tab").click();
+  await page.locator("#camera-toggle").click();
+  await page.locator("#stream-toggle").click();
+  await expect.poll(() => sessions[3]?.frames.length).toBe(1);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+  await expect.poll(() => closes).toBe(4);
+  expect(await page.evaluate(() => (window as Window & { __b6Streams: MediaStream[] }).__b6Streams
+    .every((stream) => stream.getTracks().every((track) => track.readyState === "ended")))).toBe(true);
 });

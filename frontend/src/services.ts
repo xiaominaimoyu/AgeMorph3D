@@ -9,6 +9,7 @@ import type {
   Reconstruction,
   SourceAge,
 } from "./contracts";
+import { assertRotation, type FrameSize } from "./realtime.ts";
 
 const REQUEST_TIMEOUT = 30_000;
 const MAX_JSON_BYTES = 128 * 1024;
@@ -63,6 +64,7 @@ function pose(value: unknown): Pose {
   const data = record(value, "姿态");
   const R = vector(data.R, "旋转矩阵", 9);
   R.forEach((item) => finite(item, "旋转矩阵", -1.001, 1.001));
+  assertRotation(R);
   return { R, t: vector(data.t, "平移向量", 3) };
 }
 
@@ -406,7 +408,7 @@ function videoBlob(
   video: HTMLVideoElement,
   maxSide: number,
   quality: number,
-): Promise<Blob> {
+): Promise<{ blob: Blob; size: FrameSize }> {
   if (
     video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
     !video.videoWidth ||
@@ -424,10 +426,12 @@ function videoBlob(
   const context = canvas.getContext("2d");
   if (!context) return Promise.reject(new Error("浏览器无法创建图像画布。"));
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // CSS mirrors only the local preview; drawImage submits the original pixels.
+  const size: FrameSize = [canvas.width, canvas.height];
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) =>
-        blob ? resolve(blob) : reject(new Error("画面编码失败，请重新拍摄。")),
+        blob ? resolve({ blob, size }) : reject(new Error("画面编码失败，请重新拍摄。")),
       "image/jpeg",
       quality,
     );
@@ -549,7 +553,7 @@ export class CameraController {
 
   capture(): Promise<Blob> {
     if (!this.active) return Promise.reject(new Error("请先打开摄像头。"));
-    return videoBlob(this.video, 1280, 0.92);
+    return videoBlob(this.video, 1280, 0.92).then(({ blob }) => blob);
   }
 }
 
@@ -564,8 +568,8 @@ function faceState(data: Record<string, unknown>): FaceState {
   const landmarks = data.landmarks.map((point): [number, number] => {
     const pair = vector(point, "关键点", 2);
     return [
-      finite(pair[0], "关键点", 0, 16384),
-      finite(pair[1], "关键点", 0, 16384),
+      finite(pair[0], "关键点", -16384, 16384),
+      finite(pair[1], "关键点", -16384, 16384),
     ];
   });
   const result: FaceState = {
@@ -599,6 +603,9 @@ export class FrameStream {
   private pending = false;
   private generation = 0;
   private lastSequence = -1;
+  private sentSequence = 0;
+  private pendingSequence: number | null = null;
+  private pendingSize: FrameSize | null = null;
 
   constructor(
     private readonly api: LocalApi,
@@ -622,6 +629,7 @@ export class FrameStream {
     }
     this.socket = socket;
     this.lastSequence = -1;
+    this.sentSequence = 0;
     this.callbacks.onStatus?.("正在连接本地实时服务…");
     this.responseTimer = window.setTimeout(
       () => this.fail("实时连接超时，请检查后端后手动重试。"),
@@ -667,6 +675,10 @@ export class FrameStream {
     )
       return;
     this.pending = true;
+    this.responseTimer = window.setTimeout(
+      () => this.fail("摄像头画面在 8 秒内未完成编码，连接已停止，请手动重试。"),
+      8_000,
+    );
     try {
       const frame = await videoBlob(this.video, 640, 0.7);
       if (
@@ -678,7 +690,10 @@ export class FrameStream {
         this.fail("摄像头已断开，实时检测已停止。");
         return;
       }
-      this.socket.send(frame);
+      this.pendingSequence = ++this.sentSequence;
+      this.pendingSize = frame.size;
+      this.socket.send(frame.blob);
+      if (this.responseTimer !== null) window.clearTimeout(this.responseTimer);
       this.responseTimer = window.setTimeout(
         () =>
           this.fail("实时服务 8 秒未返回检测结果，连接已停止，请手动重试。"),
@@ -704,19 +719,30 @@ export class FrameStream {
     const data = record(parsed, "实时消息");
     if (data.type === "face_state") {
       const state = faceState(data);
-      if (state.seq <= this.lastSequence) return;
+      if (!this.matchesPending(state.seq)) return;
+      const size = this.pendingSize!;
+      if (
+        state.bbox[0] + state.bbox[2] > size[0] + 0.001 ||
+        state.bbox[1] + state.bbox[3] > size[1] + 0.001
+      )
+        throw new Error("人脸框超出所提交图像的尺寸。");
       this.lastSequence = state.seq;
       this.acknowledge();
-      this.callbacks.onState(state);
+      this.callbacks.onState(state, size);
       return;
     }
     if (data.type === "error") {
       const code = boundedString(data.code, "实时错误代码", 40);
       const message = boundedString(data.msg, "实时错误说明", 300);
+      const seq = finite(data.seq, "帧序号", 1, Number.MAX_SAFE_INTEGER);
+      if (!Number.isSafeInteger(seq)) throw new Error("帧序号必须是正整数。");
+      if (!this.matchesPending(seq)) return;
+      this.lastSequence = seq;
       this.acknowledge();
-      if (code === "NO_FACE" || code === "MULTI_FACE")
+      if (code === "NO_FACE" || code === "MULTI_FACE" || code === "BUSY") {
+        this.callbacks.onRecoverableError?.(code, message);
         this.callbacks.onStatus?.(message);
-      else this.callbacks.onError?.(message);
+      } else this.fail(message);
       return;
     }
     if (data.type === "status") {
@@ -733,8 +759,17 @@ export class FrameStream {
 
   private acknowledge(): void {
     this.pending = false;
+    this.pendingSequence = null;
+    this.pendingSize = null;
     if (this.responseTimer !== null) window.clearTimeout(this.responseTimer);
     this.responseTimer = null;
+  }
+
+  private matchesPending(seq: number): boolean {
+    if (seq <= this.lastSequence) return false;
+    if (seq !== this.pendingSequence)
+      throw new Error("实时服务回复与当前等待的帧不一致。");
+    return true;
   }
 
   private fail(message: string): void {

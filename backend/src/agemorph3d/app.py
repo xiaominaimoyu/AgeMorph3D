@@ -1,10 +1,9 @@
 """Local photo-to-static-GLB service with strict model readiness and bounded assets."""
 
 import asyncio
-import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 from starlette.formparsers import MultiPartException, MultiPartParser
@@ -15,7 +14,7 @@ from . import __version__
 from .asset_cache import AssetLease
 from .config import Settings
 from .errors import ApiError, ErrorResponse
-from .images import decode_image
+from .frame_socket import handle_frames
 from .middleware import LocalRequestMiddleware, private_error_headers
 from .runtime import Runtime, model_not_ready
 from .schemas import AgingRequest, Health, Reconstruction, SourceAge
@@ -216,53 +215,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.websocket("/ws/frame")
     async def frame(socket: WebSocket):
-        await socket.accept()
-        await socket.send_json({"type": "status", "device": "cpu"})
-        seq = 0
-        try:
-            while True:
-                message = await socket.receive()
-                if message["type"] == "websocket.disconnect":
-                    return
-                seq += 1
-                data = message.get("bytes")
-                try:
-                    if data is None:
-                        raise ApiError(400, "BAD_INPUT", "实时帧必须为 JPEG 二进制数据。")
-
-                    def validate_frame(frame_data: bytes = data) -> None:
-                        with decode_image(frame_data, "image/jpeg", settings, frame=True):
-                            pass
-
-                    await socket.app.state.runtime.run(
-                        validate_frame,
-                        settings.frame_timeout_seconds,
-                    )
-                    raise model_not_ready()
-                except ApiError as exc:
-                    payload = json.dumps(
-                        {"type": "error", "seq": seq, "code": exc.code, "msg": exc.detail},
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    )
-                    # Current fixed messages fit; never send an unbounded algorithm exception.
-                    if len(payload.encode("utf-8")) > 1024:
-                        payload = '{"type":"error","code":"BAD_INPUT","msg":"实时处理失败。"}'
-                    await socket.send_text(payload)
-                    await socket.close(code=1013 if exc.status_code in {429, 503, 504} else 1003)
-                    return
-                except Exception:
-                    await socket.send_json(
-                        {
-                            "type": "error",
-                            "seq": seq,
-                            "code": "INTERNAL_ERROR",
-                            "msg": "实时处理失败，请稍后重试。",
-                        }
-                    )
-                    await socket.close(code=1011)
-                    return
-        except WebSocketDisconnect:
-            return
+        await handle_frames(socket, settings)
 
     return app

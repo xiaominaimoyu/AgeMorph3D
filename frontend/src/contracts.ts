@@ -67,7 +67,9 @@ export interface FaceState {
 }
 
 export interface FrameCallbacks {
-  onState: (state: FaceState) => void;
+  onState: (state: FaceState, frameSize: readonly [number, number]) => void;
+  /** NO_FACE, MULTI_FACE and BUSY clear the previous frame and allow the next one. */
+  onRecoverableError?: (code: string, message: string) => void;
   onStatus?: (text: string) => void;
   onError?: (message: string) => void;
 }

@@ -67,7 +67,14 @@ def _finite(value: object, name: str, shape: tuple[int, ...] | None = None) -> N
     return np.array(array, dtype=np.float64, order="C", copy=True)
 
 
-def _rotation(projection: NDArray) -> tuple[NDArray, dict[str, Any]]:
+def projection_rotation(projection: NDArray) -> tuple[NDArray, dict[str, Any]]:
+    """Extract the proper source-to-crop rotation without image-Y or mirror flips.
+
+    Shared by static reconstruction and realtime pose. The affine translation is
+    deliberately unused; neither this rotation nor a zero API translation proves
+    a calibrated, metric camera pose.
+    """
+    projection = _finite(projection, "Projection", (3, 4))
     block = projection[:, :3]
     # Normalizing before SVD prevents the camera's arbitrary common scale from
     # determining numerical thresholds or overflowing determinant calculations.
@@ -220,7 +227,7 @@ def build_static_mesh(result: TddfaResult, source_age: dict[str, Any]) -> Static
     roi = _finite(result.roi, "Source ROI", (4,))
     if roi[2] <= roi[0] or roi[3] <= roi[1]:
         raise ValueError("Source ROI must have positive width and height.")
-    rotation, projection_metadata = _rotation(projection)
+    rotation, projection_metadata = projection_rotation(projection)
     minimum, maximum = source.min(axis=0), source.max(axis=0)
     extent = maximum - minimum
     if not np.isfinite(extent).all() or extent[1] <= 0:

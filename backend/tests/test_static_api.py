@@ -142,7 +142,7 @@ async def eventually_idle(runtime) -> None:
     await asyncio.wait_for(wait(), timeout=2)
 
 
-async def test_ready_models_enable_only_static_reconstruction(synthetic_service) -> None:
+async def test_ready_models_enable_static_and_realtime(synthetic_service) -> None:
     async with synthetic_service() as service:
         body = (await service.client.get("/api/health")).json()
         assert body["api_version"] == "1.2"
@@ -152,7 +152,7 @@ async def test_ready_models_enable_only_static_reconstruction(synthetic_service)
             "reconstruction": True,
             "age_morph": False,
             "age_texture": False,
-            "realtime": False,
+            "realtime": True,
         }
         response = await service.client.post("/api/aging", json={"mesh_id": "abc", "age": 40})
         assert response.status_code == 503

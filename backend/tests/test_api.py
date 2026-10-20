@@ -608,7 +608,7 @@ def test_unexpected_websocket_failure_has_one_private_safe_error(
     def failed_decode(*args, **kwargs):
         raise RuntimeError("private-original-photo-and-local-path")
 
-    monkeypatch.setattr("agemorph3d.app.decode_image", failed_decode)
+    monkeypatch.setattr("agemorph3d.runtime.decode_image", failed_decode)
     with client.websocket_connect(WS_URL, headers={"origin": ORIGIN}) as websocket:
         assert websocket.receive_json() == {"type": "status", "device": "cpu"}
         websocket.send_bytes(picture("JPEG"))

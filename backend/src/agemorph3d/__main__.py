@@ -13,6 +13,8 @@ def main() -> None:
         proxy_headers=False,
         limit_concurrency=16,
         ws_max_size=2 * 1024 * 1024,
+        ws_max_queue=1,
+        ws_per_message_deflate=False,
         timeout_keep_alive=5,
     )
 
