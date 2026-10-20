@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-age-research-v1",
+  "frozen_on": "2026-10-20",
+  "scope": "N0 local research protocol, identity uses and same-age controls only",
+  "expected_adult_images": 292,
+  "expected_adult_identities": 55,
+  "expected_bridge_samples": 12,
+  "expected_known_controls": 8,
+  "grouping": {
+    "seed": "agemorph3d-n0-v1",
+    "development_subject_ids": ["003", "004", "005", "006", "012", "013", "057", "062", "067", "082"],
+    "calibration_identity_count": 15,
+    "ordering": "sha256(UTF-8(seed + ':' + subject_id)), ascending; first calibration_identity_count calibration, remainder research holdout",
+    "unit": "identity, including all ages, originals and derived artifacts",
+    "historical_preprocessing_exposed": true,
+    "independent_external_evaluation": false,
+    "near_duplicate_screening": "pending; required before any formal independent evaluation"
+  },
+  "target_ages": [20, 45, 70],
+  "same_age_policy": "exact_integer_label_only",
+  "source_age_policy": "unknown_stays_null",
+  "source_age_evidence": {
+    "fgnet": "mirror filename label; not independently verified; research field only, not SourceAge.method=user or estimated",
+    "official-866": null,
+    "astronaut": null,
+    "fractional_source_age": "preserve exact value; no same-age generation until N5 defines fractional conditioning; never round"
+  },
+  "controls": ["unaltered_source", "sam_at_source_label", "sam_at_other_target_condition"],
+  "geometry_policy": {
+    "normalization_reference": "one unchanged source canonical center and uniform scale per source, shared by every target and control",
+    "expression": "primary geometry comparison uses neutral expression for source, same-age and targets; expression coefficients and posed fits reported separately",
+    "pose": "record separately; no independent per-target centering, rescaling or Procrustes fitting of primary differences",
+    "model_binding": "same model hashes, topology hash, vertex order and direction basis",
+    "truth": "3DDFA fits are geometry proxies, not measured cross-age 3D ground truth"
+  },
+  "statistics": {
+    "unit": "identity",
+    "aggregation": "average within identity first, then equal-weight identity macro average; report median and per-identity distribution",
+    "cross_age_pairs": "all adult source-target pairs with distinct labeled ages within each identity; both directions; aggregate within identity",
+    "uncertainty": "95 percent identity-cluster bootstrap, 2000 resamples, seed 20261020; omit intervals with fewer than 2 eligible identities",
+    "failures": "retain every requested case and stage-specific failure; report numerator and all-requested denominator as well as conditional quality on successes",
+    "age_strata": ["20-29", "30-39", "40-49", "50-59", "60-69", "70"],
+    "coverage": "report identities, images and distinct ages by group; no age-70 truth present, no 20-70 accuracy claim"
+  },
+  "metrics": {
+    "same_age_drift": "SAM(s) versus unaltered source; image appearance, fitted neutral geometry, pose and expression separately",
+    "age": "target conditioning is not ground truth; age MAE or trend requires a separately licensed, version-pinned evaluator with domain validation",
+    "identity": "same-person and different-person comparisons matched by age/quality, identity macro summaries; independent licensed evaluator required for accuracy claims",
+    "geometry": "finite vertices, fixed topology, neutral-geometry RMS and maximum vertex displacement in source canonical units; BFM and SAM-difference baselines reported separately",
+    "uv": "later N4: observed coverage, unknown and occluded regions, seams and GLB roundtrip; generated pixels are not source observations",
+    "continuity": "later N5: source reset, adjacent-age displacement and roundtrip drift; interpolation and generator conditioning assessed separately",
+    "performance": "cold load, warm inference, alignment, refitting, UV and end-to-end measured separately"
+  },
+  "thresholds": {
+    "stage1_integrity": "all declared hashes and sizes match; no identity or exact-byte duplicate across uses; viewed identities development-only; unknown remains null; all 8 eligible same-age controls present",
+    "quality_acceptance": null,
+    "quality_threshold_status": "not established; no G3 quality pass permitted",
+    "freeze_rule": "choose quality thresholds and evaluator versions on development/calibration only in a versioned amendment before opening research holdout results; never tune on holdout",
+    "holdout_reuse": "if used for tuning or threshold selection, retire that holdout claim and publish a new protocol with fresh eligible data"
+  },
+  "failure_codes": ["BAD_INPUT", "HASH_MISMATCH", "IDENTITY_CONFLICT", "NO_FACE", "MULTI_FACE", "LANDMARK_INVALID", "MODEL_OR_TOPOLOGY_MISMATCH", "POSE_OR_EXPRESSION_INVALID", "SAM_FAILED", "SOURCE_AGE_UNKNOWN", "FRACTIONAL_SAME_AGE_UNSUPPORTED", "UV_OR_OCCLUSION_FAILED", "RESOURCE_FAILED"],
+  "permission_boundary": "existing local research scope only; license statuses unchanged; no image redistribution or training",
+  "service_ready": false,
+  "years_calibrated": false,
+  "identity_accepted": false,
+  "uv_registered": false,
+  "g3_complete": false
+}
