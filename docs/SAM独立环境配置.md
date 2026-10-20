@@ -115,7 +115,7 @@ data/envs/sam/Scripts/python.exe tools/sam_probe.py `
 ## 6. 输入契约与限制
 
 - 输入必须是 **FFHQ 风格对齐的 256×256（或可缩放到 256×256）人脸**；本探针只做 resize，不做检测/对齐。
-- 本项目 3DDFA 的裁剪与 FFHQ 对齐不是同一坐标系，**不能**把 `backend` 的 3DDFA 裁剪图直接喂给 SAM；需要单独的裁剪/对齐实验。
+- 本项目 3DDFA 的裁剪与 FFHQ 对齐不是同一坐标系，**不能**把 `backend` 的 3DDFA 裁剪图直接喂给 SAM；现已完成从原照片 68 点重新采样的[离线桥接实验](FFHQ对齐桥接实验.md)，并保留坐标逆变换和原图有效区。
 - 目标年龄按整数处理（官方 `AgeTransformer` 就是 `int(age)/100`），没有逐岁连续性保证。
 - 输出是二维图像，不是 BFM/UV 纹理，也没有做重投影、接缝、遮挡或身份保持评价。
 - `randomize_noise=False` 只保证本机复现；不构成跨设备/跨版本确定性承诺。
@@ -138,4 +138,4 @@ data/envs/sam/Scripts/python.exe tools/sam_native_ops/install.py `
 - 没有做按身份分组的评价，也没有 AgeDB 真值校准；
 - 没有改变严格服务的 `age_texture`、`age_slider` 或 readiness。
 
-下一步应先用项目自己的对齐链路产出 FFHQ 风格的 256×256 裁剪，再在同一身份上做多年龄定性对比；UV 注册和年尺度校准必须另立实验。
+后续[桥接实验](FFHQ对齐桥接实验.md)已用 10 个成功样例生成 FFHQ 风格的 256×256 裁剪，并在本环境产生 30 张 SAM 二维输出；另 2 个预期失败样例返回 `NO_FACE`。这只验证输入输出链路；下一步做按身份分组的同人真实跨龄评价，UV 注册和年尺度校准另立实验，服务状态不变。

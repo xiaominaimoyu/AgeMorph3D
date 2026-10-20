@@ -128,7 +128,11 @@ B0 的可选推理依赖安装、模型清单、旧资产受限转换、真实�
 
 输出mesh.glb、result.json、逐强度GLB、base-atlas.png、绑定拓扑的uv_bound.npz和报告；全程同一源canonical坐标及基础照片纹理。零强度精确不变，往返数值误差和身份/表情系数单独记录；系数不变不是身份质量验收。报告始终service_ready/g3_complete/years_calibrated/age_texture_generated=false，正式服务不提供此研究开关。
 
-`test_prepare_bfm_age.py`、`test_age_shape.py`、`test_age_research_probe.py`覆盖输入pin、精确对应、原生强度、固定坐标、失败清理及关闭；`test_uv_texture.py`与`test_textured_mesh.py`覆盖自遮挡、UV方向、透明未知区、嵌入及缓存链路。真实单样例和Chrome/Edge像素往返见B45记录；没有下载SAM权重或开始训练。
+`test_prepare_bfm_age.py`、`test_age_shape.py`、`test_age_research_probe.py`覆盖输入pin、精确对应、原生强度、固定坐标、失败清理及关闭；`test_uv_texture.py`与`test_textured_mesh.py`覆盖自遮挡、UV方向、透明未知区、嵌入及缓存链路。真实单样例和Chrome/Edge像素往返见B45记录；该原批次没有下载SAM权重或开始训练，后续独立SAM环境见下文。
+
+用户后续提供 SAM/FG-NET 研究资产后，已实现[FFHQ 对齐桥接](../docs/FFHQ对齐桥接实验.md)。在仓库根目录用 `backend/.venv/Scripts/python.exe tools/ffhq_bridge_probe.py --image data/samples/astronaut.png --detector-manifest data/models/yolov5n05-face/manifest.json --reconstructor-manifest data/models/3ddfa-v2/manifest.json --output-dir output/research/ffhq-repro --research-allow-unresolved` 生成原图采样的256裁剪、原图支持mask、坐标及失败报告，随后在既有 `data/envs/sam` 中运行 `tools/sam_probe.py`。两步使用不同环境，不导入SAM到服务。输出目录必须全新，默认许可门槛不变。
+
+`test_ffhq_alignment.py` 与 `test_ffhq_bridge_probe.py` 新增54项数值/编排检查；本批后端全量820项通过，另有真实10样例/30张二维输出及2个NO_FACE对照。坐标互逆不证明生成图能直接逆投影；反射补边、SAM形变及外部遮挡需另行处理。年龄、身份和UV/G3状态仍false，没有训练或前端改动。
 
 后续收口严格服务G1/G2，以及有获准样例支持的年尺度、真实年龄纹理和独立身份评估，再逐项签收G3。参见 [后端计划](../docs/后端任务计划.md) 与 [模型台账](../docs/model-assets.md)。
 
