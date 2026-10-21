@@ -30,6 +30,16 @@ _MAX_DEPTH_PAIRS = 128_000_000
 _MAX_UV_SAMPLE_WORK = 16_000_000
 _BIN_SIZE = 4
 
+UV_REASON_CODES = {
+    "outside_uv": 0,
+    "ambiguous_uv_overlap": 1,
+    "back_facing": 2,
+    "outside_image": 3,
+    "self_occluded": 4,
+    "mask_rejected": 5,
+    "sampled": 6,
+}
+
 
 @dataclass(frozen=True)
 class UvTexture:
@@ -38,6 +48,7 @@ class UvTexture:
     png: bytes
     coverage: NDArray[np.bool_]
     metadata: dict[str, Any]
+    classification: NDArray[np.uint8] | None = None
 
 
 def _array(value: object, name: str, shape: tuple[int, ...] | None = None) -> NDArray:
@@ -167,8 +178,26 @@ def _bilinear(rgb: NDArray, xy: NDArray) -> NDArray:
     return np.clip(np.rint(result), 0, 255).astype(np.uint8)
 
 
+def _allowed_bilinear(mask: NDArray[np.bool_], xy: NDArray) -> NDArray[np.bool_]:
+    """Require every nonzero-weight source pixel, including subpixel mask edges."""
+    x0, y0 = np.floor(xy[:, 0]).astype(int), np.floor(xy[:, 1]).astype(int)
+    x1, y1 = np.minimum(x0 + 1, mask.shape[1] - 1), np.minimum(y0 + 1, mask.shape[0] - 1)
+    dx, dy = xy[:, 0] - x0, xy[:, 1] - y0
+    return (
+        (mask[y0, x0] | ((1 - dx) * (1 - dy) == 0))
+        & (mask[y0, x1] | (dx * (1 - dy) == 0))
+        & (mask[y1, x0] | ((1 - dx) * dy == 0))
+        & (mask[y1, x1] | (dx * dy == 0))
+    )
+
+
 def project_photo_texture(
-    rgb: NDArray[np.uint8], result: TddfaResult, uv: NDArray, *, atlas_size: int = 256
+    rgb: NDArray[np.uint8],
+    result: TddfaResult,
+    uv: NDArray,
+    *,
+    atlas_size: int = 256,
+    sample_allowed_mask: NDArray[np.bool_] | None = None,
 ) -> UvTexture:
     """Project only observed source-photo surface, keeping unknown texels transparent.
 
@@ -176,6 +205,8 @@ def project_photo_texture(
     (image-space positive signed area) and greatest projected Z. This applies to
     the verified raw BFM / upstream 3DDFA affine projection, not arbitrary cameras.
     No photos, textures, assets or reports are written by this function.
+    An optional image-local boolean mask excludes unsupported bilinear samples;
+    it does not provide automatic external-occlusion detection.
     """
     if (
         not isinstance(rgb, np.ndarray)
@@ -188,6 +219,12 @@ def project_photo_texture(
         raise ValueError("Photo must be a bounded nonempty uint8 RGB image.")
     if type(atlas_size) is not int or not 4 <= atlas_size <= 1024:
         raise ValueError("UV atlas size must be an integer from 4 to 1024.")
+    if sample_allowed_mask is not None and (
+        not isinstance(sample_allowed_mask, np.ndarray)
+        or sample_allowed_mask.dtype != np.bool_
+        or sample_allowed_mask.shape != rgb.shape[:2]
+    ):
+        raise ValueError("Sample allowed mask must be a boolean array matching image height/width.")
     if result.coordinate_system != "bfm_model_raw":
         raise ValueError("Photo projection requires raw pre-projection BFM coordinates.")
     vertices = _array(result.vertices, "Vertices")
@@ -240,10 +277,22 @@ def project_photo_texture(
     visible[candidates], depth_pairs = _visible(
         projected, faces, samples[candidates], rgb.shape[1], rgb.shape[0]
     )
+    sampled = visible.copy()
+    if sample_allowed_mask is not None:
+        sampled[visible] &= _allowed_bilinear(sample_allowed_mask, samples[visible, :2])
+    classification = np.full(
+        (atlas_size, atlas_size), UV_REASON_CODES["outside_uv"], dtype=np.uint8
+    )
+    classification[atlas_mask & ambiguous] = UV_REASON_CODES["ambiguous_uv_overlap"]
+    classification[yy, xx] = UV_REASON_CODES["back_facing"]
+    classification[yy[front], xx[front]] = UV_REASON_CODES["outside_image"]
+    classification[yy[candidates], xx[candidates]] = UV_REASON_CODES["self_occluded"]
+    classification[yy[visible], xx[visible]] = UV_REASON_CODES["mask_rejected"]
+    classification[yy[sampled], xx[sampled]] = UV_REASON_CODES["sampled"]
     coverage = np.zeros((atlas_size, atlas_size), dtype=bool)
-    coverage[yy[visible], xx[visible]] = True
+    coverage[yy[sampled], xx[sampled]] = True
     rgba = np.zeros((atlas_size, atlas_size, 4), dtype=np.uint8)
-    rgba[yy[visible], xx[visible], :3] = _bilinear(rgb, samples[visible, :2])
+    rgba[yy[sampled], xx[sampled], :3] = _bilinear(rgb, samples[sampled, :2])
     rgba[coverage, 3] = 255
     output = BytesIO()
     Image.fromarray(rgba).save(output, format="PNG")
@@ -263,6 +312,16 @@ def project_photo_texture(
         "observed_fraction_of_face": float(coverage.sum() / max(1, atlas_mask.sum())),
         "front_facing_in_image_texels": int(candidates.sum()),
         "self_occluded_texels": int(candidates.sum() - visible.sum()),
+        "mask_rejected_texels": int(visible.sum() - sampled.sum()),
+        "classification_codes": dict(UV_REASON_CODES),
+        "classification_counts": {
+            name: int(np.count_nonzero(classification == code))
+            for name, code in UV_REASON_CODES.items()
+        },
+        "classification_priority": list(UV_REASON_CODES),
+        "classification_partition": "one mutually exclusive reason per atlas texel",
+        "sample_allowed_mask_applied": sample_allowed_mask is not None,
+        "sample_allowed_mask_rule": "all nonzero-weight bilinear contributor pixels must be true",
         "depth_test_pairs": depth_pairs,
         "visibility": "native_front_faces_and_continuous_max_projected_z",
         "rgb_sampling": "bilinear_original_EXIF_corrected_unmirrored_RGB",
@@ -272,6 +331,6 @@ def project_photo_texture(
         "age_generated": False,
         "identity_evaluation": "not_established_by_photo_projection",
     }
-    for array in (gltf_uv, rgba, coverage):
+    for array in (gltf_uv, rgba, coverage, classification):
         array.setflags(write=False)
-    return UvTexture(gltf_uv, rgba, output.getvalue(), coverage, metadata)
+    return UvTexture(gltf_uv, rgba, output.getvalue(), coverage, metadata, classification)

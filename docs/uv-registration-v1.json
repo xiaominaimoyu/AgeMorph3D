@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-target-uv-v1",
+  "frozen_on": "2026-10-21",
+  "parent_protocol_id": "agemorph3d-age-research-v1",
+  "scope": "N4 offline generated-image registration to shared UV on immutable source geometry",
+  "expected_generated_images": 37,
+  "expected_source_images": 10,
+  "atlas_size": 256,
+  "cohort": "all unique N0 SAM target and same-age outputs already refitted in N2; retain all failures and unknown source ages",
+  "sampling": {
+    "geometry": "each target's full fitted raw vertices including expression",
+    "projection": "each target's own verified projection and ROI in its own 1024 image pixel frame",
+    "shared_uv": "one pinned topology-bound BFM UV array preserving vertex order",
+    "uv_origin": "BFM bottom left to glTF top left via (u,1-v)",
+    "rgb": "bilinear target-generated RGB; every contributing pixel must be allowed by the target-local mask",
+    "visibility": "native front faces and continuous max projected Z",
+    "forbidden_correspondence": "no original source projection, inverse FFHQ source transform, or resized source valid-mask as generated-image correspondence"
+  },
+  "output_geometry": {
+    "route": "N3 static_fallback",
+    "reference": "original source full mesh and its fixed canonical center/scale",
+    "invariant": "positions, normals, ordered indices and UV identical for every target of the same source",
+    "source_age_api": "unknown; filename source-age label recorded separately as research provenance",
+    "asset_mode": "static",
+    "age_capabilities": false
+  },
+  "mask_review": {
+    "coordinate_frame": "target image pixels, bound to target image hash",
+    "reviewer": "codex_visual_review",
+    "method": "target-own landmark convex hull with conservative erosion, mouth-interior exclusion and documented target-local glasses/fringe exclusions",
+    "review_scope": "all 37 target images viewed before atlas outcomes; masks and review notes saved before projection",
+    "construction": {
+      "landmarks": "target N2 projected_landmarks XY in its own image; nearest integer using numpy.rint",
+      "initial_region": "convex hull of landmark indices 0 through 26 inclusive; 9x9 all-ones erosion once",
+      "mouth_unknown": "convex hull of indices 60 through 67 inclusive; 7x7 all-ones dilation once, then exclude",
+      "glasses_cases": "four fgnet-004a63 targets: exclude the complete hull-supported band from floor(min eyebrow Y)-18 through row649; corrected after independent visual review before atlas outcomes",
+      "fringe_cases": "astronaut, fgnet-062a45 and fgnet-005a35 targets: exclude hull-supported pixels above ceil(max eyebrow Y)+10",
+      "eyebrow_indices": "17 through 26 inclusive",
+      "coordinate_limits": "clip all regions to the target image; allowed and occluded-candidate masks must be disjoint L-mode PNG 0/255",
+      "review_record": "the final hash-bound per-target review records exact bands, notes, masks and excluded-pixel counts"
+    },
+    "source_valid_mask": "source resampling provenance only; not reused as a target eligibility mask",
+    "automatic_external_occlusion_detection": false,
+    "independent_segmentation_ground_truth": false,
+    "limits": "conservative reviewed masks are research exclusions, not exhaustive external-occluder segmentation or independently accepted quality"
+  },
+  "unknown_surface": {
+    "classification": "mutually exclusive UV outside, UV overlap, backface, image outside, self occlusion, target mask rejection and sampled generated pixel",
+    "rgba": "unsampled RGBA must be exactly zero",
+    "fill": "none; no reflection, symmetry, inpainting, dilation of color or cross-unknown blending",
+    "terminology": "generated sampled texels are not observed original-photo surface"
+  },
+  "seams": {
+    "structural_checks": "shared ordered UV, overlap classification, shared-edge continuity, unknown boundary and alpha preserved",
+    "diagnostics": "report adjacent sampled RGB differences without treating natural image gradients as seam error",
+    "verification": "synthetic linear RGB shared-edge counterexample plus actual front/side/reimport visual review",
+    "color_harmonization": false,
+    "quality_thresholds": null
+  },
+  "glb_roundtrip": {
+    "offline": "all 37 self-contained GLBs: embedded PNG and UV, finite source geometry, ordered indices, MASK alpha and CLAMP_TO_EDGE",
+    "browser": "all 37 targets in Chrome and Edge through actual FaceViewer load/export/reload",
+    "checks": "local positions, normals, indices, UV, decoded RGBA, alpha mask, color space, flipY, sampler/material settings and generated-texture provenance preserved",
+    "world_bbox": "viewer normalization is not evidence of shared source canonical geometry",
+    "network": "loopback only, no mocked model service or external assets"
+  },
+  "failure_policy": "retain requested failures, reject mismatched pins/topology/mask/condition and existing output directories; no favorable subset selection",
+  "research_only": true,
+  "service_ready": false,
+  "age_texture_quality_accepted": false,
+  "identity_quality_accepted": false,
+  "years_calibrated": false,
+  "g3_complete": false,
+  "holdout_age_results_opened": false,
+  "training": false,
+  "new_sam_inference": false
+}

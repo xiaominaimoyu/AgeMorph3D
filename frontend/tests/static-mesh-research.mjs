@@ -15,6 +15,10 @@ const output = resolve(process.env.AGEMORPH_RESEARCH_OUTPUT ??
 const frontendPort = port("AGEMORPH_RESEARCH_VITE_PORT", 5175);
 const assetPort = port("AGEMORPH_RESEARCH_ASSET_PORT", 18003);
 const requireTexture = process.env.AGEMORPH_RESEARCH_REQUIRE_TEXTURE === "1";
+const textureKind = process.env.AGEMORPH_RESEARCH_TEXTURE_KIND ?? "observed_photo";
+assert.ok(["observed_photo", "generated_target"].includes(textureKind), "Unknown texture research kind.");
+const generatedTarget = textureKind === "generated_target";
+if (generatedTarget) assert.equal(requireTexture, true, "Generated-target research needs texture checks.");
 assert.notEqual(frontendPort, assetPort, "The owned servers need separate ports.");
 const frontend = `http://127.0.0.1:${frontendPort}`;
 const assets = `http://127.0.0.1:${assetPort}`;
@@ -22,15 +26,36 @@ const originalUrl = `${assets}/api/assets/research/mesh.glb`;
 const exportedUrl = `${assets}/api/assets/research/exported.glb`;
 const original = await readFile(meshPath);
 const metadata = JSON.parse(await readFile(resultPath, "utf8"));
+const originalJson = standaloneGlb(original);
+if (generatedTarget) {
+  assert.match(metadata.source_frame?.source_topology_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(originalJson.extras?.topology_id,
+    `tddfa-bfm-canon-v1-${metadata.source_frame.source_topology_sha256}`,
+    "Generated target topology must match the source frame fingerprint.");
+  if (metadata.topology_id !== undefined)
+    assert.equal(metadata.topology_id, originalJson.extras.topology_id);
+}
 const options = {
   asset_mode: "static",
-  topology_id: metadata.topology_id,
+  topology_id: generatedTarget ? originalJson.extras.topology_id : metadata.topology_id,
   source_age: metadata.source_age,
   ...(metadata.capabilities ? { capabilities: metadata.capabilities } : {}),
 };
 validateOptions(options);
 if (metadata.asset_mode !== undefined) assert.equal(metadata.asset_mode, "static");
-const originalJson = standaloneGlb(original);
+const registration = generatedTarget ? registeredTarget(originalJson) : undefined;
+const sourceCoordinateMetadata = generatedTarget
+  ? extraValues(originalJson, "coordinate_metadata")[0] : undefined;
+if (generatedTarget) {
+  assert.equal(registration.kind, "sam_generated_registered_uv");
+  assert.equal(registration.age_quality_accepted, false);
+  assert.equal(registration.identity_quality_accepted, false);
+  assert.equal(metadata.source_age.method, "unknown");
+  assert.equal(metadata.source_age.value, null);
+  assert.ok(sourceCoordinateMetadata?.source_center &&
+    Number.isFinite(sourceCoordinateMetadata.source_to_canonical_uniform_scale),
+  "Generated target must retain its original source canonical frame.");
+}
 if (requireTexture) {
   assert.ok(originalJson.images?.length, "Texture verification needs an embedded image.");
   assert.equal(metadata.capabilities?.age_morph, false, "Photo UV evidence cannot enable age shape.");
@@ -44,18 +69,23 @@ if (requireTexture) {
 await mkdir(output, { recursive: true });
 
 const report = {
-  evidenceKind: "offline-real-model-asset-browser-roundtrip",
+  evidenceKind: generatedTarget ? "offline-generated-target-atlas-browser-roundtrip"
+    : "offline-real-model-asset-browser-roundtrip",
   serviceInferenceVerified: false,
   g1Accepted: false,
   g3Accepted: false,
-  photoTextureVerification: requireTexture,
+  photoTextureVerification: requireTexture && !generatedTarget,
+  generatedTargetAtlasVerification: generatedTarget,
+  textureResearchKind: textureKind,
   ageTextureVerified: false,
   routeMocks: false,
   productionBuild: false,
   renderer: "Chromium software WebGL (SwiftShader)",
   startedAt: new Date().toISOString(),
   input: { meshPath, resultPath, bytes: original.length, sha256: sha256(original),
-    mesh_id: metadata.mesh_id ?? null, ...options },
+    mesh_id: metadata.mesh_id ?? null, ...options,
+    ...(generatedTarget ? { registered_target_texture: registration,
+      sourceCoordinateMetadata } : {}) },
   frontend, assetServer: assets, results: [], status: "running",
 };
 let exported;
@@ -87,6 +117,17 @@ const assetServer = createHttpServer((request, response) => {
 let vite;
 let browser;
 let failure;
+let abortRequested = false;
+const abortResearch = () => {
+  abortRequested = true;
+  browser?.close().catch(() => {});
+};
+const onParentMessage = (message) => {
+  if (message?.type === "abort-research") abortResearch();
+};
+process.on("message", onParentMessage);
+process.once("SIGINT", abortResearch);
+process.once("SIGTERM", abortResearch);
 try {
   await new Promise((resolveListen, reject) => {
     assetServer.once("error", reject);
@@ -117,9 +158,11 @@ try {
             header{padding:18px 24px}h1{font-size:20px;margin:0 0 8px}
             p{margin:5px 0;color:#a4bcc8}#research-viewer{height:760px;margin:0 20px}
             #research-state{color:#70dfcb}</style><header>
-            <h1>真实 CPU 网格 · 离线研究验证</h1>
+            <h1>${generatedTarget ? "SAM 目标图集 · 共同 UV 离线研究" : "真实 CPU 网格 · 离线研究验证"}</h1>
             <p>使用实际 FaceViewer 查看、导出和再导入；未连接模型服务，G1 尚未签收。</p>
-            ${requireTexture ? "<p>照片 UV 贴图验证，未生成年龄纹理，G3 尚未签收。</p>" : ""}
+            ${requireTexture ? generatedTarget
+              ? "<p>SAM 目标图已注册共同 UV；年龄与身份质量未签收，G3 未通过。</p>"
+              : "<p>照片 UV 贴图验证，未生成年龄纹理，G3 尚未签收。</p>" : ""}
             <p id="research-state">正在加载真实静态资产</p></header>
             <div id="research-viewer"></div></html>`);
         });
@@ -128,9 +171,11 @@ try {
   });
   await vite.listen();
   for (const channel of ["chrome", "msedge"]) {
+    assert.equal(abortRequested, false, "Research run was interrupted.");
     exported = undefined;
     browser = await chromium.launch({ channel, headless: true,
       args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"] });
+    assert.equal(abortRequested, false, "Research run was interrupted.");
     const page = await browser.newPage({ viewport: { width: 1280, height: 920 },
       locale: "zh-CN", acceptDownloads: true, reducedMotion: "reduce" });
     page.setDefaultTimeout(30_000);
@@ -204,6 +249,13 @@ try {
     await download.saveAs(exportedPath);
     exported = await readFile(exportedPath);
     const exportJson = standaloneGlb(exported);
+    if (generatedTarget)
+      assert.deepEqual(registeredTarget(exportJson, registration.target_sample_id), registration,
+        "Viewer export must preserve the complete generated-texture registration provenance.");
+    if (generatedTarget)
+      assert.ok(extraValues(exportJson, "coordinate_metadata").some((value) =>
+        stableJSON(value) === stableJSON(sourceCoordinateMetadata)),
+      "Viewer export must retain the unchanged source canonical frame metadata.");
     const root = exportJson.nodes?.find((node) => node.name === "AgeMorph3D_Loaded_Model");
     assert.ok(root, "Actual viewer export must preserve its model root.");
     assert.equal(root.extras.asset_mode, "static");
@@ -211,7 +263,7 @@ try {
     assert.deepEqual(root.extras.source_age, options.source_age);
     for (const key of ["age", "ageAnchors", "displayAge", "texture_age"])
       assert.equal(root.extras[key], undefined, `Static research export cannot invent ${key}.`);
-    const roundtrip = await page.evaluate(async ({ url, options, requireTexture }) => {
+    const roundtrip = await page.evaluate(async ({ url, options, requireTexture, generatedTarget, registration }) => {
       const { FaceViewer, GLTFLoader, THREE } = await import("/__research_modules.js");
       const bytes = await (await fetch(url, { cache: "no-store" })).arrayBuffer();
       const parsed = await new GLTFLoader().parseAsync(bytes, "");
@@ -223,6 +275,25 @@ try {
       const before = meshes(window.researchOriginal.scene);
       const after = meshes(parsed.scene);
       if (before.length !== after.length) throw new Error("Roundtrip changed mesh count.");
+      if (generatedTarget) {
+        const stable = (value) => Array.isArray(value) ? value.map(stable)
+          : value && typeof value === "object" ? Object.fromEntries(
+            Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
+        const signature = (value) => JSON.stringify(stable(value));
+        const registrations = [];
+        for (const scene of [window.researchOriginal.scene, parsed.scene]) {
+          const found = [];
+          scene.traverse((node) => {
+            const value = node.userData?.registered_target_texture;
+            if (value?.target_sample_id === registration.target_sample_id) found.push(value);
+          });
+          if (!found.length || found.some((value) => signature(value) !== signature(registration)))
+            throw new Error("Loaded scene lost generated-texture registration provenance.");
+          registrations.push(found[0]);
+        }
+        if (signature(registrations[0]) !== signature(registrations[1]))
+          throw new Error("Roundtrip changed generated-texture registration provenance.");
+      }
       const comparisons = [];
       const textureSummary = async (mesh) => {
         const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -248,13 +319,32 @@ try {
           const pixels = context.getImageData(0, 0, width, height).data;
           const digest = await crypto.subtle.digest("SHA-256", pixels);
           const rgbaSha256 = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+          let generatedSummary = {};
+          if (generatedTarget) {
+            const alpha = new Uint8Array(width * height);
+            const unknownMask = new Uint8Array(width * height);
+            let unknownTexels = 0;
+            let opaqueTexels = 0;
+            for (let index = 0; index < alpha.length; index++) {
+              alpha[index] = pixels[index * 4 + 3];
+              unknownMask[index] = alpha[index] === 0 ? 1 : 0;
+              unknownTexels += unknownMask[index];
+              opaqueTexels += alpha[index] === 255 ? 1 : 0;
+            }
+            const hex = async (data) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", data))]
+              .map((value) => value.toString(16).padStart(2, "0")).join("");
+            generatedSummary = { alphaSha256: await hex(alpha), unknownMaskSha256: await hex(unknownMask),
+              unknownTexels, opaqueTexels, partialAlphaTexels: alpha.length - unknownTexels - opaqueTexels,
+              pbrMaterial: { color: material.color?.toArray(), metalness: material.metalness,
+                roughness: material.roughness } };
+          }
           textures.push({ width, height, rgbaSha256, flipY: texture.flipY,
             colorSpace: texture.colorSpace, uvChannel: texture.channel,
             offset: texture.offset.toArray(), repeat: texture.repeat.toArray(),
             rotation: texture.rotation, wrapS: texture.wrapS, wrapT: texture.wrapT,
             magFilter: texture.magFilter, minFilter: texture.minFilter,
             material: { opacity: material.opacity, transparent: material.transparent,
-              alphaTest: material.alphaTest, side: material.side } });
+              alphaTest: material.alphaTest, side: material.side }, ...generatedSummary });
         }
         return textures;
       };
@@ -287,6 +377,13 @@ try {
           }
           if (maximumDifference > 1e-6) throw new Error(`Roundtrip changed ${name} values.`);
           attributes[name] = { count: first.count, itemSize: first.itemSize, maximumDifference };
+          if (generatedTarget) {
+            const digest = async (array) => [...new Uint8Array(await crypto.subtle.digest("SHA-256",
+              new Uint8Array(array.buffer, array.byteOffset, array.byteLength)))]
+              .map((value) => value.toString(16).padStart(2, "0")).join("");
+            attributes[name].originalSha256 = await digest(first.array);
+            attributes[name].exportedSha256 = await digest(second.array);
+          }
         }
         if (!!a.index !== !!b.index || a.index?.count !== b.index?.count)
           throw new Error("Roundtrip changed index dimensions.");
@@ -329,7 +426,7 @@ try {
       document.getElementById("research-state").textContent =
         `${options.topology_id} · 浏览器导出文件已再导入 · 正面`;
       return { comparisons, expectedSize, actualSize, center };
-    }, { url: exportedUrl, options, requireTexture });
+    }, { url: exportedUrl, options, requireTexture, generatedTarget, registration });
     await page.waitForFunction(({ vertices, triangles }) =>
       window.researchStats?.vertices === vertices && window.researchStats?.triangles === triangles,
     { vertices, triangles });
@@ -371,16 +468,25 @@ try {
     }) : undefined,
   ]);
   report.ownedServersClosed = cleanup.every((result) => result.status === "fulfilled");
+  report.interrupted = abortRequested;
   report.assetRequests = requests;
   report.finishedAt = new Date().toISOString();
   report.input.glbGenerator = originalJson.asset.generator ?? null;
-  await writeFile(join(output, "static-mesh-research.json"), JSON.stringify(report, null, 2));
+  try {
+    await writeFile(join(output, "static-mesh-research.json"), JSON.stringify(report, null, 2));
+  } finally {
+    process.removeListener("message", onParentMessage);
+    process.removeListener("SIGINT", abortResearch);
+    process.removeListener("SIGTERM", abortResearch);
+    if (process.connected) process.disconnect();
+  }
 }
 if (failure) throw failure;
 assert.equal(report.ownedServersClosed, true);
 console.log(JSON.stringify({ passed: report.results.length, output, evidenceKind: report.evidenceKind,
   serviceInferenceVerified: false, g1Accepted: false, g3Accepted: false,
-  photoTextureVerification: requireTexture, ownedServersClosed: report.ownedServersClosed }));
+  photoTextureVerification: requireTexture && !generatedTarget,
+  generatedTargetAtlasVerification: generatedTarget, ownedServersClosed: report.ownedServersClosed }));
 
 function requiredPath(name) {
   assert.ok(process.env[name], `Set ${name} to an explicit local file.`);
@@ -395,6 +501,32 @@ function port(name, fallback) {
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function registeredTarget(document, targetId) {
+  const registrations = extraValues(document, "registered_target_texture")
+    .filter((value) => !targetId || value.target_sample_id === targetId);
+  assert.ok(registrations.length, "GLB is missing generated-target registration provenance.");
+  for (const registration of registrations) assert.deepEqual(registration, registrations[0]);
+  return registrations[0];
+}
+
+function extraValues(document, key) {
+  const values = [];
+  const visit = (value) => {
+    if (!value || typeof value !== "object") return;
+    if (value[key]) values.push(value[key]);
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(document);
+  return values;
+}
+
+function stableJSON(value) {
+  const stable = (item) => Array.isArray(item) ? item.map(stable)
+    : item && typeof item === "object" ? Object.fromEntries(
+      Object.keys(item).sort().map((key) => [key, stable(item[key])])) : item;
+  return JSON.stringify(stable(value));
 }
 
 function validateOptions(value) {
