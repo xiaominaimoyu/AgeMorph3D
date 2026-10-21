@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-age-continuity-v1",
+  "scope": "N5 numerical display continuity and N6 isolated worker / synthetic session contracts",
+  "research_only": true,
+  "production_aging_enabled": false,
+  "shape_route": "static_fallback",
+  "age_range": [20, 70],
+  "source_age": {
+    "preserve_finite_decimal_value": true,
+    "unknown_value": null,
+    "unknown_absolute_age_request": "SOURCE_AGE_REQUIRED",
+    "exact_equality": "compare stored numeric value, no rounding or epsilon snap",
+    "reset": "return original immutable GLB, texture and coefficients; never substitute SAM same-age output"
+  },
+  "sam": {
+    "direct_target_condition": "exact integer only, including integer-valued JSON numbers",
+    "fractional_nonreset_request": "INTEGER_AGE_REQUIRED",
+    "fractional_source_age": "preserve; original reset allowed; no fractional-source SAM geometry differences",
+    "conditioning_is_verified_age": false,
+    "input": "existing FFHQ-aligned 256x256 RGB PNG, bounded bytes over local stdio",
+    "output": "1024x1024 generated 2D PNG, not a UV atlas",
+    "persistent_model": true,
+    "loading_status": "research_loaded after actual load and finite forward self-test, never production ready",
+    "asset_policy": "existing hash-bound local research checkpoint only; no download or training"
+  },
+  "display_experiment": {
+    "anchors": "strictly increasing unique ages; include exact source age when a true source asset is available",
+    "interpolation": "piecewise linear in age, reject extrapolation",
+    "rgb": "decode sRGB to linear light",
+    "alpha": "interpolate premultiplied linear RGB and alpha; both-unknown pixels remain zero",
+    "source_geometry": "unchanged at all ages for current static fallback",
+    "viewer_blend_implementation": false,
+    "render_modes": "floating compositing experiment and existing uint8 MASK/0.5 assets evaluated separately",
+    "epsilon_years": [1, 0.1, 0.01, 0.001],
+    "ages_to_check": [20, 20.25, 32.5, 42.5, 44.999, 45, 45.001, 57.5, 69.75, 70],
+    "measurements": [
+      "support gain/loss/XOR and Jaccard per adjacent registered target pair",
+      "float alpha and black/white composite differences at decreasing epsilon",
+      "uint8 quantization and MASK/0.5 visible-pixel flips",
+      "exact original-object reset in synthetic source contexts",
+      "registered real source reset marked unavailable without an original source atlas"
+    ],
+    "previous_exposure": "All N4 atlases are development observations. Support XOR/Jaccard for 27 pairs was inspected before this protocol; new epsilon/quantization measurements are frozen separately before running."
+  },
+  "sessions": {
+    "production_route": "existing /api/aging continues MODEL_NOT_READY; no environment or test bypass in production factory",
+    "test_route": "explicit synthetic-only factory under backend/tests/fixtures",
+    "source_context": "immutable original RGB, aligned PNG, serialized fit/alignment, original GLB/PNG, source-age provenance and original shape",
+    "default_budget_bytes": 134217728,
+    "default_max_sessions": 16,
+    "default_ttl_seconds": 300,
+    "ttl": "fixed from source publication; reads and generated results never extend it",
+    "budget": "all serialized source and result bytes plus float64 coefficient payloads; Python object overhead is additional",
+    "expiry": "periodic sweep required for idle deletion; expired in-flight contexts remain charged and inaccessible to new requests until completion",
+    "result_cache": "exact target age within immutable source session; all results inherit source expiry",
+    "late_work": "timeouts/disconnects do not publish results or release admission/context leases before actual processing completion",
+    "close": "deny new work, drain or terminate only owned child then await actual exit; release payload leases and device admission afterwards",
+    "persistence": "production context library and worker exchange no private image files; research probe output files are explicit offline artifacts"
+  },
+  "validation": {
+    "backend": "meaningful timeout/cancel/expiry/capacity/failure/shutdown tests plus production regression",
+    "frontend": "actual client/viewer against synthetic loopback fixture in Chrome and Edge; label synthetic",
+    "worker": "one persistent real local SAM process, forward self-test and two integer requests, hash/timing/memory/PID/exit evidence",
+    "separate_evidence": ["implementation", "automated contracts", "numerical research", "real SAM worker", "synthetic browser", "quality and license acceptance"]
+  },
+  "acceptance": {
+    "new_age_shape_quality": false,
+    "age_texture_quality": false,
+    "full_rendered_continuity": false,
+    "identity_quality": false,
+    "license_resolved": false,
+    "g3_complete": false
+  }
+}

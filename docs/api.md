@@ -90,6 +90,16 @@ v1.2 仅接收**自包含 GLB**。`static` 接收没有 morph target 的原始�
 
 离线BFM研究只使用原生`bfm_attribute_strength`，不支持把目标年龄直接转换成强度。已派生的199维原属性方向与裁剪顶点逐项绑定，研究GLB保留static，不含age_20/age_45/age_70或年龄能力。`POST /api/aging`仍503；用户源年龄输入、线性强度变化或基础照片UV均不会打开该端点或全局年龄能力。绝对年龄形状、年龄纹理和身份保持须分别完成对应G3项目。
 
+## N5/N6隔离研究契约边界
+
+2026-10-21补充：生产API仍为v1.2，`/api/aging`仍503、年龄能力false。本批只新增[有界会话库](../backend/src/agemorph3d/aging_sessions.py)、[独立SAM父端](../backend/src/agemorph3d/sam_worker.py)及显式测试factory，详见[连续年龄与隔离SAM服务研究](连续年龄与隔离SAM服务研究.md)。合成factory位于tests/fixtures，不随安装包发布，也不由生产factory读取测试环境标记。
+
+会话研究保留原始RGB/FFHQ/拟合与对齐上下文、源GLB/PNG及年龄来源，默认总序列化预算128MiB、16会话、固定300秒TTL；原始与派生资产同一寿命，读取不续期，响应和原生任务完成前租约继续计费。到期拒绝新访问、可重新重建；取消/超时不缓存迟到结果。两层worker处理必须实际drain，关闭有界worker后再完成coordinator drain。
+
+合成契约沿用`{mesh_id,age}`与`{shape_aged,texture_url}`，没有扩展生产成功schema。源龄精确相等先返回原始GLB/PNG；未知源龄为`SOURCE_AGE_REQUIRED`，其他小数目标为`INTEGER_AGE_REQUIRED`，到期为`SESSION_EXPIRED`。这些新增错误与`base.png`/`age-NNN.png`路由目前只在合成factory验证，不能当作生产端点已交付。已有生产参数校验不变。
+
+SAM stdio是单独内部研究协议：4字节大端长度、最大8MiB JSON/base64帧，输入最大1MiB的256×256 RGB PNG与整数20—70条件，输出1024×1024生成PNG和hash/PID/provenance。加载与自检成功仍为`research_loaded,service_ready=false`；生成PNG不是UV atlas，真实接入须先完成目标重建、遮挡、UV和质量/许可出口。小数显示插值不冒充SAM小数年龄生成。
+
 ## WebSocket 实时帧
 
 端点：`ws://127.0.0.1:8000/ws/frame`，与 HTTP 服务使用相同主机/端口；HTTPS 地址使用 `wss`。客户端发送 JPEG 二进制帧（最长边 640 像素，质量 0.7），发送频率上限 10 FPS，服务端返回 JSON。拍照上传最长边为 1280 像素。
