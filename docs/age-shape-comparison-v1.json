@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-age-shape-comparison-v1",
+  "frozen_on": "2026-10-21",
+  "parent_protocol_id": "agemorph3d-age-research-v1",
+  "scope": "N3 local research calibration and source-anchored shape-route comparison",
+  "calibration": {
+    "group": "calibration_research",
+    "expected_images": 70,
+    "expected_identities": 15,
+    "expected_distinct_age_pair_identities": 13,
+    "expected_directed_distinct_age_pairs": 314,
+    "model": "f(age)=beta*age; within-identity centered least squares with total photo weight one per identity",
+    "projection": "z=dot(neutral_raw_vertices,D)/dot(D,D), using the full verified mapped 199-PC direction",
+    "beta": "sum_i mean_j((age-identity_mean_age)*(z-identity_mean_z)) / sum_i mean_j((age-identity_mean_age)^2)",
+    "coefficient_unit": "native_strength_per_filename_label_year",
+    "sign_policy": "retain signed beta and all leave-one-identity-out slopes; never take absolute value or clamp to positive",
+    "same_age_only_identities": "retain requested samples but exclude identities without distinct ages from slope estimation",
+    "failure_policy": "retain failed requests, use successful fits only, do not impute",
+    "validation": "leave one eligible identity out; training labels determine each fold coverage; flag held-out extrapolation separately",
+    "basis_observability": "report projection of the full direction into the fitted first-40-PC span and its orthogonal remainder; do not replace the full direction",
+    "year_calibration_accepted": false
+  },
+  "comparison": {
+    "group": "development",
+    "expected_exact_age_matches": 3,
+    "cohort": "the three already observed exact-label real/generated matches from the N1/N2 report; no nearest-age substitution",
+    "candidates": ["no_change", "bfm_calibrated", "sam_difference"],
+    "bfm_geometry": "V_source + beta*(target_age-source_age)*D",
+    "sam_geometry": "V_source + neutral(fit(SAM(target_age))) - neutral(fit(SAM(source_age)))",
+    "reference": "neutral real target fit, in the unchanged original full source canonical frame",
+    "primary_metric": "identity-macro endpoint neutral vertex RMS residual to the real target fit",
+    "statistical_unit": "identity; report all per-pair outcomes and identity bootstrap, 2000 resamples, seed 20261020",
+    "truth_boundary": "fitted geometry proxies, not measured 3D truth, age MAE, identity accuracy or future-face prediction"
+  },
+  "source_reset_and_bounds": {
+    "reference": "always recompute from the saved immutable original source, never accumulate edits",
+    "reset": "target equals known source age returns the exact original object and vertex bytes",
+    "unknown": "unknown source age rejects an absolute target; no default values",
+    "bfm_nonzero_coverage": "both source and target must lie within successful calibration label support; no extrapolation or strength clipping",
+    "bfm_strength_range": [-50, 50],
+    "sam_nonzero_conditioning": "existing exact integer source-label and target-condition fits only; fractional nonzero requests reject without rounding",
+    "grid": "for each of eight labeled successful bridge sources, test unique ages 20,45,70 and its source age; retain out-of-coverage failures"
+  },
+  "identity_change": {
+    "method": "actual edited neutral geometry distances to the real same-person target and different-person development photos at exactly the same label age",
+    "margin": "nearest different-person distance minus same-person distance, using the original source frame",
+    "baseline": "report no-change margin and each candidate margin change, displacement and pose/expression provenance",
+    "limits": "one available different-person exact-age control per matched case, uncontrolled pose/quality, same fitted basis; unvalidated geometry diagnostic only",
+    "forbidden_claims": "unchanged shape/expr metadata or unchanged age-orthogonal residual does not prove identity preservation",
+    "independent_identity_evaluator": null,
+    "identity_quality_accepted": false
+  },
+  "selection": {
+    "scope": "development-only research ranking, no formal evaluation or production enablement",
+    "hard_gates": "exact source reset, finite matching topology, fixed source frame and all three matched comparisons available",
+    "bfm_sign_gate": "full-fit beta and every leave-one-identity-out beta must be positive",
+    "rule": "choose the eligible candidate with the lowest primary macro residual only when it improves over no_change; otherwise static_fallback",
+    "tie_policy": "prefer no_change; relative tolerance 1e-12 and absolute tolerance 1e-15 are numerical equality checks, not quality thresholds",
+    "quality_thresholds": null,
+    "production_route_selected": null,
+    "holdout_policy": "do not open evaluation_research_holdout age results or tune on it"
+  },
+  "permission_boundary": "existing local noncommercial research registration only; no new downloads, training, redistribution or license changes",
+  "service_ready": false,
+  "years_calibrated": false,
+  "identity_accepted": false,
+  "full_20_70_range_accepted": false,
+  "g3_complete": false
+}

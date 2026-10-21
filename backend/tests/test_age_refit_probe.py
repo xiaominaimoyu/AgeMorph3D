@@ -141,6 +141,7 @@ def test_longitudinal_keeps_all_pairs_failures_and_development_scope(example):
     assert result["summary"]["requested_images"] == 3
     assert result["summary"]["fit_statuses"] == {"ok": 2, "failed": 1}
     assert result["summary"]["failures"] == {"NO_FACE": 1}
+    assert result["summary"]["images_by_data_group"] == {"development": 3}
     assert len(result["comparison_records"]) == 6
     assert sum(row["status"] == "ok" for row in result["comparison_records"]) == 2
     assert 50 not in example.calls
@@ -176,6 +177,42 @@ def test_longitudinal_keeps_all_pairs_failures_and_development_scope(example):
     for name, expected in (("fits.csv", 3), ("comparisons.csv", 6)):
         with (example.output / name).open(encoding="utf-8", newline="") as stream:
             assert len(list(csv.DictReader(stream))) == expected
+
+
+def test_calibration_uses_only_frozen_calibration_group_and_preserves_purpose(example):
+    for filename, subject, age, marker in (
+        ("003A20.png", "003", 20, 61),
+        ("003A30.png", "003", 30, 62),
+        ("003A30a.png", "003", 30, 63),
+        ("004A40.png", "004", 40, 64),
+    ):
+        example.manifest["adult_images"].append(
+            dict(
+                example.image(filename, marker),
+                subject_id=subject,
+                source_age=age,
+                group="calibration_research",
+            )
+        )
+    args = ["calibration" if arg == "longitudinal" else arg for arg in example.arguments]
+    assert probe.main(args) == 0
+    result = report(example)
+    assert result["study"] == "calibration"
+    assert result["scope"].startswith("calibration-only N3")
+    assert result["independent_external_evaluation"] is False
+    assert result["summary"]["requested_images"] == 4
+    assert result["summary"]["images_by_data_group"] == {"calibration_research": 4}
+    assert example.calls == [61, 62, 63, 64]
+    assert all(row["data_group"] == "calibration_research" for row in result["fit_records"])
+    pairs = result["comparison_records"]
+    assert len(pairs) == 4 and all(row["source_age"] != row["target_age"] for row in pairs)
+    assert all(row["data_group"] == "calibration_research" for row in pairs)
+    assert all(row["subject_id"] == "003" for row in pairs)
+    assert example.closed == ["detector", "reconstructor"]
+    for name in ("fits.csv", "comparisons.csv"):
+        with (example.output / name).open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream))
+            assert {row["data_group"] for row in rows} == {"calibration_research"}
 
 
 def generated_case(example, sample_id, source_age):

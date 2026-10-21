@@ -1,4 +1,4 @@
-"""Offline development-only longitudinal and generated-image refitting research.
+"""Offline group-limited longitudinal and generated-image refitting research.
 
 Each image gets its own detector, 3DDFA projection and expression estimate. All
 comparisons share the unchanged original source frame; this does not enable age
@@ -96,14 +96,16 @@ def _verified_protocol(root: Path, manifest_path: Path, freeze_path: Path) -> di
 
 def _jobs(manifest: dict, study: str) -> list[dict]:
     jobs = []
-    if study == "longitudinal":
+    if study in ("longitudinal", "calibration"):
+        selected_group = "calibration_research" if study == "calibration" else "development"
         for image in manifest["adult_images"]:
-            if image["group"] == "development":
+            if image["group"] == selected_group:
                 jobs.append(
                     {
                         "sample_id": "fgnet-" + Path(image["path"]).stem.lower(),
                         "subject_id": image["subject_id"],
                         "source_age": image["source_age"],
+                        "data_group": image["group"],
                         "role": "original",
                         "input": {key: image[key] for key in ("path", "sha256", "bytes")},
                     }
@@ -114,6 +116,7 @@ def _jobs(manifest: dict, study: str) -> list[dict]:
                 "subject_id": case["subject_id"],
                 "source_age": case["source_age"]["value"],
                 "reference_source_id": case["sample_id"],
+                "data_group": case.get("group", "development"),
             }
             jobs.append(
                 dict(common, sample_id=case["sample_id"], role="original", input=case["source"])
@@ -322,6 +325,7 @@ def _comparison(
 ) -> dict:
     row = dict(
         subject_id=records[anchor_id]["subject_id"],
+        data_group=records[anchor_id]["data_group"],
         source_id=source_id,
         target_id=target_id,
         reference_source_id=anchor_id,
@@ -349,7 +353,7 @@ def _comparisons(
     manifest: dict, study: str, jobs: list, fits: dict, records: dict, basis: np.ndarray
 ) -> list[dict]:
     result = []
-    if study == "longitudinal":
+    if study in ("longitudinal", "calibration"):
         for pair in longitudinal_pairs(jobs):
             pair = dict(pair)
             source_id, target_id = pair.pop("source_id"), pair.pop("target_id")
@@ -462,6 +466,7 @@ def run_study(args, manifest: dict, output: Path, report: dict) -> None:
             [
                 "sample_id",
                 "subject_id",
+                "data_group",
                 "role",
                 "source_age",
                 "target_age",
@@ -482,6 +487,7 @@ def run_study(args, manifest: dict, output: Path, report: dict) -> None:
             [
                 "kind",
                 "subject_id",
+                "data_group",
                 "source_id",
                 "target_id",
                 "reference_source_id",
@@ -503,6 +509,7 @@ def run_study(args, manifest: dict, output: Path, report: dict) -> None:
                 Counter(row["error_code"] for row in records.values() if row["status"] != "ok")
             ),
             "images_by_role": dict(Counter(row["role"] for row in jobs)),
+            "images_by_data_group": dict(Counter(row["data_group"] for row in jobs)),
             "comparisons": {
                 kind: aggregate_identity_metrics(
                     [row for row in comparisons if row["kind"] == kind], _METRICS
@@ -521,7 +528,9 @@ def run_study(args, manifest: dict, output: Path, report: dict) -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--study", required=True, choices=("longitudinal", "generated"))
+    parser.add_argument(
+        "--study", required=True, choices=("longitudinal", "generated", "calibration")
+    )
     parser.add_argument("--root", type=Path, default=_ROOT)
     parser.add_argument(
         "--protocol-manifest",
@@ -540,7 +549,11 @@ def main(argv=None) -> int:
         "schema_version": 1,
         "recorded_at_utc": datetime.now(UTC).isoformat(),
         "study": args.study,
-        "scope": "development-only N1/N2 geometric proxy research",
+        "scope": (
+            "calibration-only N3 geometric proxy research; not independent evaluation"
+            if args.study == "calibration"
+            else "development-only N1/N2 geometric proxy research"
+        ),
         "research_only": True,
         "service_ready": False,
         "g3_complete": False,
