@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-g3-acceptance-v1",
+  "frozen_on": "2026-10-22",
+  "scope": "N7 development evidence audit; no independent quality acceptance or production activation",
+  "report_roles": ["evaluation", "shape", "uv", "continuity", "engineering", "source_reset"],
+  "required_source_files": [
+    "backend/src/agemorph3d/g3_acceptance.py",
+    "backend/src/agemorph3d/app.py",
+    "backend/src/agemorph3d/runtime.py",
+    "backend/src/agemorph3d/model_lifecycle.py",
+    "backend/src/agemorph3d/schemas.py",
+    "backend/src/agemorph3d/reconstruction.py",
+    "backend/src/agemorph3d/age_continuity.py",
+    "backend/src/agemorph3d/aging_sessions.py",
+    "tools/age_protocol.py",
+    "tools/g3_acceptance_probe.py",
+    "tools/source_reset_probe.py"
+  ],
+  "evidence_policy": {
+    "history": "Existing development results were already inspected; this audit is not blind evaluation.",
+    "integrity": "Pin every supplied report and required current source file before the audit. Verify cross-report links. Report hashes bind historical statements; this audit does not rerun model inference or revalidate every historical descendant.",
+    "source_reset": "Use original-photo assets and retain mirror age labels solely as research labels; API source_age remains unknown. Unknown labels block absolute-age reset requests.",
+    "quality": "No quality pass may be inferred from a boolean in a research report, tests, proxy metrics, same-age generation, or file presence. Independent evaluation, licenses and quality signoff remain missing in this audit version.",
+    "production": "The offline evaluator never configures or enables a service; production_enabled is always false. Existing runtime instance, source age and result-asset checks remain required."
+  },
+  "output_policy": "Create a new directory under ignored output/research; reject existing directories and changed/missing input pins before creating it.",
+  "training": false,
+  "new_sam_inference": false,
+  "holdout_age_results_opened": false
+}
