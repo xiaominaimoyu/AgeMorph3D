@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-blend-display-controls-v1",
+  "parent_protocol_id": "agemorph3d-blend-display-v1",
+  "planned_on": "2026-10-22",
+  "timing": "Added after source review and before generation of new BLEND results; the original input freeze is retained unchanged.",
+  "hypothesis": "Switching the exact source asset from MASK to neighboring BLEND material can cause a rendered discontinuity even with identical geometry and PNG bytes.",
+  "controls": {
+    "source_exact": "Keep the original MASK GLB and PNG bytes unchanged at the research source label.",
+    "source_material_only": "Render the same original geometry and original PNG with experimental BLEND material; record the difference from the unchanged original MASK asset.",
+    "source_neighborhood": "Measure before to exact, exact to after, and before to after independently. The two BLEND sides alone cannot establish continuity at the MASK source point.",
+    "mask_baseline": "Compare an interval's identical interpolated PNGs using MASK and BLEND; the geometry, UV and camera remain fixed.",
+    "fixed_view": "Disable grid and auto-rotation, use fixed viewport/front camera and explicit rendered frames; report tone-mapped sRGB image changes separately from linear atlas changes."
+  },
+  "limitations": [
+    "A single 0.001-year epsilon is a local step diagnostic, not a convergence proof or visual-quality acceptance threshold.",
+    "Bilinear texture filtering creates fractional fragment alpha even from a binary-alpha PNG.",
+    "BLEND defaults to disabled depth writing in the installed loader; triangle ordering can change self-overlap appearance.",
+    "A canvas export may quantize partially transparent RGB; record alpha and black/white composite error separately.",
+    "If a source-point material transition fails, preserve that finding instead of declaring the entire display chain continuous."
+  ],
+  "production_continuity_accepted": false,
+  "age_quality_accepted": false,
+  "identity_quality_accepted": false,
+  "g3_complete": false
+}

@@ -5,6 +5,7 @@ import { createDemoHead } from "./demo-head";
 import { getAgeWeights } from "./age";
 import { LocalApi } from "./services";
 import type { Reconstruction } from "./contracts";
+import type { ResearchTextureFrame } from "./research-texture";
 
 export type ModelOptions = Pick<Reconstruction, "asset_mode" | "source_age" | "topology_id"> & Partial<Pick<Reconstruction, "capabilities">>;
 
@@ -24,6 +25,10 @@ type MeshBinding = {
   points: THREE.Points;
   anchors: number[] | null;
 };
+type ColorMaterial = THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
+type ResearchMaterialState = Pick<ColorMaterial,
+  "map" | "transparent" | "alphaTest" | "depthWrite" | "premultipliedAlpha" | "opacity"
+>;
 const AGES = [20, 45, 70] as const;
 
 function assertTextureUv(mesh: THREE.Mesh, channel = 0): void {
@@ -174,6 +179,10 @@ export class FaceViewer {
   >();
   private readonly originalTextures = new Set<THREE.Texture>();
   private uploadedTexture: THREE.Texture | null = null;
+  private readonly researchMaterialStates = new Map<ColorMaterial, ResearchMaterialState>();
+  private researchTexture: THREE.CanvasTexture | null = null;
+  private researchCanvas: HTMLCanvasElement | null = null;
+  private researchTextureAge: { present: boolean; value: unknown } | null = null;
   private age = 30;
   private assetMode: Reconstruction["asset_mode"] = "age_morph";
   private referenceAge: number | null = 30;
@@ -545,6 +554,7 @@ export class FaceViewer {
       throw new Error("必须明确指定静态或年龄形变资产模式。");
     if (options.asset_mode === "age_morph" && options.source_age.value === null)
       throw new Error("年龄形变资产必须有已知源年龄。");
+    this.clearResearchDisplay();
     const version = ++this.loadVersion;
     this.modelRequest?.abort();
     const controller = new AbortController();
@@ -657,7 +667,117 @@ export class FaceViewer {
     }
   }
 
+  private disposeResearchTexture(): void {
+    this.researchTexture?.dispose();
+    this.researchTexture = null;
+    if (this.researchCanvas) {
+      this.researchCanvas.width = 0;
+      this.researchCanvas.height = 0;
+    }
+    this.researchCanvas = null;
+  }
+
+  private clearResearchDisplay(): void {
+    this.researchMaterialStates.forEach((state, material) => {
+      Object.assign(material, state);
+      material.needsUpdate = true;
+    });
+    this.researchMaterialStates.clear();
+    this.disposeResearchTexture();
+    if (this.model) {
+      if (this.researchTextureAge?.present)
+        this.model.userData.texture_age = this.researchTextureAge.value;
+      else if (this.researchTextureAge) delete this.model.userData.texture_age;
+      delete this.model.userData.research_display;
+    }
+    this.researchTextureAge = null;
+  }
+
+  /** Opt-in rendered research derivative; grants no age or texture capability. */
+  setResearchDisplayTexture(frame: ResearchTextureFrame | null): void {
+    if (frame === null) {
+      this.textureVersion++;
+      this.textureRequest?.abort();
+      this.clearResearchDisplay();
+      return;
+    }
+    if (this.disposed || !this.model || this.assetMode !== "static" || !this.bindings.length)
+      throw new Error("研究显示需要已加载的静态网格。");
+    if (
+      !frame || frame.kind !== "research-display-only" ||
+      !Number.isInteger(frame.width) || !Number.isInteger(frame.height) ||
+      frame.width < 1 || frame.height < 1 || frame.width * frame.height > 16_000_000 ||
+      !(frame.rgba instanceof Uint8ClampedArray) ||
+      frame.rgba.length !== frame.width * frame.height * 4 ||
+      !Number.isFinite(frame.targetAge) || frame.targetAge < 20 || frame.targetAge > 70 ||
+      (frame.sourceLabel !== null && (!Number.isFinite(frame.sourceLabel) || frame.sourceLabel < 20 || frame.sourceLabel > 70)) ||
+      typeof frame.exactSource !== "boolean" ||
+      frame.exactSource !== (frame.sourceLabel !== null && frame.targetAge === frame.sourceLabel)
+    ) throw new Error("研究纹理帧、年龄标签或像素尺寸无效。");
+    const materials = new Set<ColorMaterial>();
+    for (const binding of this.bindings) {
+      assertTextureUv(binding.mesh);
+      for (const material of Array.isArray(binding.material) ? binding.material : [binding.material]) {
+        if (!(material instanceof THREE.MeshStandardMaterial) && !(material instanceof THREE.MeshBasicMaterial))
+          throw new Error("当前网格材质不支持研究纹理显示。");
+        materials.add(material);
+      }
+    }
+    // Own a copy: a sampler may return its immutable original-source pixels.
+    const pixels = new Uint8ClampedArray(frame.rgba);
+    for (let index = 0; index < pixels.length; index += 4)
+      if (pixels[index + 3] === 0 && (pixels[index] || pixels[index + 1] || pixels[index + 2]))
+        throw new Error("研究纹理的未知区域必须保持透明黑色。");
+    const canvas = document.createElement("canvas");
+    canvas.width = frame.width;
+    canvas.height = frame.height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("浏览器无法创建研究纹理画布。");
+    context.putImageData(new ImageData(pixels, frame.width, frame.height), 0, 0);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.flipY = false;
+    texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.magFilter = texture.minFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    this.textureVersion++;
+    this.textureRequest?.abort();
+    this.disposeResearchTexture();
+    this.researchTexture = texture;
+    this.researchCanvas = canvas;
+    if (!this.researchTextureAge) this.researchTextureAge = {
+      present: Object.prototype.hasOwnProperty.call(this.model.userData, "texture_age"),
+      value: this.model.userData.texture_age,
+    };
+    delete this.model.userData.texture_age;
+    materials.forEach((material) => {
+      if (!this.researchMaterialStates.has(material)) this.researchMaterialStates.set(material, {
+        map: material.map,
+        transparent: material.transparent,
+        alphaTest: material.alphaTest,
+        depthWrite: material.depthWrite,
+        premultipliedAlpha: material.premultipliedAlpha,
+        opacity: material.opacity,
+      });
+      material.map = texture;
+      material.transparent = true;
+      material.alphaTest = 0;
+      material.depthWrite = false;
+      material.premultipliedAlpha = false;
+      material.opacity = 1;
+      material.needsUpdate = true;
+    });
+    this.model.userData.research_display = {
+      kind: frame.kind,
+      target_condition: frame.targetAge,
+      source_research_label: frame.sourceLabel,
+      exact_source: frame.exactSource,
+      rendered_derivative: true,
+    };
+  }
+
   private restoreTexture(): void {
+    this.clearResearchDisplay();
     this.originalMaps.forEach((map, material) => {
       material.map = map;
       material.needsUpdate = true;
@@ -668,6 +788,7 @@ export class FaceViewer {
 
   async setTexture(url: string | null, asBase = false, targetAge?: number): Promise<void> {
     if (targetAge !== undefined) getAgeWeights(targetAge);
+    this.clearResearchDisplay();
     const version = ++this.textureVersion;
     this.textureRequest?.abort();
     if (!url) {

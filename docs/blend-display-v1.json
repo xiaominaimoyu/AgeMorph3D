@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-blend-display-v1",
+  "frozen_on": "2026-10-22",
+  "scope": "Offline N7 display experiment on unchanged source geometry, not generated fractional age or production acceptance",
+  "expected_sources": 10,
+  "expected_generated": 37,
+  "expected_intervals": 27,
+  "epsilon_years": 0.001,
+  "atlas_size": 256,
+  "anchors": {
+    "known_research_label": "Use original-photo PNG/GLB at the exact filename research label; replace the same-age SAM anchor, never its provenance.",
+    "unknown_source": "Keep unknown source age and record missing original-age anchor; SAM target-condition display interpolation does not assign a source age.",
+    "extrapolation": "Reject outside the actual anchor coverage; do not clamp or round."
+  },
+  "sampling": {
+    "boundaries": [20, 70],
+    "original_interval_midpoints": "Each of the 27 input intervals at midpoint minus/plus epsilon_years, after source anchor replacement.",
+    "source_neighborhoods": "Each of 8 known research source labels at exact label and minus/plus epsilon_years within coverage.",
+    "deduplication": "One asset per exact source and target float value; retain all comparison requests."
+  },
+  "color_alpha": {
+    "mix": "Decode sRGB to linear light, premultiply RGB by alpha, interpolate RGB and alpha together.",
+    "encoding": "Quantize to straight sRGB RGBA PNG; record quantization and downstream browser canvas/export errors separately.",
+    "unknown": "Both-unknown pixels remain RGBA zero; partial support means a display fade, not newly observed facial texture.",
+    "material": "Non-source experimental assets use glTF BLEND; exact original source asset retains original material and bytes."
+  },
+  "browser_evidence": {
+    "engines": ["Chrome", "Edge"],
+    "transport": "Use actual FaceViewer and GLTFLoader, export and reimport; compare geometry arrays and alpha/material semantics.",
+    "rendering": "Measure fixed-view neighbor pixel changes and a MASK baseline separately; no invented visual-quality threshold.",
+    "source_reset": "Exact original source assets and binary-alpha decoded pixels must be preserved.",
+    "resource_ownership": "Loopback-only owned servers and browser processes close after success, failure or cancellation."
+  },
+  "historical_observations_seen": true,
+  "quality_thresholds_established": false,
+  "production_continuity_accepted": false,
+  "age_quality_accepted": false,
+  "identity_quality_accepted": false,
+  "service_ready": false,
+  "g3_complete": false,
+  "new_sam_inference": false,
+  "training": false,
+  "holdout_age_results_opened": false
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-research-texture-display-v1",
+  "planned_on": "2026-10-22",
+  "scope": "Explicit interactive research display; no production age API, global capability or real fractional-age generation",
+  "decision_basis": "The preceding frozen 98-case BLEND experiment found a MASK/BLEND source-point jump. This policy is chosen after inspecting those development results and is not independent evaluation.",
+  "source_contract": {
+    "original_assets": "Retain original GLB and PNG bytes separately and unchanged.",
+    "source_pixels": "At an exact known research source label return the original anchor RGBA object without interpolation or rounding.",
+    "display_policy": "Use one consistent BLEND material policy at every displayed target, including the exact source point. The display is a derivative and is not identical to the original MASK rendering.",
+    "export": "Export the research display derivative with explicit metadata; do not describe reserialized display GLB as original-source file bytes.",
+    "exit_research_mode": "Restore original maps and complete material transparency/depth state and release owned research resources."
+  },
+  "age_policy": {
+    "range": [20, 70],
+    "fractional": "Preserve finite decimal labels, including 42.5; never silently round or clamp.",
+    "unknown": "No original-age anchor without a known research label; SAM target-condition interpolation does not infer API source age.",
+    "same_age_conflict": "The original source anchor wins over a same-age SAM anchor; other duplicate-age ambiguity is rejected.",
+    "coverage": "Reject extrapolation outside the actual supplied anchors."
+  },
+  "numerical_policy": {
+    "color": "Linear-light premultiplied RGB and alpha interpolation, then straight sRGB RGBA8 encoding.",
+    "quantization": "Use ties-to-even rounding to match the existing Python numerical reference.",
+    "unknown": "Both-unknown remains RGBA zero; partial support is a display fade, never a newly observed surface."
+  },
+  "verification": {
+    "browsers": ["Chrome", "Edge"],
+    "baseline_schedule": "Reuse all 98 frozen development target cases, with fixed source geometry and common UV.",
+    "source_epsilons": [0.1, 0.01, 0.001, 0.0001],
+    "views": ["front", "side"],
+    "backgrounds": ["black", "white"],
+    "raw_exports": "Persist every exported embedded PNG and independently decode raw RGBA; canvas-domain equality alone is insufficient.",
+    "resource_and_restore": "Check mode clear, ordinary texture path, model replacement and disposal; close owned loopback servers and browsers."
+  },
+  "limits": "Fixed geometry, software WebGL and quantized image samples cannot establish real age/identity quality or universal mathematical/rendered continuity.",
+  "production_capabilities_changed": false,
+  "production_continuity_accepted": false,
+  "age_quality_accepted": false,
+  "identity_quality_accepted": false,
+  "service_ready": false,
+  "g3_complete": false
+}
