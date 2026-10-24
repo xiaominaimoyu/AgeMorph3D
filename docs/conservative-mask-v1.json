@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-conservative-mask-v1",
+  "cohort": {
+    "sources": {"fgnet-004a63": [20, 45, 63, 70], "fgnet-082a27": [20, 27, 45, 70], "fgnet-006a55": [20, 45, 55, 70]},
+    "expected_targets": 12,
+    "group": "development",
+    "api_source_age": {"value": null, "method": "unknown", "calibration_id": null},
+    "review_target_count": 37,
+    "annotation_count": 4
+  },
+  "rasterization": {
+    "fill": "LINE_8 shift0 per-polygon union",
+    "margin_pixels": 12,
+    "dilation_kernel": 25,
+    "border_value": 0,
+    "coordinates": "Explicit integer native target-image XY, implicit polygon closure; reject repeated vertices, degenerate or self-intersecting polygons."
+  },
+  "refinement": {
+    "release": "old_occluded & skin & ~protected_margin",
+    "allowed": "old_allowed | release",
+    "occluded": "old_occluded & ~release",
+    "labels": {"outside_old_occluded": 0, "released_skin": 1, "protected_margin": 2, "unreviewed_old_occluded": 3},
+    "description": "Only explicitly selected visible-skin polygons may restore eligibility inside the original band. Glasses/lenses/frame/bridge envelopes plus safety margin and all unreviewed old-band pixels remain excluded. This is an AI development candidate without physical segmentation ground truth."
+  },
+  "observations": {
+    "historical_mask_results_seen_before_freeze": true,
+    "remove_B_upper_bound_seen_before_freeze": true,
+    "candidate_mask_results_seen_before_freeze": false,
+    "reviewer_kind": "ai",
+    "human_review_completed": false,
+    "annotation_preview_policy": "Inspect polygon outlines on each unchanged native PNG before freezing. If candidate overlays show a defect, retain v1 and make a separately frozen revision. Do not tune for UV support or detector scores."
+  },
+  "publication": {
+    "old_baseline_gate": "All12 selected targets must reproduce original mask pixels and contributor decomposition before any candidate publication.",
+    "artifacts": "Four new allowed/occluded/label PNG sets plus full37 compatible AI mask-review JSON, all in a new research directory.",
+    "unchanged_comparators": "Preserve other33 review rows exactly, and all original saved masks/atlases/geometry.",
+    "failure_policy": "Any preparation failure blocks the whole candidate batch. Source/input/plan/runtime drift clears all candidate records and only removes artifacts created by this run; foreign files and old outputs are preserved."
+  },
+  "quality_threshold": null,
+  "flags": {
+    "research_only": true,
+    "age_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "independent_evaluation": false,
+    "causal_cause_accepted": false,
+    "masks_modified": false,
+    "unknown_regions_filled": false,
+    "real_model_inference": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false,
+    "historical_process_identity_proven": false,
+    "human_review_completed": false,
+    "usable_mask_candidate_accepted": false
+  },
+  "saved_asset_semantics": "masks_modified=false refers to unchanged original saved masks; candidate files are new separately versioned artifacts. No inference or automatic external occluder segmentation."
+}

@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-render-domain-v1",
+  "frozen_on": "2026-10-23",
+  "scope": "Development-only paired static 3D render diagnostics. Original and SAM textures use the same source canonical geometry; no age shape or production acceptance.",
+  "observations": {
+    "raw_photo_identity_and_age_scores_previously_seen": true,
+    "historical_development_atlases_and_display_tests_exposed": true,
+    "render_domain_model_scores_seen_before_freeze": false,
+    "training_overlap": "Unknown; these development subjects are not independent validation."
+  },
+  "cohort": {
+    "original_assets": 10,
+    "sam_assets": 37,
+    "source_age_labels_known": 8,
+    "source_age_labels_unknown": 2,
+    "same_age_control_assets": 8,
+    "other_condition_assets": 23,
+    "unknown_source_age_assets": 6,
+    "unique_frames": 376,
+    "paired_comparisons": 296,
+    "held_out_inference": false,
+    "baseline_target_age": null
+  },
+  "capture": {
+    "browser_channel": "chrome",
+    "headless": true,
+    "browser_args": ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
+    "width": 1024,
+    "height": 1024,
+    "device_scale_factor": 1,
+    "views": ["front", "side"],
+    "backgrounds": ["black", "white"],
+    "material_modes": ["MASK", "BLEND"],
+    "renderer": "Actual FaceViewer, original GLB maps/filtering, sRGB output, ACESFilmic tone mapping, exposure 1.05, original four lights and fog(8,19)",
+    "viewer_settings": "studio lighting, solid mode, compare=false, grid=false, autoRotate=false; disable controls damping after resetting camera to remove frame-order dependence",
+    "camera": "Perspective 36deg, aspect1, near0.05 far100, target(0,-0.05,0); front(0,0.03,4.9), side(4.9,0.03,0), actual 90-degree side",
+    "MASK": "Original material: transparent=false, alphaTest=0.5, depthWrite=true, premultipliedAlpha=false, opacity=1",
+    "BLEND": "Same original map/material lighting: transparent=true, alphaTest=0, depthWrite=false, premultipliedAlpha=false, opacity=1; only these flags change. This matches research alpha flags, not the full CanvasTexture sampler/filter path (which disables mipmaps and uses LinearFilter).",
+    "age_neutral_loading": "Direct GLB load as static with unknown API source_age; no timeline sampler or invented target age. Preserve all eight SAM same-age controls.",
+    "image": "Actual viewer.exportPNG() canvas render; top-left PNG orientation, full clean viewport, no UI or raw atlas substitution",
+    "geometry": "Verify position/normal/index/UV typed-array SHA against source invariants for every loaded GLB before capture and after each material/view/background change; also record and compare normalization/world transforms, material type/side/roughness/metalness/color and map color space/UV/filter/wrap state within each source pair",
+    "transport": "Owned loopback-only Vite and exact allowlisted asset server; reject external browser requests; close all owned resources",
+    "freeze": "Hash protocol, viewer dependencies, harness, source reports and all GLB/atlas assets before and after; reject drift and refuse output overwrite"
+  },
+  "evaluation": {
+    "identity": "Fixed previously pinned CPU YuNet/SFace algorithm; all 376 frames re-detected independently. Retain NO_FACE/MULTIPLE_FACES and every requested denominator; no threshold.",
+    "age": "Fixed MiVOLO V2 CPU float32 predictor in separate 35-package environment; reuse render identity detection boxes/status, floor/ceil clipped zero-padding crop without landmark warp; normalized black body placeholder; raw age*122+61, no clamp/round/gender export",
+    "paired": "Each of 37 SAM assets at eight configurations paired with its original source static 3D frame at exactly the same configuration (296 pairs). Reuse 80 original frames; never treat repeated views as independent sources.",
+    "metrics": {
+      "identity_cosine": "Cosine of target render versus original static render; require both embeddings; descriptive, no identity acceptance cutoff",
+      "age_shift": "target render age minus original static render age",
+      "condition_deviation": "target render age minus requested SAM target condition; signed, condition is not ground truth",
+      "static_condition_deviation": "original static render age minus requested SAM target condition",
+      "absolute_condition_reduction": "abs(static_condition_deviation)-abs(condition_deviation)",
+      "original_age_error": "Original static frames only: prediction minus known research filename source age; keep unknown labels null"
+    },
+    "pair_complete_cases": "Age metrics share both-estimates complete cases; identity has its own both-embedding complete cases. Preserve individual frame results and separate age/identity failure denominators.",
+    "summaries": "Separately for each of eight material/view/background configurations and same_age_control/other_condition/unknown_source_age (24 paired summaries), average scored observations within source, then equally weight effective sources. Eight original-render summaries use only the eight known filename ages, retain ten requested frames and unknown count.",
+    "bootstrap": {
+      "replicates": 1000,
+      "seed": 20261023,
+      "key": "paired/{material}/{view}/{background}/{category} or original/{material}/{view}/{background}",
+      "unit": "Effective source IDs sorted lexicographically, random.Random(base_seed + int(SHA256(UTF8(key))[:16],16)); n rng.randrange(n) draws per replicate, shared across each metric vector with the same complete-case set",
+      "interval": "Sorted linear interpolation at (N-1)*0.025 and 0.975; null for zero units; explicit degenerate one-unit interval. Conditional descriptive uncertainty, not missingness correction or independent validation."
+    },
+    "input_integrity": "Bounded image snapshots and frozen metadata/source/model/environment pins before inference and after all aggregation; drift prevents successful publication",
+    "quality_threshold": null,
+    "interpretation": "Texture coverage, missing UV regions, alpha/material/background, pose and rendering domain can affect detection/age/identity. This study measures those confounds on existing static geometry; raw-photo condition improvement is not a 3D baseline."
+  },
+  "flags": {
+    "research_only": true,
+    "age_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "years_calibrated": false,
+    "independent_evaluation": false,
+    "training_overlap_excluded": false,
+    "legal_permission_established": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

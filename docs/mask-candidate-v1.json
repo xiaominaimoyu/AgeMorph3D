@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-mask-candidate-v1",
+  "cohort": {
+    "sources": {
+      "fgnet-004a63": [20, 45, 63, 70],
+      "fgnet-082a27": [20, 27, 45, 70],
+      "fgnet-006a55": [20, 45, 55, 70]
+    },
+    "expected_targets": 12,
+    "group": "development",
+    "api_source_age": {"value": null, "method": "unknown", "calibration_id": null},
+    "same_age_controls": {"fgnet-004a63": 63, "fgnet-082a27": 27, "fgnet-006a55": 55}
+  },
+  "arms": ["old_baseline", "remove_B_upper_bound"],
+  "counterfactual": {
+    "allowed": "E & ~M",
+    "occluded": "none",
+    "only_transition": [5, 6],
+    "upper_bound_only": true,
+    "description": "Remove only reviewed candidate band B in memory. This admits glasses, reflections and other uncertain pixels and is never a usable conservative mask. No mask, image, atlas or GLB is written."
+  },
+  "invariants": {
+    "all12_old_masks_and_decomposition_must_match_before_any_counterfactual": true,
+    "positive_bilinear_weights_only": true,
+    "geometry_classes_0_to_4_unchanged": true,
+    "old_class6_unchanged": true,
+    "all7_class_transitions_reported": true,
+    "only_reason_bit8_can_be_released": true,
+    "mixed_bit8_and_other_rejection_remains_class5": true,
+    "five_overlapping_region_denominators_unchanged": true,
+    "source_canonical_target_projection_owner_barycentrics_unchanged": true,
+    "all12_failures_retained": true,
+    "whole_cohort_drift_invalidates_all_counterfactual_numbers": true,
+    "unknown_regions_filled": false
+  },
+  "observations": {
+    "historical_mask_results_seen_before_freeze": true,
+    "candidate_results_seen_before_freeze": false,
+    "ai_visual_observations_before_candidate": true,
+    "human_review_completed": false,
+    "scope": "AI development observations of original12 generated PNGs and their old exclusion overlays. Clear-looking forehead/nose pixels coexist with lenses, rims and uncertainty inside the focus band; this does not support releasing the entire band.",
+    "known_development_predictions": {
+      "fgnet-004a63--sam-020": 12470,
+      "fgnet-004a63--sam-045": 12367,
+      "fgnet-004a63--sam-063": 12526,
+      "fgnet-004a63--sam-070": 12813
+    },
+    "predictions_are_acceptance_thresholds": false,
+    "prediction_origin": "Previously seen old-mask bit8-only decomposition, not an independent result or blind prediction."
+  },
+  "output": {
+    "format": "JSON only, new output/research directory",
+    "mask_delta": "Exact added/removed/unchanged pixel counts for allowed and occluded",
+    "uv_delta": "Whole256x256 7x7 transition matrix, region counts and transitions on original unique correspondences",
+    "failure_policy": "Do not overwrite old output. Preserve all12 request records and block the cohort if baseline fails. Clear all counterfactual numbers on plan/input/source/runtime drift."
+  },
+  "quality_threshold": null,
+  "flags": {
+    "research_only": true,
+    "age_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "independent_evaluation": false,
+    "causal_cause_accepted": false,
+    "masks_modified": false,
+    "unknown_regions_filled": false,
+    "real_model_inference": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false,
+    "historical_process_identity_proven": false,
+    "human_review_completed": false,
+    "usable_mask_candidate_accepted": false
+  }
+}

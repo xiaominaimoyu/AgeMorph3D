@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-identity-evaluator-v1",
+  "frozen_on": "2026-10-23",
+  "scope": "CPU SFace/YuNet diagnostic on frozen N0 development and calibration originals, development source anchors and existing development SAM outputs; no held-out identity inference or quality acceptance.",
+  "observations": {
+    "historical_preprocessing_exposed": true,
+    "development_sam_outputs_previously_viewed": true,
+    "synthetic_cpu_model_selfcheck_completed": true,
+    "real_identity_scores_seen_before_freeze": false,
+    "training_cohort_overlap": "Unknown; the weight publishers do not establish exclusion of FG-NET, AgeDB or the local research subjects."
+  },
+  "cohort": {
+    "groups": ["development", "calibration_research"],
+    "expected_originals": 155,
+    "expected_generated": 37,
+    "expected_sources": 10,
+    "expected_unique_images": 194,
+    "expected_original_pairs": 5985,
+    "expected_source_generated_pairs": 37
+  },
+  "evaluator": {
+    "revision": "48b10fa505aeb51fbd127fc60a5c660040e823b7",
+    "backend": "CPU",
+    "threads": 1,
+    "detector": {
+      "model": "yunet_2023mar",
+      "score_threshold": 0.9,
+      "nms_threshold": 0.3,
+      "top_k": 5000,
+      "max_side": 320,
+      "downscale_only": true,
+      "resample": "INTER_AREA",
+      "mapping": "actual resized width/height ratios back to original",
+      "resize_rounding": "max(1, round(dimension * min(1, 320 / max(width, height))))",
+      "multiple_faces": "Fail the image; never select the largest or highest-scoring face."
+    },
+    "recognizer": "sface_2021dec",
+    "embedding_dimensions": 128,
+    "aligned_size": [112, 112],
+    "score": "normalized_dot_no_threshold",
+    "alignment": "Map detector bbox and all five landmarks by actual axis ratios, then FaceRecognizerSF.alignCrop on the original EXIF-corrected BGR image."
+  },
+  "limits": {
+    "image_max_bytes": 10485760,
+    "image_max_pixels": 16000000,
+    "model_max_bytes": 67108864,
+    "report_max_bytes": 2097152
+  },
+  "accounting": {
+    "original_pairs": "All unordered pairs within each allowed N0 group; keep same-identity same-age, same-identity cross-age and different-identity strata separate. Dataset identity and filename age are research labels, not independently verified truth.",
+    "generated_pairs": "Only source_generated_comparison for each existing development output; separate same_age_control, other_condition and unknown_source_age. Generated preservation is not assumed ground truth.",
+    "upstream_source_failures": "Record the two N0 source failures separately; do not invent missing generation requests. All 155 eligible originals are attempted with this evaluator.",
+    "macro": "Positive units are subjects; negative units are unordered subject pairs; generated units are source IDs within category. Average scored pairs inside each unit, then equally weight effective units. Record requested/scored counts, null means and eligible/effective unit counts.",
+    "failures": "Keep every image and pair request in denominators. Missing, undecodable, changed, no-face, multi-face or invalid-feature inputs have explicit failure status and null pair scores.",
+    "integrity": "Verify bounded image snapshots before decode and recheck after all pair scoring and aggregation. Late source drift removes embeddings and invalidates affected pairs before recomputing aggregates. Metadata, code or model drift rejects successful publication.",
+    "output": "Local ignored report.json with embeddings and diagnostics plus all requested pairs in pairs.csv; no images, crops or thumbnails."
+  },
+  "quality_threshold": null,
+  "flags": {
+    "research_only": true,
+    "identity_quality_accepted": false,
+    "independent_evaluation": false,
+    "training_overlap_excluded": false,
+    "legal_permission_established": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

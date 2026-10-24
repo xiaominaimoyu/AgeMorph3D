@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-age-evaluator-v1",
+  "frozen_on": "2026-10-23",
+  "scope": "Development/calibration MiVOLO CPU age diagnostics using frozen YuNet boxes; no held-out age inference, threshold calibration or G3 acceptance.",
+  "observations": {
+    "real_age_scores_seen_before_freeze": false,
+    "synthetic_cpu_selfcheck_completed": true,
+    "identity_results_previously_seen": true,
+    "development_sam_outputs_previously_viewed": true,
+    "training_cohort_overlap": "Unknown; proprietary and open training data versions and overlap with local subjects are not established."
+  },
+  "cohort": {
+    "groups": ["development", "calibration_research"],
+    "expected_originals": 155,
+    "expected_generated": 37,
+    "expected_sources": 10,
+    "expected_unique_images": 194,
+    "expected_original_pairs": 5985,
+    "expected_source_generated_pairs": 37,
+    "expected_within_identity_pairs": 517,
+    "expected_reused_detection_failures": 2
+  },
+  "evaluator": {
+    "hf_revision": "53393526c220e34cdd7b722b36d22b6f9e5f4241",
+    "repository_revision": "37475e3f8818b5f22448003feec3e64b01bfb188",
+    "device": "cpu",
+    "dtype": "float32",
+    "threads": 1,
+    "input_size": 384,
+    "body_mode": "Original processor(images=[None]) normalized black tensor; retain six input channels",
+    "loading": "Direct fixed local classes, use_safetensors=True, local_files_only=True, torch_dtype=float32; reject missing/unexpected/mismatched/error loading entries",
+    "age_formula": "raw_age_output * 122 + 61",
+    "round_or_clamp": false,
+    "demographic_classification_exported": false
+  },
+  "crop": {
+    "detections": "Reuse the exact pinned identity report boxes/statuses only; do not use SFace features as age inputs or re-run detection",
+    "frame": "Decode pinned original bytes using EXIF-corrected RGB; require dimensions equal to frozen detection dimensions; convert crop RGB to BGR for the original MiVOLO processor",
+    "bounds": "[max(0,floor(x)), max(0,floor(y)), min(width,ceil(x+w)), min(height,ceil(y+h))]; require nonempty rectangle",
+    "padding": 0,
+    "alignment": "No landmark warp; original processor classification letterbox and normalization only",
+    "failures": "Retain every requested image; reused NO_FACE and all new input/crop/prediction failures have null age estimates"
+  },
+  "statistics": {
+    "age_strata": ["20-29", "30-39", "40-49", "50-59", "60-69", "70"],
+    "original_errors": "Only original-role images, research filename age labels: signed error=prediction-label; report identity-macro MAE, bias, and sqrt(mean(identity mean squared error)) separately within each of the two allowed groups, for all ages and each of the six fixed age strata (14 summaries); no cross-group pooling",
+    "within_identity": "Retain all 517 same-identity original pairs, including two same-age pairs; prediction_delta_error=(right prediction-left prediction)-(right label-left label); summarize absolute/signed/squared delta error by subject within group and same/cross-age",
+    "generated": "All 37 source_generated_comparison requests, separate same_age_control/other_condition/unknown_source_age; report prediction shift, generated condition deviation, static source condition deviation, and paired reduction in absolute condition deviation. Requested target age is a condition, never ground truth.",
+    "generated_formulas": {
+      "prediction_shift": "generated_prediction-source_prediction",
+      "condition_deviation": "generated_prediction-requested_target_age",
+      "static_condition_deviation": "source_prediction-requested_target_age",
+      "absolute_condition_reduction": "abs(static_condition_deviation)-abs(condition_deviation)"
+    },
+    "paired_generated_scoring": "All conditional metrics share the pair-complete-case set: require both source and generated predictions, while retaining individual image estimates separately.",
+    "macro": "Average scored observations inside each subject (or source for generated comparisons), then equally weight effective units; retain requested/scored/null and eligible/effective unit counts. All-failed and zero-request means remain null.",
+    "bootstrap": {
+      "replicates": 1000,
+      "seed": 20261023,
+      "unit": "Subject or source, never individual images/pairs; sample effective unit metric vectors with replacement using the same draws for paired metrics",
+      "stratum_seed": "base seed + int(SHA256(UTF8(stratum_key)).hexdigest()[:16],16); Python random.Random",
+      "stratum_key": "original/{group}/{age_stratum} or within_identity/{group}/{same_age|cross_age} or generated/{category}",
+      "unit_order": "Effective units sorted lexicographically by subject/source ID",
+      "index_draw": "For each replicate, call rng.randrange(n_effective_units) n_effective_units times; reuse that index vector across every metric",
+      "interval": "Percentile 2.5/97.5 with sorted linear interpolation at (n-1)*q; one effective unit gives a degenerate interval and explicit unit count; no interval for zero units",
+      "interpretation": "Conditional descriptive uncertainty for this cohort and scored units, not independent validation or missingness correction"
+    }
+  },
+  "limits": {
+    "image_max_bytes": 10485760,
+    "image_max_pixels": 16000000,
+    "model_max_bytes": 134217728,
+    "source_max_bytes": 262144,
+    "report_max_bytes": 2097152
+  },
+  "integrity": "Verify bounded image snapshots before decode, then after all scoring/aggregation; changed inputs lose estimates and dependent metrics are recomputed. Recheck fixed model, source artifacts, metadata, implementation pins and environment; drift rejects successful publication.",
+  "output_policy": "Ignored report.json with all 194 requests, 517 within-identity and 37 conditional comparisons, aggregates and bootstrap intervals; no images, crops or demographic classifications",
+  "quality_threshold": null,
+  "flags": {
+    "research_only": true,
+    "age_quality_accepted": false,
+    "years_calibrated": false,
+    "independent_evaluation": false,
+    "training_overlap_excluded": false,
+    "legal_permission_established": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

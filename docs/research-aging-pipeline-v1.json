@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-research-aging-pipeline-v1",
+  "scope": "Isolated in-memory source/worker/target-fit/review/UV processing. No production API or model readiness change.",
+  "source": {
+    "rgb": "EXIF-corrected RGB from the preprocessing owner, at most16000000 pixels",
+    "landmarks": "project_vertices of the source raw fit using its ordered68x3 coordinate indices",
+    "alignment": "Existing align_ffhq256; reflected context is not observed texture and its inverse is not generated-image correspondence",
+    "geometry": "Original source raw full fit and fixed canonical frame; generated fit only projects its own generated RGB",
+    "binding": "Detector/reconstructor/SAM manifest SHA256 and common UV asset SHA256, plus actual ordered topology/UV/array fingerprints",
+    "serialization": "Versioned bounded JSON/base64 arrays with fixed dtype and shape; no pickle/ZIP/NPZ object loading",
+    "maximum_context_bytes": 33554432,
+    "api_source_age": "Preserve validated SourceAge. Filename labels and generation conditions never fill unknown/null."
+  },
+  "condition_research": {
+    "range": [20, 70],
+    "integer_only": true,
+    "unknown_source_age_allowed": true,
+    "semantics": "An explicit SAM integer condition, not an absolute biological-age prediction or source-age reset",
+    "staging": "Bounded immutable bytes in existing AssetCache, fixed TTL/LRU and opaque metadata handles",
+    "default_max_bytes": 67108864,
+    "default_max_entries": 4,
+    "default_ttl_seconds": 300,
+    "maximum_stage_bytes": 16777216,
+    "same_source_condition_stage_hit": "Reuse the unexpired staged PNG/fit without a second SAM/refit call"
+  },
+  "absolute_age_adapter": {
+    "unknown_source_age": "SOURCE_AGE_REQUIRED before generation or cache bypass",
+    "exact_source_age": "Return original GLB/texture/shape bytes before integer generation checks; no rounding",
+    "other_fractional_age": "INTEGER_AGE_REQUIRED; display interpolation remains a separate previously implemented path",
+    "coordinator": "Reuse existing AgingCoordinator/AgingSessionCache. Do not change their source-age checks or production app."
+  },
+  "target_review": {
+    "required": true,
+    "bindings": ["source_fingerprint", "generated_png_sha256", "target_fit_sha256", "native_dimensions", "review_version", "reviewer", "method"],
+    "masks": "Explicit same-size L PNG0/255 allowed and occluded, disjoint; unspecified areas remain ineligible",
+    "missing_or_reassigned": "REVIEW_REQUIRED; retain bounded staged bytes and publish no SessionResult",
+    "forbidden_fallback": "No automatic all-allowed mask, old nominal-condition mask reuse, source valid-mask reuse, or unknown-color filling",
+    "provider": "Synchronous local hash-bound review lookup or explicit staged review; it grants no independent quality acceptance"
+  },
+  "registration": {
+    "sampling": "register_generated_texture on the target full expression fit, target projection/ROI and reviewed mask",
+    "mesh": "build_static_mesh on the original source raw fit; source shape/canonical geometry/ordered triangles/common UV unchanged",
+    "output": "SessionResult kind sam_registered_uv with generated/review/model/condition provenance; static_fallback shape",
+    "unknown_rgba": "Exactly zero, no color completion or boundary blending"
+  },
+  "resources": {
+    "native_admission": "Single flight covers SAM and CPU refit/registration until actual completion",
+    "cancellation": "Shield and drain native CPU work; finally await worker.wait_idle before releasing source/admission",
+    "stage_expiry": "Expired handles cannot register, expired or abandoned work cannot become a cached successful result",
+    "ownership": "Processor owns worker and stage store; detector/reconstructor callback model ownership remains the caller",
+    "shutdown": "Cancellation of a close waiter must not cancel actual cleanup; wait for worker process exit before CUDA lease release"
+  },
+  "validation": {
+    "synthetic": "Real PNG/GLB/FFHQ/UV components plus controlled fake generation and actual stdio fixture, clearly labelled synthetic",
+    "real": "One development source with API age unknown: source preparation, explicit integer generation, target own refit, REVIEW_REQUIRED, explicit reviewed registration, stage hit and cache/TTL/shutdown evidence",
+    "known_source_live_scope": "Only after user provides a real source age or a qualified estimated age; never substitute filename age or assistant-filled value",
+    "errors": "No face, multiple faces, wrong hashes, unavailable review and resource failures retained with public-safe codes"
+  },
+  "flags": {
+    "research_only": true,
+    "service_ready": false,
+    "production_enabled": false,
+    "age_morph": false,
+    "age_texture_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "independent_evaluation": false,
+    "legal_permission_established": false,
+    "years_calibrated": false,
+    "g3_complete": false
+  }
+}

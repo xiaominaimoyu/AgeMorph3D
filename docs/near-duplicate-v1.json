@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-near-duplicate-v1",
+  "frozen_on": "2026-10-23",
+  "scope": "Technical candidate screening of every original image in the frozen N0 adult cohort; no generated age outputs, model loading, identity recognition or quality acceptance.",
+  "observations": {
+    "historical_n0_preprocessing_exposed": true,
+    "new_near_duplicate_results_seen": false,
+    "threshold_basis": "Eight is a prespecified uncalibrated retrieval cutoff, not a validated duplicate, identity, age or leakage threshold."
+  },
+  "algorithm": {
+    "orientation": "Pillow ImageOps.exif_transpose before all features",
+    "color": "Convert to RGB; no ICC color management transform",
+    "views": ["original", "mirror"],
+    "mirror": "Horizontal mirror of EXIF-corrected RGB",
+    "pixel_sha256": "SHA256(b'agemorph3d-rgb-v1\\0' + struct.pack('>II', width, height) + b'RGB\\0' + RGB bytes); \\0 denotes one NUL byte",
+    "grayscale": "Pillow convert('L')",
+    "resample": "LANCZOS",
+    "horizontal_size": [9, 8],
+    "vertical_size": [8, 9],
+    "comparison": "Right > left for horizontal; below > above for vertical",
+    "bit_order": "Row-major, first comparison is the most significant of 64 bits",
+    "diagnostic_size": [32, 32],
+    "diagnostic": "Per matched view-pair mean absolute grayscale byte difference divided by 255; no per-image normalization and no candidate filtering",
+    "max_horizontal_hamming": 8,
+    "max_vertical_hamming": 8,
+    "candidate": "At least one of all four view-pairs jointly satisfies both Hamming cutoffs; retain every matched view-pair and deduplicate only the unordered image pair",
+    "exact_duplicates": "Record same file SHA-256 and every equal dimension-bound pixel SHA-256 view-pair separately from perceptual candidate labels"
+  },
+  "limits": {
+    "metadata_max_bytes": 2097152,
+    "image_max_bytes": 10485760,
+    "image_max_pixels": 16000000,
+    "max_images": 500,
+    "image_formats": ["JPEG", "PNG", "WEBP"],
+    "frames": 1
+  },
+  "accounting": {
+    "requested_pairs": "n * (n - 1) / 2 for all requested originals",
+    "comparable_pairs": "s * (s - 1) / 2 for successfully verified and decoded originals",
+    "uncomparable_pairs": "requested_pairs minus comparable_pairs; failures remain in the requested denominator",
+    "source_integrity": "Verify size and SHA-256 on the same bounded byte snapshot before decoding; recheck every source after analysis and record drift as failure. Declared or actual over-limit sources are not decoded or unbounded-hashed: explicitly record not_verified_size_limit and fail integrity.",
+    "grouping": "Preserve N0 identity and use groups; no automatic reassignment, removal or duplicate-person inference",
+    "components": "Similarity edges only; transitive components are review queues, never proof that every pair is duplicate"
+  },
+  "output_policy": {
+    "images_or_thumbnails_written": false,
+    "automatic_original_image_feature_reading_disclosed": true,
+    "human_candidate_review": "Not performed by the scanner; any later visual contact with research holdout originals must be recorded separately",
+    "candidate_review_complete": false,
+    "no_leakage_accepted": false,
+    "independent_evaluation": false,
+    "legal_permission_established": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  },
+  "known_limits": [
+    "Cropping, rotation, local overlap, strong editing, background replacement or resampling may be missed.",
+    "Smooth backgrounds and similar composition may create false positives, including across different identities.",
+    "No measured retrieval recall or false positive rate is available; zero candidates cannot certify absence of leakage.",
+    "Same decoded pixels under this decoder are not independently verified image provenance or age truth.",
+    "Research mirror permission and independent evaluation prerequisites remain unchanged."
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-mask-review-workbench-v1",
+  "created_on": "2026-10-24",
+  "scope": "Read-only offline local review of the twelve frozen development targets, their original masks and verified UV correspondences. Engineering and observation workflow, not independent or quality acceptance.",
+  "cohort": {"sources": {"fgnet-004a63": [20, 45, 63, 70], "fgnet-082a27": [20, 27, 45, 70], "fgnet-006a55": [20, 45, 55, 70]}, "expected_targets": 12, "group": "development", "api_source_age": {"value": null, "method": "unknown", "calibration_id": null}},
+  "inputs": "Bind the exact successful mask replay report, its independent arithmetic audit and all130 inherited input pins. Require twelve pixel-equal masks and original UV/report/condition bindings before creating any page. Freeze all builder, template, app and test sources plus environment first.",
+  "delivery": {
+    "format": "An index.html and12 self-contained cases/<sample_id>.html files in a new ignored output/research directory, with all image bytes and lookup vectors embedded; JSON manifest/report retains all requests and hashes. No listener, fetch, remote dependency, localStorage or model endpoint.",
+    "images": "Embed original target PNG, old allowed/occluded PNG and saved UV atlas PNG verbatim as data:image/png;base64. Reconstruct stage reason labels only after verifying old mask pixel equality; do not write new masks or textures.",
+    "csp": "default-src none; connect-src none; image data/blob only; fixed inline styles; hash-authorized exact app module only; base-uri none and form-action none. Escape all JSON less-than characters and never insert untrusted text with innerHTML.",
+    "data": "case-data application/json provides schemaVersion1, protocolId, sampleId/sourceId/targetAgeCondition/sourceAgeApi/sourceAgeLabel, width/height, landmarksXY/roundedLandmarksXY68x2, regionBoxes, classificationRLE256x256, reasonRLEwidthxheight, images{target,allowed,occluded,atlas}, vectors, provenance pins and research flags.",
+    "vectors": "vectors{count,rows_columns_i32,face_owner_i32,barycentric_f64,target_xyz_f64,source_canonical_xyz_f64,region_bits_u8,rejection_partition_u8}, each field base64 C-order little-endian exact saved array bytes, no coordinate quantization. RLE is a flat[value,count,...] integer list; sums and labels are bounded and validated.",
+    "limits": {"page_bytes": 16777216, "total_page_bytes": 201326592, "targets": 12, "vector_rows": 65536, "image_pixels": 16000000}
+  },
+  "controls": {
+    "target": "Original target canvas with selectable none/old allowed/old occluded/recipe-stage overlay; opacity; continuous, rounded, both or off landmarks; independently toggled overlapping fitted region boxes. Fit/1x/2x display zoom in a scroll container changes CSS size only, preserving native canvas and continuous target coordinate semantics. Labels distinguish generated pixels and conservative candidates from original observations/true occlusion.",
+    "uv": "256x256 UV classification or original atlas view. Clicking a UV texel shows row/column, original seven-class reason, native owner/a-b-c weights, target projected XYZ, original source canonical XYZ, region memberships and visible mask contributor reasons. Source coordinates remain fixed and cannot be edited.",
+    "unknown": "Outside-UV or ambiguous texels have no unique vector; display null owner/coordinates and clear prior selection. Do not infer them from neighboring texels. Rejected/back/outside/self-occluded samples retain their original class.",
+    "target_picking": "Image click chooses the closest existing unique UV center whose saved class is5 or6, within3 continuous target pixels. Tie at equal distance chooses larger saved projected Z, then lower vector row. Label this approximate nearest-center selection; clear selection if no eligible point. Never call this exact inverse projection.",
+    "contributors": "For visible class5/6 points inspect only exact positive-weight bilinear neighbors of the stage-reason map, clamping the upper image-edge neighbor. Show allowed/rejected recipe labels and weights; do not assign mask effects to back-facing/out-of-image/self-occluded points. Class5 bitset must agree with the frozen three-way rejection partition."
+  },
+  "notes": {
+    "workflow": "Reviewer text and explicit add-observation action save a snapshot of the selected UV point plus free text; unknown points keep null correspondence. Export explicit JSON download only, with case/protocol/input hashes and all quality flags false. No automatic review approval, mask edit, registration or API call.",
+    "schema": "protocol_id agemorph3d-mask-review-notes-v1, reviewer, recorded_at, sample_id, source_age_api, provenance, observations[], research_only true, review_complete false and quality/service/production/G3 false. Notes are untrusted observational drafts requiring later versioned review.",
+    "lifecycle": "No persistence or automatic photos export. Revoke generated download Blob URLs and remove transient anchors; dispose listeners and clear selection on pagehide. Changing case performs full document navigation, never retains prior-person selection."
+  },
+  "integrity": {
+    "builder": "Hash-verified bounded immutable inputs and exact source closure; safe NPZ headers/picklefalse; all pages prepared before publication. Recheck input/source/plan/runtime before and after writing. Drift removes only this invocation's pages and invalidates all12 records; refuse existing output directories.",
+    "browser": "Use real file pages in actual Chrome/Playwright; verify twelve load/console/network states, all overlay/landmark controls, representative sampled/rejected/back/unknown UV choices, target nearest-center/no-hit clearing, exact saved numeric coordinates and review-note JSON download. Hash every page before/after and close browser/resources. UI success is not mask or visual quality acceptance.",
+    "tests": "Synthetic RLE/vector bounds, unknown clearing, image/UV mapping, positive and zero contributors, tie/no-hit target picking, escaping/CSP/binding, whole-cohort and drift gates. Run appropriate full backend/frontend regression and build after source stabilizes."
+  },
+  "quality_threshold": null,
+  "flags": {"research_only": true, "age_quality_accepted": false, "identity_quality_accepted": false, "visual_seam_quality_accepted": false, "independent_evaluation": false, "causal_cause_accepted": false, "masks_modified": false, "unknown_regions_filled": false, "real_model_inference": false, "service_ready": false, "production_enabled": false, "g3_complete": false, "historical_process_identity_proven": false, "human_review_completed": false}
+}

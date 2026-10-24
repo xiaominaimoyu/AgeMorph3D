@@ -1,0 +1,511 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-evaluation-readiness-v1",
+  "reviewed_on": "2026-10-23",
+  "scope": "Metadata-only N8 inventory. Documented evidence is a recorded claim, not legal clearance, model availability or independent quality acceptance. No images, weights or held-out age outputs are opened.",
+  "assets": [
+    {
+      "asset_id": "detector",
+      "acquisition_state": "metadata_present",
+      "local_metadata": [
+        {
+          "path": "data/models/yolov5n05-face/manifest.json",
+          "bytes": 1097,
+          "sha256": "eb876bb179458f75da050bda3a47b2fec5a6595c755cefa013ed04cf4c963249"
+        }
+      ],
+      "licenses": {
+        "code": {
+          "status": "documented",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/deepcam-cn/yolov5-face/blob/master/LICENSE"
+          ],
+          "reason": "上游代码GPL-3.0有公开来源；组合发布义务仍需核查。"
+        },
+        "weights": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/deepcam-cn/yolov5-face"
+          ],
+          "reason": "具体转换ONNX独立权重条款未收口；不由代码许可推定。"
+        },
+        "training_data": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/deepcam-cn/yolov5-face"
+          ],
+          "reason": "所用训练数据与计划用途需逐项核对。"
+        },
+        "derived_distribution": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/deepcam-cn/yolov5-face"
+          ],
+          "reason": "转换权重与应用组合分发范围尚未完成核验。"
+        }
+      },
+      "independence": null,
+      "next_action": "A补原权重及转换来源条款；B交叉核对模型/清单hash，不改变现有严格门槛。"
+    },
+    {
+      "asset_id": "reconstructor",
+      "acquisition_state": "metadata_present",
+      "local_metadata": [
+        {
+          "path": "data/models/3ddfa-v2/manifest.json",
+          "bytes": 1726,
+          "sha256": "8122f9e1bf82ca8fb6be2f3046ad7165b63c03895b39c16cb0e459d1e5c45c44"
+        }
+      ],
+      "licenses": {
+        "code": {
+          "status": "documented",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/cleardusk/3DDFA_V2/blob/master/LICENSE"
+          ],
+          "reason": "官方代码MIT已查阅。"
+        },
+        "weights": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/cleardusk/3DDFA_V2"
+          ],
+          "reason": "回归权重及BFM派生资产的独立允许用途尚未收口。"
+        },
+        "training_data": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/cleardusk/3DDFA_V2"
+          ],
+          "reason": "训练数据条款及用途尚缺完整链路。"
+        },
+        "derived_distribution": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/cleardusk/3DDFA_V2"
+          ],
+          "reason": "不能从MIT代码推断裁剪BFM和输出网格的分发许可。"
+        }
+      },
+      "independence": null,
+      "next_action": "A核对回归权重和BFM派生条款；B保留有序拓扑及来源关联。"
+    },
+    {
+      "asset_id": "bfm_source",
+      "acquisition_state": "metadata_present",
+      "local_metadata": [
+        {
+          "path": "docs/B45年龄方向与UV开发记录.md",
+          "bytes": 14488,
+          "sha256": "f5facf855e0f9b2e75ca187c2228e587b9a3f86636a8353bf62267a6dbec64b6"
+        }
+      ],
+      "licenses": {
+        "code": {
+          "status": "not_applicable",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "该资产不是此维度的对象。"
+        },
+        "weights": {
+          "status": "restricted",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [],
+          "reason": "既有用户非商业研究授权记录；本轮未重新查阅授权材料。"
+        },
+        "training_data": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [],
+          "reason": "不从既有研究授权推断所有新增用途或训练数据权限。"
+        },
+        "derived_distribution": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [],
+          "reason": "公开派生方向、模型或网格分发须另核对允许范围。"
+        }
+      },
+      "independence": null,
+      "next_action": "在实际新增用途前核对原授权覆盖范围，并单独确认派生资产分发。"
+    },
+    {
+      "asset_id": "sam_generator",
+      "acquisition_state": "metadata_present",
+      "local_metadata": [
+        {
+          "path": "data/models/sam/manifest.json",
+          "bytes": 5475,
+          "sha256": "39f9a623ad457091121745589b99d1aa77c52361f6e642ce4fe269725fc098dc"
+        }
+      ],
+      "licenses": {
+        "code": {
+          "status": "documented",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/yuval-alaluf/SAM/blob/master/LICENSE"
+          ],
+          "reason": "仓库MIT；辅助依赖条款分别核对。"
+        },
+        "weights": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/yuval-alaluf/SAM"
+          ],
+          "reason": "未取得主checkpoint独立用途澄清；仅保留既有隔离研究状态。"
+        },
+        "training_data": {
+          "status": "restricted",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/NVlabs/ffhq-dataset"
+          ],
+          "reason": "FFHQ数据集/元数据与单图许可分别记录，身份相关用途另审。"
+        },
+        "derived_distribution": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://github.com/yuval-alaluf/SAM",
+            "https://github.com/NVlabs/ffhq-dataset"
+          ],
+          "reason": "代码许可不自动覆盖checkpoint或所有派生图/模型用途。"
+        }
+      },
+      "independence": null,
+      "next_action": "A收集checkpoint用途依据和依赖条款；B保持隔离worker，不开放生产资格。"
+    },
+    {
+      "asset_id": "fgnet_dataset",
+      "acquisition_state": "metadata_present",
+      "local_metadata": [
+        {
+          "path": "data/datasets/fgnet/manifest.json",
+          "bytes": 1856,
+          "sha256": "a31e8ca810dcda664b23b845267ada04b49d5d739333df5ce45850f1b6ca74fd"
+        }
+      ],
+      "licenses": {
+        "code": {
+          "status": "not_applicable",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "该资产不是此维度的对象。"
+        },
+        "weights": {
+          "status": "not_applicable",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "该资产不是此维度的对象。"
+        },
+        "training_data": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [],
+          "reason": "研究镜像声明不能替代权利方许可或逐图使用依据。"
+        },
+        "derived_distribution": {
+          "status": "restricted",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [],
+          "reason": "既有清单要求图像和派生副本留在忽略目录，不公开分发。"
+        }
+      },
+      "independence": null,
+      "next_action": "核对允许的评价用途、身份和近重复记录；不把文件名年龄当独立出生记录真值。"
+    },
+    {
+      "asset_id": "agedb_dataset",
+      "acquisition_state": "not_acquired",
+      "local_metadata": [],
+      "licenses": {
+        "code": {
+          "status": "not_applicable",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "该资产不是此维度的对象。"
+        },
+        "weights": {
+          "status": "not_applicable",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "该资产不是此维度的对象。"
+        },
+        "training_data": {
+          "status": "restricted",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://ibug.doc.ic.ac.uk/resources/agedb/"
+          ],
+          "reason": "官方仅非商业研究且有访问条件；本地未登记取得。"
+        },
+        "derived_distribution": {
+          "status": "restricted",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [
+            "https://ibug.doc.ic.ac.uk/resources/agedb/"
+          ],
+          "reason": "官方限制标注/派生数据的复制和分发，内部使用也有范围。"
+        }
+      },
+      "independence": null,
+      "next_action": "由用户/数据负责人确认申请进度；收到允许访问后再登记哈希、用途与身份/近重复划分。"
+    },
+    {
+      "asset_id": "age_evaluator",
+      "acquisition_state": "not_acquired",
+      "local_metadata": [],
+      "licenses": {
+        "code": {
+          "status": "missing",
+          "evidence": [],
+          "source_urls": [
+            "https://github.com/yuval-alaluf/SAM"
+          ],
+          "reason": "尚未选定独立年龄评价器。"
+        },
+        "weights": {
+          "status": "missing",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "未取得独立评价权重/输入规范/版本pin。"
+        },
+        "training_data": {
+          "status": "missing",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "评价器训练数据及其与SAM的依赖关系尚未审查。"
+        },
+        "derived_distribution": {
+          "status": "missing",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "未选型，未取得分发依据。"
+        }
+      },
+      "independence": "not_assessed",
+      "next_action": "先选择允许用途的独立候选并审查训练数据；不得直接用SAM aging loss网络作为独立验收。"
+    },
+    {
+      "asset_id": "identity_evaluator",
+      "acquisition_state": "not_acquired",
+      "local_metadata": [],
+      "licenses": {
+        "code": {
+          "status": "missing",
+          "evidence": [],
+          "source_urls": [
+            "https://github.com/deepinsight/insightface"
+          ],
+          "reason": "InsightFace仅作为来源调查候选，尚未选型。"
+        },
+        "weights": {
+          "status": "missing",
+          "evidence": [],
+          "source_urls": [
+            "https://github.com/deepinsight/insightface"
+          ],
+          "reason": "未下载或绑定身份评价权重；MIT代码不等于权重许可。"
+        },
+        "training_data": {
+          "status": "missing",
+          "evidence": [],
+          "source_urls": [
+            "https://github.com/deepinsight/insightface"
+          ],
+          "reason": "候选训练数据用途及独立性尚未核验。"
+        },
+        "derived_distribution": {
+          "status": "missing",
+          "evidence": [],
+          "source_urls": [
+            "https://github.com/deepinsight/insightface"
+          ],
+          "reason": "本次没有模型分发依据。"
+        }
+      },
+      "independence": "not_assessed",
+      "next_action": "先核对候选具体模型用途、本域同人/异人验证和生成器依赖，再冻结评价版本。"
+    },
+    {
+      "asset_id": "derived_assets",
+      "acquisition_state": "metadata_present",
+      "local_metadata": [
+        {
+          "path": "output/research/age-stage4-20261021/registration-final/report.json",
+          "bytes": 549452,
+          "sha256": "60bd2dd94c818011ac7fec6f257b4191d67abe47b9c2323e5eb5e86be2d1eba8"
+        },
+        {
+          "path": "output/research/age-stage6-20261022/source-reset/report.json",
+          "bytes": 84125,
+          "sha256": "09648b333f440a56c190503ec04b90b8269fbb45359db14f008d0a8d1113cd48"
+        }
+      ],
+      "licenses": {
+        "code": {
+          "status": "not_applicable",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "该资产不是此维度的对象。"
+        },
+        "weights": {
+          "status": "not_applicable",
+          "evidence": [],
+          "source_urls": [],
+          "reason": "该资产不是此维度的对象。"
+        },
+        "training_data": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [],
+          "reason": "原图、BFM、生成器与依赖模型允许用途须共同核对。"
+        },
+        "derived_distribution": {
+          "status": "unresolved",
+          "evidence": [
+            {
+              "path": "docs/评价资产来源核查.md",
+              "bytes": 3791,
+              "sha256": "a7297ca2c508add14b95096ddc6a88b7e78180ab742870319c1c6989dfa96634"
+            }
+          ],
+          "source_urls": [],
+          "reason": "GLB/PNG技术往返通过不产生公开分发或商业授权。"
+        }
+      },
+      "independence": null,
+      "next_action": "逐来源核对派生物允许用途，继续只保存本地研究输出。"
+    }
+  ]
+}

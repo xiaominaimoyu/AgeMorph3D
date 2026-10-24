@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-uv-support-v1",
+  "frozen_on": "2026-10-23",
+  "scope": "Result-informed development diagnostic of existing target-owned UV support. Locate correspondence and conservative-mask effects; do not modify masks, synthesize unknown texture or tune detection.",
+  "observations": {
+    "render_domain_results_previously_seen": true,
+    "historical_total_classification_counts_seen": true,
+    "regional_support_results_seen_before_freeze": false,
+    "focus_selection": "004a63 has four failed targets and a historical complete ocular exclusion band; 082a27 and 006a55 are predeclared successful-frontal comparators. This is not independent validation."
+  },
+  "cohort": {
+    "sources": {
+      "fgnet-004a63": [20, 45, 63, 70],
+      "fgnet-082a27": [20, 27, 45, 70],
+      "fgnet-006a55": [20, 45, 55, 70]
+    },
+    "expected_sources": 3,
+    "expected_targets": 12,
+    "group": "development",
+    "api_source_age": {"value": null, "method": "unknown", "calibration_id": null},
+    "source_labels": "Filename ages are research labels only; requested target ages remain conditions."
+  },
+  "reconstruction": {
+    "raw_fit": "Use pinned saved target vertices/projection/ROI plus native ordered triangles and keypoint_coordinates; no model loading or fitting. Bind all metadata to N0, N4 and the generated fit report.",
+    "uv": "Read original float32 common uv, cast to float64, then flip v=1-v before uv_texture._uv_samples at atlas size256. Compare its float32 output to saved gltf_uv; do not rasterize the quantized saved gltf_uv as the primary input.",
+    "projection": "Use target own project_vertices(raw) and target own ROI; interpolate projected native target triangles with UV barycentric weights. Recompute front/in-image/continuous max-Z visibility and all-nonzero-contributor allowed-mask test exactly, and require all seven classifications to equal the saved map.",
+    "topology": "Verify ordered native triangles/keypoint-coordinate topology hash, vertex order and common UV binding. Use native face order for owner/bary; the GLB winding reversal is not silently applied.",
+    "landmarks": "Use target fitted 68 XY computed with the saved 68x3 coordinate indices; allow maximum absolute XY residual0.001 pixel against saved projected_landmarks. Sparse and dense Z have separate min shifts; never compare those Z values or infer landmark UV by dividing coordinate indices by3.",
+    "source_canonical": "Interpolate the original source vertices using the same native face owner/bary, then use the original N4 source_center and uniform scale. Verify source bbox frame from the pinned original source fit. Never renormalize each target or rotate its output by its camera.",
+    "saved_samples": "Require exact rgba/classification/coverage/gltf_uv arrays; unknown RGBA stays zero, alpha matches coverage and classification sampled. No new texture or GLB is produced."
+  },
+  "regions": {
+    "eye_36_41": [36, 37, 38, 39, 40, 41],
+    "eye_42_47": [42, 43, 44, 45, 46, 47],
+    "nose_27_35": [27, 28, 29, 30, 31, 32, 33, 34, 35],
+    "mouth_48_67": [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67]
+  },
+  "regional_counting": {
+    "definition": "For each region use the target fitted landmark XY min/max box, expanded by0.25 of that box width/height on each respective side. Require positive finite width/height; no image clipping or arbitrary default size. Membership uses half-open [xmin,xmax),[ymin,ymax).",
+    "padding_fraction": 0.25,
+    "requested": "All unambiguous owned UV texel centers whose continuous target XY lies in the region, including back-facing/outside-image/self-occluded points; report mutually exclusive seven-class counts with sum=requested. Outside-UV and ambiguous texels have no unique region correspondence and remain separately counted globally.",
+    "overlap": "Four regions may overlap; do not sum them as a disjoint face partition. Also report all_unique_correspondence as a whole-face control.",
+    "support": "sampled/requested when requested>0, otherwise null. Unknown and rejected counts remain explicit; fitted boxes are diagnostic proxies, not anatomical ground truth.",
+    "mask_rejection": "For visible mask_rejected samples inspect all nonzero-weight bilinear pixels. Partition rejected texels into reviewed_occluder_only, other_ineligible_only, mixed_contributors. A reviewed candidate mask is not segmentation/occlusion truth; other ineligible includes conservative uncertainty, hull erosion and mouth exclusion without a precise causal label.",
+    "occluder_test": "Any positive-weight occluded pixel is a reviewed-occluder contribution; any positive-weight pixel with not allowed and not occluded is other-ineligible. Reject allowed&occluded overlap. Zero-weight neighbors never cause rejection."
+  },
+  "integrity": {
+    "before": "Freeze protocol, implementation/tests, metadata roles and all selected target/source fit, topology, commonUV, masks and saved sample/image/atlas/classification/coverage pins before regional results. Read bounded immutable verified byte snapshots before decoding; never deserialize pickle.",
+    "after": "Rehash every input and loaded source after all computations and output preparation; drift prevents successful publication and invalidates affected results. Refuse overwriting prior study outputs.",
+    "limits": {"metadata_bytes": 2097152, "binary_bytes": 8388608, "npz_unpacked_bytes": 33554432, "image_pixels": 16000000, "atlas_size": 256, "vertices": 200000, "triangles": 300000, "targets": 12}
+  },
+  "outputs": "Ignored report.json retains every12target request and errors plus global/5-region counts, residuals and input/runtime pins; per successful target correspondence.npz stores UV texel indices/native owner/bary/target XYZ/source canonical XYZ/region bits/rejection partition, with explicit coordinate semantics. No raw photos, crops, new atlases or GLBs are written.",
+  "success": "Reconstruct target-owned correspondence, verify the exact existing classification and quantify regional support/rejection with preserved original bytes. Detection success and quality acceptance are not exit criteria.",
+  "quality_threshold": null,
+  "flags": {
+    "research_only": true,
+    "age_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "independent_evaluation": false,
+    "causal_cause_accepted": false,
+    "masks_modified": false,
+    "unknown_regions_filled": false,
+    "real_model_inference": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

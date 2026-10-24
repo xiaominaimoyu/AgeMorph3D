@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-mask-replay-v1",
+  "frozen_on": "2026-10-23",
+  "scope": "Reconstruct a declared candidate of the historical conservative mask recipe, require exact old mask pixels on all twelve targets before explaining UV rejection contributors. No mask edits or new registered assets.",
+  "observations": {
+    "prior_uv_and_render_results_seen": true,
+    "historical_mask_pixel_totals_seen": true,
+    "candidate_pixel_equivalence_seen_before_freeze": false,
+    "detailed_other_rejection_results_seen_before_freeze": false,
+    "independent_evaluation": false
+  },
+  "cohort": {
+    "sources": {
+      "fgnet-004a63": [20, 45, 63, 70],
+      "fgnet-082a27": [20, 27, 45, 70],
+      "fgnet-006a55": [20, 45, 55, 70]
+    },
+    "expected_targets": 12,
+    "group": "development",
+    "api_source_age": {"value": null, "method": "unknown", "calibration_id": null}
+  },
+  "construction": {
+    "evidence": "The old hash-bound uv-registration-v1 protocol and final mask-review record describe the recipe but do not identify a saved executable constructor, border settings or complete operation order. The following is a prospective candidate, not proof of historical implementation identity.",
+    "landmarks": "Use saved target-own generated-report 68 continuous finite XY in float64. Use numpy.rint then int32 only for polygon coordinates; reject int32 overflow and integer-degenerate hulls. Clip raster by the fixed image frame, never clamp individual landmark coordinates.",
+    "hull": "H: cv2.convexHull of rounded landmark indices0..26 inclusive; cv2.fillConvexPoly value255, LINE_8, shift0 in a zero uint8 image.",
+    "erosion": "E: erode H once with9x9 uint8 ones, anchor(-1,-1), BORDER_CONSTANT and borderValue255.",
+    "mouth": "M: convexHull/fillConvexPoly of rounded indices60..67 inclusive; dilate once with7x7 uint8 ones, anchor(-1,-1), BORDER_CONSTANT and borderValue0.",
+    "base": "base=E & not M; this priority assigns an E-and-M pixel to mouth exclusion even if it also lies in a reviewed band.",
+    "reviewed_band": "B: union of the saved reviewed half-open rectangular exclusions. Rectangles must have finite integer coordinates and positive extent wholly inside the fixed image; reject unsupported fields/kinds rather than invent a band.",
+    "focus_band": "For every004a63 target verify x0=0,x1_exclusive=image_width,y0=floor(min of original continuous eyebrow Y17..26)-18,y1_exclusive=650. Do not rint eyebrow points before floor. The eight082a27/006a55 targets require an empty exclusion list; fringe is outside this cohort.",
+    "occluded": "candidate_occluded=base & B",
+    "allowed": "candidate_allowed=base & not B",
+    "pixel_reasons": {"allowed": 0, "outside_landmark_hull": 1, "erosion_ring": 2, "mouth_exclusion": 3, "reviewed_candidate_band": 4},
+    "reason_priority": "Exclusive partition: outside H; H and not E; E and M; E and not M and B; E and not M and not B. These are recipe-stage labels, not anatomical or physical occlusion truth."
+  },
+  "equivalence_gate": {
+    "comparison": "Compare candidate allowed/occluded to the exact pinned L-mode PNG0/255 arrays, retaining XOR plus added/removed pixels and original/candidate totals for each of12 requests.",
+    "all_cohort_required": true,
+    "on_any_mismatch": "Preserve every target and its mask diagnostics; emit no approved UV reason decomposition for any target. Do not tune borders, kernels, clipping or ordering based on the observed mismatch. A revised candidate needs an explicit version and another freeze.",
+    "interpretation": "Twelve matching finite examples establish pixel equivalence on this frozen cohort, not recovery or identification of the original constructor."
+  },
+  "uv_contributors": {
+    "input": "Use only the previously verified seven-array correspondence vectors, saved original classification and original UV report; bind every vector and mask to the exact target condition, metadata and112-input closure. No target/source geometry changes.",
+    "domain": "Only class5 mask_rejected texels are inspected; all other classes remain in requested denominators. Preserve global and the same four overlapping regions using saved region_bits.",
+    "positive_weights": "Inspect the four bilinear neighbors only when their exact weight is greater than0, clamp the upper neighbor at the image edge, and OR their reason bits. Zero-weight neighbors cannot create a reason.",
+    "reason_bits": {"outside_landmark_hull": 1, "erosion_ring": 2, "mouth_exclusion": 4, "reviewed_candidate_band": 8},
+    "combinations": "Report the15 nonzero mutually exclusive bitset combinations per global/region set; their sum must equal its existing mask_rejected count. A texel may have several pixel-stage reasons; do not add overlapping marginal counts as distinct texels.",
+    "old_partition": "Bits=8 iff old reviewed_occluder_only; bits1..7 iff old other_ineligible_only; bits9..15 iff old mixed_contributors. Require exact agreement with saved rejection_partition and old regional rejection totals.",
+    "unknown": "Do not query out-of-image samples, turn back-facing/self-occluded points into mask effects, fill unknown areas or claim the recipe labels explain NO_FACE."
+  },
+  "integrity": {
+    "before": "Freeze this protocol, exact candidate/test/imported sources, metadata, all old112 pins and12 output-vector pins plus runtime before any candidate mask comparison. Read hash-verified bounded immutable bytes; validate ZIP/NPY headers and prohibit pickle before allocation.",
+    "after": "Rehash all inputs, implementation, plan and runtime before publishing JSON. Drift invalidates all12 records and clears every decomposition, even when mask comparison was successful.",
+    "output": "A new ignored output/research directory; JSON only. Refuse overwrite. Do not write candidate mask PNGs, photos, textures, NPZ or GLBs.",
+    "limits": {"metadata_bytes": 2097152, "binary_bytes": 8388608, "npz_unpacked_bytes": 33554432, "image_pixels": 16000000, "vector_rows": 65536, "targets": 12}
+  },
+  "quality_threshold": null,
+  "flags": {
+    "research_only": true,
+    "age_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "independent_evaluation": false,
+    "causal_cause_accepted": false,
+    "masks_modified": false,
+    "unknown_regions_filled": false,
+    "real_model_inference": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false,
+    "historical_process_identity_proven": false
+  }
+}
