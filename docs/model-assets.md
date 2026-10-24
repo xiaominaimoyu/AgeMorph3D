@@ -25,3 +25,7 @@
 当前真实研究证据为 `output/backend/b23/real-static/report.json` 和 `output/backend/b23/browser/static-mesh-research.json`：同一照片经真实 CPU 模型生成 canonical GLB；Chrome/Edge 实际查看器各完成一次离线资产加载、导出和重新加载，位置/法线/索引保持。该浏览器批次使用独立本地资产服务和软件 WebGL，无严格服务真实推理成功证据，不宣称 G1 或新 UI 导入功能。原图镜像、EXIF 旋转、空白、多脸、坏图和严格清单拒绝的结果见 B2/B3 记录。[glTF 规范](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#coordinate-system-and-units)使用米制场景约定，当前数字表示归一化展示对象，不代表源 BFM 或人体尺度已获得米制标定。
 
 取得的模型、旧格式源文件、NPZ、样例及推理输出放在本机 `data/`、`output/`，源码 `backend/model-manifests/` 只记录元数据。用户原始目录继续保留，本轮未移动或改写。候选清单默认拒绝未收口条款，显式研究开关不产生服务 readiness 或公开分发许可。选择背景见 [模型与数据路线核验](模型与数据路线核验.md)。
+
+## BFM 原始包分发位置
+
+用户原始 `BaselFaceModel.tgz` 为 240,287,841 字节（229.2 MiB），超过 GitHub 普通文件 100 MB 上限，且当前账号 LFS 配额已耗尽，因此不进入 Git 历史（`*.tgz` 保持忽略），改以 GitHub Release 附件分发：[assets-bfm-2009](https://github.com/xiaominaimoyu/AgeMorph3D/releases/tag/assets-bfm-2009)。附件 SHA-256 为 `d6cf2dffb74404f4f7ee2cd56f611e6fdcb22081ebf993f8b01edf6207f6cce9`，仅用于复原本地研究环境，仍受 BFM 非商业研究许可约束，不构成商业授权、公开派生分发许可或服务 readiness。
