@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-live-session-display-v1",
+  "development_revision": 3,
+  "amendment": "First real Chrome run failed the declared partial-alpha RGB bound. Preserve that report and protocol snapshot; replace Canvas2D conversion with raw DataTexture plus lossless PNG. Require exact RGBA in the new run without relaxing the original bound",
+  "platform_cohort_amendment": "Keep both stable-browser runs failed. A separate frozen patched-Chromium cohort may test two fresh contexts of one explicitly pinned executable; identify one engine rather than claiming Chrome and Edge passed. Keep no-store, bounded stream reads and zero unexpected request failures. This experimental-platform result cannot qualify stable browsers",
+  "upstream_reference": "https://github.com/microsoft/playwright/issues/42742",
+  "scope": "Independent research page consumes the actual loopback session service; production UI and capability gates remain closed",
+  "page": "/research/session.html",
+  "data_flow": "Upload local photo with optional explicit source age, build real source, generate integer condition, review exact target hashes and masks, load registered session assets, display and export",
+  "source_age": "Only API SourceAge provenance is used; unknown never receives an original absolute-age anchor. Exact user source value is retained without default or conversion from condition/filename",
+  "api_additions": {
+    "session_info": "GET/research/sessions/{sid} returns current source info and original asset URLs without rebuilding",
+    "native_provenance": "Register response additionally includes exact provenance_json_b64; client hashes raw bytes rather than reserializing parsed JSON floats"
+  },
+  "asset_validation": "Loopback same-origin exact session paths, bounded streaming/no redirect, independent GLB and PNG frame checks, native source age, same4geometry accessors/common UV/source frame, target source_fingerprint and closed flags, embedded PNG matches separate atlas",
+  "viewer": "Static opt-in bytes loading with owned copy and self-contained GLB only; original production /api/assets URL policy remains unchanged. Initial research page has no demo head",
+  "timeline": "Reuse existing sampler: linear-light premultiplied interpolation, ties-to-evenRGBA8, common source mesh/UV, original source overrides same-age SAM anchor, no extrapolation",
+  "display_semantics": "Fractional values change the rendered texture only, never invoke fractional SAM or claim biological age truth. Original API source age and shape remain unchanged",
+  "input_precision": "Range input is approximate browser positioning, with physical endpoints mapped to exact loaded anchor values. The number input and original restore preserve the received JS numeric value; no range serialization is used to rewrite API source age",
+  "unknown_pixels": "Raw anchors are binary alpha with zero unknownRGBA; interpolation may create partial alpha from one known anchor. Both-unknown stays zero, no completion or fabricated observation",
+  "exports": {
+    "display": "Current displayed GLB/PNG are research derivatives with display metadata and consistent BLEND",
+    "original": "Original source file download retains exact service GLB bytes; restore removes research texture and recovers original material/map",
+    "raw_sampler": "Display sampler bytes must match independent Python reference exactly",
+    "glb_embedded_png": "Raw sampler bytes upload directly as RGBA8 DataTexture. Encode a lossless PNG without Canvas2D, append it to the exported GLB and bind it to the named base-color image. Require every RGBA byte exact, including partial alpha; retain the previous at-most1byte bound as failed historical evidence",
+    "geometry": "Four source geometry/UV accessors remain exact through frames and GLB export/reimport; coordinate hierarchy and rendered reimport observations recorded separately"
+  },
+  "lifecycle": "Cancel/switch source aborts frontend waiters, invalidates late results and clears previous person's model/anchors/review/export state; existing native worker keeps resource lease until real completion; pagehide/dispose revokesURLs, disposes DataTexture and zeros its owned pixel store, releases viewer",
+  "live_validation": {
+    "transport": "Actual localhost Python service and actual page; no mocked inference routes. Default cohort is installed Chrome/Edge. An explicit separately frozen patched-engine cohort records executable pins, exact version and independent fresh contexts; report stable-browser failures separately",
+    "private_input": "Previously user-approved local input/age and exactly matching reviewed PNG/fit/source bindings; raw details only in ignored run plan",
+    "development_history": "Source/condition and earlier render results have already been inspected; no blind or independent quality evaluation claim",
+    "cases": "Explicit actual source, nearby decimals, middle fractional value and target endpoint, within loaded anchors only; exact private ages declared before run",
+    "cancellation": "Cancel target request during real native work, observe held source lease/admission, reconnect source and reuse bounded stage when available",
+    "reconnect": "Second browser reconnects the same live source and loads reviewed condition; original bytes and source provenance must match",
+    "cleanup": "Owned browser/Vite/Python service and worker exit; PID/kernel port observation and zero session/download/native counts, no claim of system-wide VRAM measurement"
+  },
+  "flags": {
+    "research_only": true,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false,
+    "age_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "independent_evaluation": false,
+    "legal_permission_established": false
+  }
+}

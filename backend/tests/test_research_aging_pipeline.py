@@ -18,6 +18,7 @@ from agemorph3d.aging_sessions import AgingCoordinator, AgingSessionCache, Sessi
 from agemorph3d.asset_cache import AssetCache, AssetCacheClosed, AssetCapacityError
 from agemorph3d.errors import ApiError
 from agemorph3d.sam_worker import SamGeneration, SamWorkerClient
+from agemorph3d.schemas import SourceAge
 from agemorph3d.tddfa import TddfaResult
 from PIL import Image
 
@@ -79,7 +80,9 @@ def source_fixture(bindings):
     yy, xx = np.mgrid[:200, :200]
     rgb = np.stack((xx, yy, np.full_like(xx, 37)), axis=-1).astype(np.uint8)
     uv = np.column_stack((xy[:, 0] / 200, 1 - xy[:, 1] / 200)).astype(np.float32)
-    source = pipeline.prepare_source_context(rgb, raw, keypoints, uv, KNOWN, bindings)
+    source = pipeline.prepare_source_context(
+        rgb, raw, keypoints, uv, SourceAge.model_validate(KNOWN), bindings
+    )
     return source, rgb, raw, keypoints, uv
 
 
@@ -112,7 +115,9 @@ def color_fixture(monkeypatch, bindings):
     yy, xx = np.mgrid[:200, :200]
     rgb = np.stack((xx, yy, np.full_like(xx, 37)), axis=-1).astype(np.uint8)
     uv = np.array([[0, 1], [1, 1], [0, 0]], dtype=np.float32)
-    source = pipeline.prepare_source_context(rgb, raw, keypoints, uv, KNOWN, bindings)
+    source = pipeline.prepare_source_context(
+        rgb, raw, keypoints, uv, SourceAge.model_validate(KNOWN), bindings
+    )
     return source, raw
 
 
@@ -305,6 +310,84 @@ async def test_target_own_projection_changes_known_rgb_but_source_glb_geometry_s
         await processor.close()
 
 
+@pytest.mark.parametrize("notice_bytes", [4096, 20000])
+async def test_large_synthetic_ready_provenance_remains_complete_in_sidecar_with_bounded_glb(
+    color_fixture, bindings, notice_bytes
+):
+    """The record resembles a ready frame, but no real worker/asset/permission is claimed."""
+    source, raw = color_fixture
+
+    class VerboseSyntheticWorker(TinyWorker):
+        async def generate(self, data, age):
+            generated = await super().generate(data, age)
+            notice = (
+                "SYNTHETIC license placeholder; no permission or real asset claim.\n"
+                * (notice_bytes // 64 + 2)
+            )[:notice_bytes]
+            self.ready_provenance = {
+                **generated.provenance,
+                "type": "ready",
+                "protocol_version": 1,
+                "state": "research_loaded",
+                "device": "synthetic-device-no-inference",
+                "torch": "synthetic-version-no-runtime",
+                "load_seconds": 0.125,
+                "checkpoint_reads_at_startup": 2,
+                "synthetic_scope": "fabricated ready-frame regression fixture only",
+                "license_notice": notice,
+                "pins": {
+                    **generated.provenance["pins"],
+                    "checkpoint_sha256": sha(b"synthetic-checkpoint-never-loaded"),
+                    "checkpoint_bytes": 123456789,
+                    "code_revision_claim": "synthetic-revision-not-a-real-commit",
+                    "native_marker_sha256": sha(b"synthetic-marker"),
+                    "license_status": "synthetic-unresolved-no-permission-claim",
+                    "code_pins": {
+                        f"synthetic/model/component-{index}/source.py": sha(
+                            f"synthetic-source-{index}".encode()
+                        )
+                        for index in range(8)
+                    },
+                },
+                "selftest": {
+                    "scope": "synthetic operator result, never executed",
+                    "checks": {f"synthetic-check-{index}": True for index in range(12)},
+                },
+            }
+            return replace(generated, provenance=self.ready_provenance)
+
+    worker = VerboseSyntheticWorker(bindings)
+    processor = pipeline.ResearchAgingProcessor(worker, lambda rgb: raw, bindings)
+    try:
+        handle = await processor.stage_condition(source, 20)
+        preview = processor.preview_staged(handle)
+        registered = await processor.register_reviewed(source, handle, review_for(preview))
+        sidecar = json.loads(registered.provenance_json)
+        assert sidecar["generation"] == worker.ready_provenance
+        assert len(sidecar["generation"]["license_notice"]) == notice_bytes
+        ready_bytes = json.dumps(
+            worker.ready_provenance, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
+        assert len(ready_bytes) > notice_bytes
+        document, geometry = glb_geometry(registered.result.glb)
+        assert geometry == glb_geometry(source.glb)[1]
+        assert struct.unpack_from("<I", registered.result.glb, 12)[0] <= 16 * 1024
+        expected_generation = {
+            "pid": 123,
+            "load_count": 1,
+            "provenance_sha256": sha(ready_bytes),
+        }
+        for extras in (document["extras"], document["scenes"][0]["extras"]):
+            embedded = extras["base_texture"]["research_pipeline"]
+            assert embedded["provenance_sha256"] == sha(registered.provenance_json)
+            assert embedded["generation"] == expected_generation
+            assert embedded["model_bindings"]["sam_manifest_sha256"] == bindings.sam_manifest_sha256
+            assert not embedded["service_ready"] and not embedded["g3_complete"]
+        assert registered.result.shape == source.shape
+    finally:
+        await processor.close()
+
+
 async def test_no_review_returns_same_staged_target_without_regenerating(color_fixture, bindings):
     source, raw = color_fixture
     worker = TinyWorker(bindings)
@@ -464,7 +547,9 @@ async def test_unknown_source_allows_condition_staging_but_never_defaults_absolu
     source_fixture, bindings
 ):
     _, rgb, raw, keypoints, uv = source_fixture
-    source = pipeline.prepare_source_context(rgb, raw, keypoints, uv, UNKNOWN, bindings)
+    source = pipeline.prepare_source_context(
+        rgb, raw, keypoints, uv, SourceAge.model_validate(UNKNOWN), bindings
+    )
     worker = TinyWorker(bindings)
     processor = pipeline.ResearchAgingProcessor(worker, lambda rgb: raw, bindings)
     try:
@@ -496,10 +581,16 @@ async def test_stage_ttl_is_absolute_and_expired_handle_cannot_revive_payload(
 ):
     source, raw = color_fixture
     now = [0.0]
-    cache = AssetCache(ttl_seconds=1, max_entries=1, clock=lambda: now[0])
+    cache = AssetCache(
+        max_bytes=32 * 1024**2,
+        max_asset_bytes=16 * 1024**2,
+        ttl_seconds=1,
+        max_entries=1,
+        clock=lambda: now[0],
+    )
     worker = TinyWorker(bindings)
     processor = pipeline.ResearchAgingProcessor(
-        worker, lambda rgb: raw, bindings, stage_cache=cache
+        worker, lambda rgb: raw, bindings, stage_cache=cache, max_stage_entries=1
     )
     try:
         old = await processor.stage_condition(source, 20)
@@ -586,10 +677,16 @@ async def test_registration_native_completion_cannot_publish_after_stage_expiry_
 ):
     source, raw = color_fixture
     now = [0.0]
-    cache = AssetCache(ttl_seconds=1, max_entries=1, clock=lambda: now[0])
+    cache = AssetCache(
+        max_bytes=32 * 1024**2,
+        max_asset_bytes=16 * 1024**2,
+        ttl_seconds=1,
+        max_entries=1,
+        clock=lambda: now[0],
+    )
     worker = TinyWorker(bindings)
     processor = pipeline.ResearchAgingProcessor(
-        worker, lambda rgb: raw, bindings, stage_cache=cache
+        worker, lambda rgb: raw, bindings, stage_cache=cache, max_stage_entries=1
     )
     handle = await processor.stage_condition(source, 20)
     review = review_for(processor.preview_staged(handle))
@@ -640,7 +737,7 @@ async def test_actual_synthetic_stdio_timeout_drains_before_coordinator_releases
     script = tmp_path / "synthetic_sam_worker.py"
     shutil.copyfile(Path(__file__).parent / "fixtures/synthetic_sam_worker.py", script)
     (tmp_path / "fake-sam-config.json").write_text(
-        json.dumps({"generate_delay": 0.25}), encoding="utf-8"
+        json.dumps({"generate_delay": 2.0}), encoding="utf-8"
     )
     worker = SamWorkerClient(
         python_executable=sys.executable,
@@ -664,7 +761,7 @@ async def test_actual_synthetic_stdio_timeout_drains_before_coordinator_releases
     try:
         await worker.start()
         with pytest.raises(ApiError) as caught:
-            await coordinator.generate(identifier, 20, timeout_seconds=0.04)
+            await coordinator.generate(identifier, 20, timeout_seconds=1.0)
         assert caught.value.code == "TIMEOUT"
         assert worker.busy and cache.stats["pins"] == 1 and cache.stats["results"] == 0
         now[0] = 2
@@ -678,4 +775,234 @@ async def test_actual_synthetic_stdio_timeout_drains_before_coordinator_releases
         assert worker.snapshot()["returncode"] == 0 and worker.snapshot()["closed"]
     finally:
         await coordinator.close()
+        await processor.close()
+
+
+@pytest.mark.parametrize(
+    "condition", [True, False, 19, 71, 20.0, 42.5, float("nan"), float("inf"), "20", None]
+)
+async def test_research_condition_rejects_noninteger_or_out_of_range_before_native_work(
+    color_fixture, bindings, condition
+):
+    source, _ = color_fixture
+    worker = TinyWorker(bindings)
+
+    def forbidden(rgb):
+        pytest.fail("Rejected generation conditions cannot enter the target refitter")
+
+    processor = pipeline.ResearchAgingProcessor(worker, forbidden, bindings)
+    try:
+        with pytest.raises(ApiError) as caught:
+            await processor.stage_condition(source, condition)
+        assert caught.value.code == "INTEGER_AGE_REQUIRED"
+        assert worker.calls == [] and not processor.snapshot["native_cpu_active"]
+    finally:
+        await processor.close()
+
+
+@pytest.mark.parametrize("malformation", ["duplicate_key", "huge_vertex_count", "array_shape"])
+async def test_context_rejects_malformed_declarations_before_array_decode_or_worker(
+    source_fixture, bindings, monkeypatch, malformation
+):
+    source, *_ = source_fixture
+    if malformation == "duplicate_key":
+        correspondence = b'{"version":"untrusted-duplicate",' + source.correspondence[1:]
+    else:
+        context = json.loads(source.correspondence)
+        if malformation == "huge_vertex_count":
+            context["raw"]["n"] = 10**12
+        else:
+            context["raw"]["arrays"]["shape"]["shape"] = [10**12]
+        correspondence = json.dumps(context).encode()
+    source = replace(source, correspondence=correspondence)
+    worker = TinyWorker(bindings)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Malformed context dimensions must be refused before binary array decoding")
+
+    monkeypatch.setattr(pipeline.np, "frombuffer", forbidden)
+    processor = pipeline.ResearchAgingProcessor(worker, forbidden, bindings)
+    try:
+        with pytest.raises(ApiError) as caught:
+            await processor.stage_condition(source, 20)
+        assert caught.value.code == "INVALID_CONTEXT" and worker.calls == []
+    finally:
+        await processor.close()
+
+
+async def test_full_pinned_stage_store_rejects_new_stage_without_losing_existing_handle(
+    color_fixture, bindings
+):
+    source, raw = color_fixture
+    cache = AssetCache(
+        max_bytes=32 * 1024**2, max_asset_bytes=16 * 1024**2, ttl_seconds=300, max_entries=1
+    )
+    worker = TinyWorker(bindings)
+    processor = pipeline.ResearchAgingProcessor(
+        worker, lambda rgb: raw, bindings, stage_cache=cache, max_stage_entries=1
+    )
+    lease = None
+    try:
+        first = await processor.stage_condition(source, 20)
+        lease = cache.acquire(first.stage_id)
+        with pytest.raises(ApiError) as caught:
+            await processor.stage_condition(source, 70)
+        assert caught.value.code == "BUSY"
+        assert processor.preview_staged(first).target == first
+        assert await processor.stage_condition(source, 20) == first
+        assert len(worker.calls) == 2
+        lease.close()
+        second = await processor.stage_condition(source, 70)
+        assert second.stage_id != first.stage_id and len(worker.calls) == 3
+        with pytest.raises(ApiError) as expired:
+            processor.preview_staged(first)
+        assert expired.value.code == "STAGE_EXPIRED"
+        assert processor.preview_staged(second).target == second
+    finally:
+        if lease is not None:
+            lease.close()
+        await processor.close()
+
+
+async def test_cancelling_close_waiter_does_not_cancel_cleanup_or_release_native_admission(
+    color_fixture, bindings
+):
+    source, raw = color_fixture
+    worker = TinyWorker(bindings, blocked=True)
+    cache = AssetCache(
+        max_bytes=32 * 1024**2, max_asset_bytes=16 * 1024**2, ttl_seconds=300, max_entries=1
+    )
+    processor = pipeline.ResearchAgingProcessor(
+        worker, lambda rgb: raw, bindings, stage_cache=cache, max_stage_entries=1
+    )
+    staging = asyncio.create_task(processor.stage_condition(source, 20))
+    await worker.entered.wait()
+    closing = asyncio.create_task(processor.close())
+    await eventually(lambda: processor.snapshot["closed"])
+    closing.cancel()
+    await asyncio.sleep(0)
+    try:
+        assert worker.busy and not worker.closed and not closing.done()
+        with pytest.raises(ApiError) as caught:
+            await processor.stage_condition(source, 70)
+        assert caught.value.code == "MODEL_NOT_READY"
+        worker.release.set()
+        with pytest.raises(ApiError) as stopped:
+            await staging
+        assert stopped.value.code == "MODEL_NOT_READY"
+        with pytest.raises(asyncio.CancelledError):
+            await closing
+        await processor.close()
+        assert worker.closed and not worker.busy
+        assert not processor.snapshot["active"] and processor.snapshot["stage_index_entries"] == 0
+        with pytest.raises(AssetCacheClosed):
+            cache.publish(b"closed stage store")
+    finally:
+        worker.release.set()
+        await asyncio.gather(staging, closing, return_exceptions=True)
+        await processor.close()
+
+
+async def test_source_reset_cannot_publish_after_close_during_native_source_validation(
+    source_fixture, bindings, monkeypatch
+):
+    source, *_ = source_fixture
+    entered, release = threading.Event(), threading.Event()
+    real_load = pipeline._load_source
+
+    def blocked_load(*args):
+        entered.set()
+        assert release.wait(3), "test failed to release source validation thread"
+        return real_load(*args)
+
+    monkeypatch.setattr(pipeline, "_load_source", blocked_load)
+    worker = TinyWorker(bindings)
+    processor = pipeline.ResearchAgingProcessor(worker, lambda rgb: None, bindings)
+    resetting = asyncio.create_task(processor(source, 42.5))
+    assert await asyncio.to_thread(entered.wait, 2)
+    closing = asyncio.create_task(processor.close())
+    try:
+        await eventually(lambda: processor.snapshot["closed"])
+        assert not resetting.done() and not closing.done()
+        release.set()
+        with pytest.raises(ApiError) as caught:
+            await resetting
+        assert caught.value.code == "MODEL_NOT_READY"
+        await closing
+        assert worker.closed and worker.calls == []
+    finally:
+        release.set()
+        await asyncio.gather(resetting, closing, return_exceptions=True)
+        await processor.close()
+
+
+async def test_cancelled_native_waiter_keeps_cancellation_after_native_failure(bindings):
+    entered, release = threading.Event(), threading.Event()
+
+    def failing_native():
+        entered.set()
+        assert release.wait(3), "test failed to release failing native thread"
+        raise ValueError("synthetic native failure after waiter cancellation")
+
+    processor = pipeline.ResearchAgingProcessor(TinyWorker(bindings), lambda rgb: None, bindings)
+    waiting = asyncio.create_task(processor._native(failing_native))
+    assert await asyncio.to_thread(entered.wait, 2)
+    waiting.cancel()
+    await asyncio.sleep(0)
+    try:
+        assert not waiting.done() and processor.snapshot["native_cpu_active"]
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+        assert not processor.snapshot["native_cpu_active"]
+    finally:
+        release.set()
+        await asyncio.gather(waiting, return_exceptions=True)
+        await processor.close()
+
+
+@pytest.mark.parametrize(
+    "oversized",
+    [
+        {"max_bytes": 64 * 1024**2 + 1},
+        {"max_asset_bytes": 16 * 1024**2 + 1},
+        {"ttl_seconds": 300.001},
+        {"max_entries": 2},
+    ],
+)
+def test_injected_stage_cache_cannot_exceed_processor_budget_or_hide_extra_entries(
+    bindings, oversized
+):
+    limits = {
+        "max_bytes": 32 * 1024**2,
+        "max_asset_bytes": 16 * 1024**2,
+        "ttl_seconds": 300,
+        "max_entries": 1,
+    }
+    cache = AssetCache(**(limits | oversized))
+    worker = TinyWorker(bindings)
+    try:
+        with pytest.raises(ValueError):
+            pipeline.ResearchAgingProcessor(
+                worker, lambda rgb: None, bindings, stage_cache=cache, max_stage_entries=1
+            )
+        assert worker.calls == []
+    finally:
+        cache.close()
+
+
+async def test_default_store_entry_limit_tracks_metadata_limit(color_fixture, bindings):
+    source, raw = color_fixture
+    processor = pipeline.ResearchAgingProcessor(
+        TinyWorker(bindings), lambda rgb: raw, bindings, max_stage_entries=1
+    )
+    try:
+        old = await processor.stage_condition(source, 20)
+        current = await processor.stage_condition(source, 70)
+        assert processor.snapshot["stage_index_entries"] == 1
+        with pytest.raises(ApiError) as expired:
+            processor.preview_staged(old)
+        assert expired.value.code == "STAGE_EXPIRED"
+        assert processor.preview_staged(current).target == current
+    finally:
         await processor.close()

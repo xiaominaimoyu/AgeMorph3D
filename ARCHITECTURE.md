@@ -1,6 +1,6 @@
 # 架构与数据流
 
-更新日期：2026-10-24。当前实现、研究路径和未来接入分别记录；依赖的实际版本以锁文件及各批环境快照为准。
+更新日期：2026-10-25。当前实现、研究路径和未来接入分别记录；依赖的实际版本以锁文件及各批环境快照为准。
 
 ## 技术栈与目录
 
@@ -34,8 +34,16 @@ SAM二维输出、目标拟合几何与输出源canonical几何分别保存来�
 
 ## 资源和依赖边界
 
-下一研究处理器按[独立处理器协议](docs/research-aging-pipeline-v1.json)将源上下文、已存在worker、目标重拟合、显式审核及UV接成内存分支。未知源龄可用于明确的整数条件研究，原绝对年龄协调器仍拒绝unknown；审核暂存与注册结果使用不同类型，缺审核不得生成SessionResult。生产Runtime/App及原模型资格不由该分支更新。
+独立研究处理器已按[协议](docs/research-aging-pipeline-v1.json)将源上下文、已有worker、目标重拟合、显式审核及UV接成内存分支，并完成未知源龄整数条件的真实闭环。原绝对年龄协调器仍拒绝unknown；审核暂存与注册结果使用不同类型，缺审核不得生成SessionResult。完整provenance另存不可变字节，GLB以SHA绑定，保持既有元数据预算。生产Runtime/App及原模型资格不由该分支更新。
 
 前端仅连接本机服务；研究harness自行管理loopback服务器和浏览器并在finally关闭。生产资产链使用容量、TTL、租约、取消及关闭检查，未来SAM worker接入需继续满足同类边界。
 
 backend、SAM及MiVOLO环境分离。评价器的权重、来源文档、版本、哈希和包清单分别核验；可加载不等于可分发或质量就绪。图像、模型及完整数据集不进入源码仓库。
+
+服务接线已按[研究HTTP协议](docs/research-aging-service-v1.json)使用独立app和会话所有权层，完成真实26项HTTP验证。源构建与目标拟合共享原生准入，超时/断线不提前释放租约，实际缓存写入再检查HTTP断线、截止时间与取消。原生产app/runtime保持资格边界，源龄只能来自明确输入；用户本人照片及派生资产只用于本机忽略目录内验证，原始恢复和审核后缓存命中已实测。
+
+显示分支使用独立`frontend/research/session.html`和`research-session.ts`客户端：同源loopback路径及有界流校验 → 原始/已审核条件GLB与共同UV → 原采样器 → DataTexture → 无Canvas PNG编码和GLB内嵌图替换。`FaceViewer`只增加静态研究bytes入口；生产资产地址校验保持原范围。原生provenance通过独立原字节base64返回，避免JS重序列化改变数值文本后的hash失配。实际长驻研究server、浏览器harness及独立NumPy/PIL检查器分别留证，固定软件图形实验配置已通过，稳定版兼容与普通图形配置仍待收口。
+
+后续[定长响应审查](docs/固定长度响应兼容候选审查.md)已否决全量原生读取候选：HTTP目的地址仍可能经HTTPS代理走H2，显式CL和CORS头不能普遍约束原生消费。SDK保持按实际chunk计数、预算前拒绝保留和EOF长度检查；候选前后端变更均撤回，不新增基于UA/地址猜测传输的分支。
+
+[联合支持分支](docs/源与目标UV联合支持诊断记录.md)使用独立`tools/joint_uv_support_probe.py`读取固定三源atlas、两版目标samples和旧correspondence，只输出四态/七原因/区域计数及整数差分。实际输入闭包、导入源码、分配前边界和末检均受约束；不加载权重、重投影、写颜色或改变现有采样/服务实现。

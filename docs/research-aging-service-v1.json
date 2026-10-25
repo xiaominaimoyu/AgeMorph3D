@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-research-aging-service-v1",
+  "scope": "Isolated loopback HTTP research service over the existing real processor; production app and model qualifications remain unchanged",
+  "source_age": "Omitted remains unknown; an explicit user-provided photo age uses SourceAge.user and is never inferred from a filename",
+  "private_input": "The user has supplied their own local photo and its age for local verification. Exact path, age, pixels and all derived assets stay in ignored research evidence; no private asset publication",
+  "source_builder": "Caller-owned verified detector/reconstructor prepare full source context and fixed common UV; no implicit model loader in the HTTP app",
+  "service_owner": "ResearchAgingService owns processor, session cache, coordinator, bounded stage metadata and response leases; caller owns reconstruction models",
+  "admission": "One native admission shared by source builder, direct staging/registration and the actual processor injected into Coordinator. It remains owned after HTTP timeout/disconnect until native work ends",
+  "session_cache": "Reuse bounded AgingSessionCache, absolute TTL and pinned accounting; result bytes are stored once, by session and condition",
+  "stage_index": "At most4 opaque stage metadata records, checked against source/target TTL and source ownership. No unbounded job/result registry",
+  "asset_delivery": "At most4 concurrent response leases; source/condition assets and stage preview/fit remain pinned until send finishes or is cancelled",
+  "review": "Explicit source, PNG and fit SHA256 plus same-size binary disjoint masks; missing or mismatched review never becomes an automatic mask",
+  "absolute_age": "Reuse Coordinator: unknown source fails before cache/worker; exact known source age returns original bytes; other fractional ages fail; reviewed integer results can be cache hits",
+  "http": {
+    "bind": "127.0.0.1 only in the launcher/probe",
+    "prefix": "/research",
+    "production_routes": false,
+    "upload": "Raw bounded JPEG/PNG/WebP body, optional strict decimal source_age query; no multipart or disk spool",
+    "request_limit_bytes": 12582912,
+    "small_json_limit_bytes": 16384,
+    "review_png_limit_bytes_each": 4194304,
+    "headers": "Existing Host/Origin allowlist, no-store and nosniff middleware; default HTTP deadline180seconds",
+    "error_handling": "Private-safe codes, no model paths/photo contents in HTTP errors",
+    "disconnect": "Stop the request waiter; never cancel/release the actual native owner's source lease early"
+  },
+  "shutdown": "Reject new work, close worker/processor and drain native/source work, then close Coordinator/cache. Already sending response leases stay charged until actual send completion or cancellation; cancelling a close waiter must not cancel cleanup",
+  "validation": {
+    "synthetic": "Controlled native barriers, TTL, timeout/disconnect, concurrent source/target admission, result ownership, assets and close; never labelled real inference",
+    "real": "User-consented local input, actual loopback server and HTTP requests, original source reset, new target generation/refit, explicit reviewed registration, cache hit and normal worker/server/model release",
+    "frozen_evidence": "Input/model/code/environment hashes before inference and checked after; first failures retained",
+    "quality": "Service wiring and local research only; same-age drift and generated identity are observations, not accepted model quality"
+  },
+  "flags": {
+    "research_only": true,
+    "service_ready": false,
+    "production_enabled": false,
+    "age_morph": false,
+    "age_texture_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "independent_evaluation": false,
+    "legal_permission_established": false,
+    "g3_complete": false
+  }
+}

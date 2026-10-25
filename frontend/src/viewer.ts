@@ -6,6 +6,7 @@ import { getAgeWeights } from "./age";
 import { LocalApi } from "./services";
 import type { Reconstruction } from "./contracts";
 import type { ResearchTextureFrame } from "./research-texture";
+import { encodeResearchRgbaPng, replaceResearchPng } from "./research-rgba";
 
 export type ModelOptions = Pick<Reconstruction, "asset_mode" | "source_age" | "topology_id"> & Partial<Pick<Reconstruction, "capabilities">>;
 
@@ -30,6 +31,7 @@ type ResearchMaterialState = Pick<ColorMaterial,
   "map" | "transparent" | "alphaTest" | "depthWrite" | "premultipliedAlpha" | "opacity"
 >;
 const AGES = [20, 45, 70] as const;
+const RESEARCH_TEXTURE_NAME = "AgeMorph3D_Research_Display_RGBA";
 
 function assertTextureUv(mesh: THREE.Mesh, channel = 0): void {
   const positions = mesh.geometry.getAttribute("position");
@@ -100,6 +102,60 @@ async function localAsset(
   } finally {
     window.clearTimeout(timeout);
     signal.removeEventListener("abort", abort);
+  }
+}
+
+/** The research byte entrypoint has no URL base for resolving sidecars. */
+function assertResearchGlb(bytes: ArrayBuffer): void {
+  const invalid = () => new Error("研究模型需要有界且内嵌资源的独立 GLB 文件。");
+  if (bytes.byteLength < 28) throw invalid();
+  const header = new DataView(bytes);
+  const jsonLength = header.getUint32(12, true);
+  const binaryStart = 20 + jsonLength;
+  if (
+    header.getUint32(0, true) !== 0x46546c67 || header.getUint32(4, true) !== 2 ||
+    header.getUint32(8, true) !== bytes.byteLength ||
+    header.getUint32(16, true) !== 0x4e4f534a || jsonLength < 2 || jsonLength % 4 !== 0 ||
+    binaryStart + 8 > bytes.byteLength || header.getUint32(binaryStart + 4, true) !== 0x004e4942
+  ) throw invalid();
+  const binaryLength = header.getUint32(binaryStart, true);
+  if (binaryLength % 4 !== 0 || binaryStart + 8 + binaryLength !== bytes.byteLength)
+    throw invalid();
+  let document: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(
+      new Uint8Array(bytes, 20, jsonLength),
+    ));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw invalid();
+    document = parsed as Record<string, unknown>;
+  } catch {
+    throw invalid();
+  }
+  const buffers = document.buffers;
+  if (!Array.isArray(buffers) || buffers.length !== 1) throw invalid();
+  const buffer = buffers[0];
+  if (
+    !buffer || typeof buffer !== "object" || Object.hasOwn(buffer, "uri") ||
+    !Number.isSafeInteger(buffer.byteLength) || buffer.byteLength <= 0 ||
+    buffer.byteLength > binaryLength || binaryLength - buffer.byteLength > 3
+  ) throw invalid();
+  const images = document.images ?? [];
+  const views = document.bufferViews;
+  if (!Array.isArray(images)) throw invalid();
+  for (const image of images) {
+    if (
+      !image || typeof image !== "object" || Object.hasOwn(image, "uri") ||
+      !Number.isSafeInteger(image.bufferView) || image.bufferView < 0 ||
+      !Array.isArray(views) || image.bufferView >= views.length ||
+      !["image/png", "image/jpeg", "image/webp"].includes(image.mimeType)
+    ) throw invalid();
+    const view = views[image.bufferView];
+    const offset = view?.byteOffset ?? 0;
+    if (
+      !view || view.buffer !== 0 || !Number.isSafeInteger(offset) || offset < 0 ||
+      !Number.isSafeInteger(view.byteLength) || view.byteLength <= 0 ||
+      offset + view.byteLength > buffer.byteLength
+    ) throw invalid();
   }
 }
 
@@ -180,8 +236,7 @@ export class FaceViewer {
   private readonly originalTextures = new Set<THREE.Texture>();
   private uploadedTexture: THREE.Texture | null = null;
   private readonly researchMaterialStates = new Map<ColorMaterial, ResearchMaterialState>();
-  private researchTexture: THREE.CanvasTexture | null = null;
-  private researchCanvas: HTMLCanvasElement | null = null;
+  private researchTexture: THREE.DataTexture | null = null;
   private researchTextureAge: { present: boolean; value: unknown } | null = null;
   private age = 30;
   private assetMode: Reconstruction["asset_mode"] = "age_morph";
@@ -204,6 +259,7 @@ export class FaceViewer {
   constructor(
     private readonly container: HTMLElement,
     private readonly callbacks: ViewerCallbacks = {},
+    options: { initialDemo?: boolean } = {},
   ) {
     this.scene.background = new THREE.Color("#0a0e1a");
     this.scene.fog = new THREE.Fog("#0a0e1a", 8, 19);
@@ -259,7 +315,11 @@ export class FaceViewer {
     this.scene.add(this.grid);
     this.resizeObserver = new ResizeObserver(this.resize);
     this.resizeObserver.observe(container);
-    this.loadDemo();
+    if (options.initialDemo !== false) this.loadDemo();
+    else {
+      this.assetMode = "static";
+      this.referenceAge = null;
+    }
     this.resize();
     this.resetView();
     this.frame = requestAnimationFrame(this.animate);
@@ -549,7 +609,24 @@ export class FaceViewer {
     this.resetView();
   }
 
-  async loadModel(url: string, options: ModelOptions): Promise<void> {
+  /** Remove a source and invalidate all pending loads before selecting another person. */
+  clearModel(): void {
+    if (this.disposed) return;
+    this.modelRequest?.abort();
+    this.textureRequest?.abort();
+    this.modelRequest = undefined;
+    this.textureRequest = undefined;
+    this.loadVersion++;
+    this.textureVersion++;
+    this.releaseModel();
+    this.assetMode = "static";
+    this.referenceAge = null;
+    this.compare = false;
+    this.vertexCount = this.triangleCount = 0;
+    this.callbacks.onStats?.({ fps: 0, vertices: 0, triangles: 0 });
+  }
+
+  private beginModelLoad(options: ModelOptions): { version: number; controller: AbortController } {
     if (options.asset_mode !== "static" && options.asset_mode !== "age_morph")
       throw new Error("必须明确指定静态或年龄形变资产模式。");
     if (options.asset_mode === "age_morph" && options.source_age.value === null)
@@ -559,7 +636,31 @@ export class FaceViewer {
     this.modelRequest?.abort();
     const controller = new AbortController();
     this.modelRequest = controller;
+    return { version, controller };
+  }
+
+  async loadModel(url: string, options: ModelOptions): Promise<void> {
+    const { version, controller } = this.beginModelLoad(options);
     const bytes = await localAsset(url, 64 * 1024 * 1024, controller.signal);
+    if (this.disposed || version !== this.loadVersion) return;
+    await this.installModel(bytes, options, version, url);
+  }
+
+  /** Opt-in static research bytes; production asset URL validation stays separate. */
+  async loadResearchModelBytes(bytes: ArrayBuffer, options: ModelOptions): Promise<void> {
+    if (options.asset_mode !== "static")
+      throw new Error("研究会话只能加载静态源网格，不授予年龄形变能力。");
+    if (!(bytes instanceof ArrayBuffer) || bytes.byteLength > 64 * 1024 * 1024)
+      throw new Error("研究三维资产必须为不超过64MiB的二进制数据。");
+    const ownedBytes = bytes.slice(0);
+    assertResearchGlb(ownedBytes);
+    const { version } = this.beginModelLoad(options);
+    await this.installModel(ownedBytes, options, version);
+  }
+
+  private async installModel(
+    bytes: ArrayBuffer, options: ModelOptions, version: number, url?: string,
+  ): Promise<void> {
     if (this.disposed || version !== this.loadVersion) return;
     const manager = new THREE.LoadingManager();
     // V1 accepts self-contained GLB assets; remote sidecars are never requested.
@@ -668,13 +769,12 @@ export class FaceViewer {
   }
 
   private disposeResearchTexture(): void {
-    this.researchTexture?.dispose();
-    this.researchTexture = null;
-    if (this.researchCanvas) {
-      this.researchCanvas.width = 0;
-      this.researchCanvas.height = 0;
+    if (this.researchTexture) {
+      this.researchTexture.dispose();
+      this.researchTexture.image.data = new Uint8Array();
+      this.researchTexture.image.width = this.researchTexture.image.height = 0;
     }
-    this.researchCanvas = null;
+    this.researchTexture = null;
   }
 
   private clearResearchDisplay(): void {
@@ -728,23 +828,20 @@ export class FaceViewer {
     for (let index = 0; index < pixels.length; index += 4)
       if (pixels[index + 3] === 0 && (pixels[index] || pixels[index + 1] || pixels[index + 2]))
         throw new Error("研究纹理的未知区域必须保持透明黑色。");
-    const canvas = document.createElement("canvas");
-    canvas.width = frame.width;
-    canvas.height = frame.height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("浏览器无法创建研究纹理画布。");
-    context.putImageData(new ImageData(pixels, frame.width, frame.height), 0, 0);
-    const texture = new THREE.CanvasTexture(canvas);
+    // Canvas2D premultiplies RGBA8 and loses low-alpha straight RGB.
+    // Upload the owned canonical sampler bytes directly to WebGL instead.
+    const texture = new THREE.DataTexture(new Uint8Array(pixels.buffer), frame.width, frame.height);
+    texture.name = RESEARCH_TEXTURE_NAME;
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.flipY = false;
     texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
     texture.magFilter = texture.minFilter = THREE.LinearFilter;
     texture.generateMipmaps = false;
+    texture.needsUpdate = true;
     this.textureVersion++;
     this.textureRequest?.abort();
     this.disposeResearchTexture();
     this.researchTexture = texture;
-    this.researchCanvas = canvas;
     if (!this.researchTextureAge) this.researchTextureAge = {
       present: Object.prototype.hasOwnProperty.call(this.model.userData, "texture_age"),
       value: this.model.userData.texture_age,
@@ -876,6 +973,7 @@ export class FaceViewer {
     helpers.forEach((helper) => helper.removeFromParent());
     const materials = new Map<THREE.Material, THREE.Material>();
     const textures = new Map<THREE.Texture, THREE.Texture>();
+    const researchTexture = this.researchTexture;
     const cloneMaterial = (source: THREE.Material): THREE.Material => {
       const existing = materials.get(source);
       if (existing) return existing;
@@ -885,20 +983,32 @@ export class FaceViewer {
       for (const [key, value] of Object.entries(source)) {
         if (!(value instanceof THREE.Texture)) continue;
         if (!textures.has(value)) {
-          const image = value.image as CanvasImageSource & {
-            width: number;
-            height: number;
-          };
-          const canvas = document.createElement("canvas");
-          canvas.width = image.width;
-          canvas.height = image.height;
-          const context = canvas.getContext("2d");
-          if (!context) throw new Error("浏览器无法复制导出纹理。");
-          context.drawImage(image, 0, 0);
-          const texture = value.clone();
-          texture.source = new THREE.Source(canvas);
-          texture.needsUpdate = true;
-          textures.set(value, texture);
+          if (value instanceof THREE.DataTexture) {
+            const image = value.image;
+            if (!(image.data instanceof Uint8Array || image.data instanceof Uint8ClampedArray))
+              throw new Error("导出数据纹理需要有界的RGBA8像素。");
+            const texture = value.clone();
+            texture.source = new THREE.Source({
+              data: new Uint8Array(image.data), width: image.width, height: image.height,
+            });
+            texture.needsUpdate = true;
+            textures.set(value, texture);
+          } else {
+            const image = value.image as CanvasImageSource & {
+              width: number;
+              height: number;
+            };
+            const canvas = document.createElement("canvas");
+            canvas.width = image.width;
+            canvas.height = image.height;
+            const context = canvas.getContext("2d");
+            if (!context) throw new Error("浏览器无法复制导出纹理。");
+            context.drawImage(image, 0, 0);
+            const texture = value.clone();
+            texture.source = new THREE.Source(canvas);
+            texture.needsUpdate = true;
+            textures.set(value, texture);
+          }
         }
         (clone as unknown as Record<string, unknown>)[key] =
           textures.get(value);
@@ -926,12 +1036,20 @@ export class FaceViewer {
       };
       const { GLTFExporter } =
         await import("three/addons/exporters/GLTFExporter.js");
-      const output = await new GLTFExporter().parseAsync(snapshot, {
+      let output = await new GLTFExporter().parseAsync(snapshot, {
         binary: true,
         onlyVisible: false,
       });
       if (!(output instanceof ArrayBuffer))
         throw new Error("GLB 导出没有返回二进制数据。");
+      // GLTFExporter also routes DataTexture PNGs through Canvas2D. Bind a
+      // lossless PNG of this immutable export snapshot, preserving geometry.
+      const captured = researchTexture && textures.get(researchTexture);
+      if (captured instanceof THREE.DataTexture) {
+        const image = captured.image;
+        const png = await encodeResearchRgbaPng(image.data as Uint8Array, image.width, image.height);
+        output = await replaceResearchPng(output, png, RESEARCH_TEXTURE_NAME);
+      }
       return new Blob([output], { type: "model/gltf-binary" });
     } finally {
       cleanup();

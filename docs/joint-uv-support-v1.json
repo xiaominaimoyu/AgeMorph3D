@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-joint-uv-support-v1",
+  "scope": "Saved-array development diagnostic of original-source support versus old/conservative target support; no synthesis, registration, rendering, model execution or threshold selection",
+  "observations": {
+    "prior_target_support_and_render_failures_seen": true,
+    "prior_conservative_candidate_seen": true,
+    "preprotocol_schema_inspection": "One previously audited old correspondence NPZ was opened only to list array names/shapes/dtypes; original report metadata was also inspected. No original atlas/target support intersection or new joint counts were computed",
+    "new_joint_counts_seen_before_protocol": false,
+    "blind_or_independent_quality_evaluation": false
+  },
+  "cohort": {
+    "fgnet-004a63": [20, 45, 63, 70],
+    "fgnet-082a27": [20, 27, 45, 70],
+    "fgnet-006a55": [20, 45, 55, 70]
+  },
+  "variants": ["old", "conservative"],
+  "expected_records": 24,
+  "inputs": {
+    "reports": "Hash-pinned existing source reset, UV support correspondence, old registration and conservative registration reports",
+    "binary": "Exactly their selected three original RGBA atlases, 24 target samples NPZ and 12 target-own correspondence NPZ; shared identical binary paths are deduplicated",
+    "code": "Freeze this protocol, new CLI/tests and every imported project helper before actual joined-count evaluation; schema-only preflight exposure is disclosed separately",
+    "budget": "Per-file bounded snapshots and bounded NPZ expansion, strict names/dtypes/shapes and no pickle; pin all selected descendants before execution and recheck before successful publication",
+    "scope_excluded": "Do not read model weights, raw photographs, generated full images, GLBs or holdout age/identity results"
+  },
+  "validation": [
+    "All 12 sample/source/condition mappings must agree across the two registration reports and correspondence report; preserve unknown API source_age",
+    "Compare original report source_frame and shared UV hash/origin/grid metadata for every paired target; old/conservative sample gltf_uv arrays and hashes agree and bind the source metadata. Target projection/ROI metadata remains its own and identical between variants; no GLB or original projection is recomputed",
+    "RGBA arrays are uint8 256x256x4 with binary alpha and RGBA zero where unknown; target coverage equals alpha and class sampled",
+    "Correspondence rows/columns are unique, in bounds and equal the saved old classification>=2 domain point by point. Retain the prior UV diagnostic's unique-owned domain label and region semantics; do not rerasterize UV/topology or independently reprove geometry in this saved-array diagnostic",
+    "Old target classification/global and regional counts must match the old UV diagnostic; conservative changes must not alter common UV or correspondence region membership",
+    "Counts are descriptive support availability, not clean-skin labels: original observed texels can include glasses, occluders and lighting"
+  ],
+  "accounting": {
+    "states": ["both_known", "source_only", "target_only", "both_unknown"],
+    "known": "Exact alpha255 in an existing original atlas or registered target array, never inferred from color",
+    "regions": "all 65536 atlas texels; unique correspondence domain; target-own saved eye_36_41, eye_42_47, nose_27_35, mouth_48_67 regions",
+    "overlap": "The four anatomical boxes can overlap and must never be summed into a new disjoint face denominator",
+    "reason_partition": "For every region and joint state, retain all seven mutually exclusive target classification counts; these sum to the state count, state counts sum to region requested count",
+    "fractions": "source_only/source_known and source_only/region_count with null for zero denominators; do not average target-dependent denominators without reporting them",
+    "delta": "Conservative minus old integer counts per state/region/reason, with the expected class5-to-class6 increase distinguished from original source support",
+    "interpretation": "Source-only counts identify previously observed source locations absent in the target, not permission to copy source colors, establish causal NO_FACE explanations or certify identity/age quality"
+  },
+  "output": "Create a fresh ignored output/research directory containing JSON counts, deltas, pins and integrity only; no PNG, color array, modified mask/atlas or GLB",
+  "policy": "Existing no-fill protocols remain unchanged. Original-source fallback would require a separately authorized, explicit mixed-provenance design and cannot be introduced as a target-observation repair in this diagnostic",
+  "flags": {
+    "research_only": true,
+    "real_model_inference": false,
+    "masks_modified": false,
+    "unknown_regions_filled": false,
+    "source_fallback_enabled": false,
+    "causal_cause_accepted": false,
+    "independent_evaluation": false,
+    "identity_quality_accepted": false,
+    "age_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "legal_permission_established": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

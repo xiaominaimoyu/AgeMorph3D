@@ -257,14 +257,15 @@ async function installTools() {
     ["transparent", "alphaTest", "depthWrite", "premultipliedAlpha", "opacity"].every(key => state.material[key] === state[key]));
   const assertRestored = () => { if (!restored()) throw new Error("Original material/map state was not restored."); };
   const assertResearchReleased = () => {
-    if (viewer.researchTexture !== null || viewer.researchCanvas !== null || viewer.researchMaterialStates.size !== 0)
-      throw new Error("Viewer retained owned research texture/canvas/material snapshots.");
+    if (viewer.researchTexture !== null || viewer.researchMaterialStates.size !== 0)
+      throw new Error("Viewer retained owned research texture/material snapshots.");
   };
   const assertDisplay = () => {
     for (const material of materials()) {
       if (!material.transparent || material.alphaTest !== 0 || material.depthWrite || material.premultipliedAlpha || material.opacity !== 1)
         throw new Error("Research frame did not use consistent straight-alpha BLEND flags.");
       if (material.map?.colorSpace !== "srgb" || material.map.flipY !== false) throw new Error("Research map orientation/color space changed.");
+      if (!material.map.isDataTexture) throw new Error("Research RGBA pixels must bypass Canvas2D conversion.");
     }
     if (viewer.model.userData.source_age.value !== null) throw new Error("Research source label entered API provenance.");
   };
@@ -434,10 +435,10 @@ async function installTools() {
     },
     async lifecycle(basePngUrl) {
       show(45);
-      const oldTexture = viewer.researchTexture, oldCanvas = viewer.researchCanvas;
+      const oldTexture = viewer.researchTexture, oldImage = oldTexture.image;
       let textureDisposed = false; oldTexture.addEventListener("dispose", () => { textureDisposed = true; });
       viewer.setResearchDisplayTexture(null); assertRestored(); assertResearchReleased();
-      if (!textureDisposed || oldCanvas.width !== 0 || oldCanvas.height !== 0) throw new Error("Research resource backing store was not released.");
+      if (!textureDisposed || oldImage.data.byteLength !== 0 || oldImage.width !== 0 || oldImage.height !== 0) throw new Error("Research resource backing store was not released.");
       show(45); await viewer.setTexture(basePngUrl, false, 45); // Valid ordinary API clears research state first.
       if (materials().some(material => material.transparent || material.alphaTest !== 0.5 || !material.depthWrite)) throw new Error("Ordinary texture inherited research BLEND flags.");
       assertResearchReleased();

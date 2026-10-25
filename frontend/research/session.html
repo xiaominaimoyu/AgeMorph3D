@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>本机研究会话 · AgeMorph3D</title>
+    <link rel="stylesheet" href="./session.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">AgeMorph3D · 本机研究</p>
+        <h1>会话纹理与连续显示</h1>
+        <p class="subtitle">使用同一源网格查看已审核纹理。小数仅改变显示，不触发新的年龄生成。</p>
+      </div>
+      <span class="research-badge">研究用途 · G3 未验收</span>
+    </header>
+
+    <main id="research-session" data-state="empty" data-busy="false">
+      <aside class="panel source-panel" aria-labelledby="source-title">
+        <h2 id="source-title">1 · 本机服务与源会话</h2>
+        <label for="service-url">研究服务地址</label>
+        <input id="service-url" data-testid="service-url" type="url" value="http://127.0.0.1:8000" spellcheck="false" autocomplete="off" />
+        <button id="connect-service" data-testid="connect-service" type="button">检查本机服务</button>
+        <p id="connection-status" class="hint">仅允许 loopback 服务；本页不连接生产年龄 API。</p>
+
+        <div class="section-divider"></div>
+        <label for="source-file">本地照片</label>
+        <input id="source-file" data-testid="source-file" type="file" accept="image/jpeg,image/png,image/webp" />
+        <label for="source-age">照片拍摄时的源龄 <span class="muted">（可选）</span></label>
+        <input id="source-age" data-testid="source-age" type="number" min="20" max="70" step="any" inputmode="decimal" placeholder="留空保持未知" autocomplete="off" />
+        <p class="hint">只填写明确提供的 20—70 岁源龄，可含小数。更换照片后须重新填写。</p>
+        <button id="create-session" data-testid="create-session" class="primary" type="button">建立源会话</button>
+
+        <details class="existing-session">
+          <summary>连接已有研究会话</summary>
+          <label for="existing-session-id">会话标识</label>
+          <input id="existing-session-id" data-testid="existing-session-id" type="text" maxlength="32" spellcheck="false" autocomplete="off" />
+          <button id="connect-existing" data-testid="connect-existing" type="button">载入已有会话</button>
+        </details>
+
+        <div class="section-divider"></div>
+        <p id="source-summary" class="source-summary">尚未建立源会话</p>
+        <p id="geometry-summary" class="hint">未加载真实网格</p>
+        <button id="cancel-work" data-testid="cancel-work" class="quiet" type="button" disabled>取消等待并清除本页</button>
+      </aside>
+
+      <section class="panel viewer-panel" aria-labelledby="viewer-title">
+        <div class="panel-heading">
+          <h2 id="viewer-title">源网格查看器</h2>
+          <span id="display-kind" class="mode-badge">未加载</span>
+        </div>
+        <div class="viewer-shell">
+          <div id="viewer" class="viewer" data-testid="viewer"></div>
+          <p id="empty-state" class="empty-state">建立或载入源会话后显示真实网格</p>
+        </div>
+        <div class="display-controls">
+          <div class="display-heading">
+            <label for="display-age">显示位置</label>
+            <output id="display-value" for="display-age display-age-number">—</output>
+          </div>
+          <div class="age-row">
+            <input id="display-age" data-testid="display-age" type="range" min="20" max="70" step="any" disabled />
+            <input id="display-age-number" data-testid="display-age-number" type="number" min="20" max="70" step="any" aria-label="显示位置数值" disabled />
+          </div>
+          <p id="timeline-summary" class="hint">尚无纹理显示锚点。不会超出已有锚点范围外推。</p>
+          <div class="button-row">
+            <button id="restore-source" data-testid="restore-source" type="button" disabled>恢复原始源显示</button>
+            <button id="download-source-glb" data-testid="download-source-glb" type="button" disabled>下载原始源 GLB</button>
+          </div>
+          <div class="button-row">
+            <button id="export-display-glb" data-testid="export-display-glb" type="button" disabled>导出当前显示 GLB</button>
+            <button id="export-png" data-testid="export-png" type="button" disabled>导出当前视图 PNG</button>
+          </div>
+          <p class="hint">滑杆用于近似定位；精确位置可在右侧输入，源龄不取整。连续显示使用统一 BLEND 材质；原始恢复直接使用源龄记录并保留原材质。原始文件下载与显示衍生物分别提供。</p>
+        </div>
+      </section>
+
+      <section class="panel target-panel" aria-labelledby="target-title">
+        <h2 id="target-title">2 · 生成条件与显式审核</h2>
+        <div class="condition-row">
+          <div>
+            <label for="target-condition">整数生成条件</label>
+            <input id="target-condition" data-testid="target-condition" type="number" min="20" max="70" step="1" value="45" disabled />
+          </div>
+          <button id="stage-condition" data-testid="stage-condition" class="primary" type="button" disabled>生成并暂存目标</button>
+          <button id="load-condition" data-testid="load-condition" type="button" disabled>载入已审核条件</button>
+        </div>
+        <p class="hint">20—70 的整数是 SAM 生成条件。它不是个人未来年龄真值；源网格形状保持不变。</p>
+        <div id="review-area" class="review-area" hidden>
+          <div class="preview-column">
+            <img id="target-preview" data-testid="target-preview" alt="当前生成条件图，尚未成为已审核三维纹理" />
+            <p id="target-summary" class="hint"></p>
+            <details>
+              <summary>核对当前目标指纹</summary>
+              <dl class="fingerprints">
+                <dt>源上下文 SHA-256</dt><dd id="review-source-sha"></dd>
+                <dt>生成 PNG SHA-256</dt><dd id="review-png-sha"></dd>
+                <dt>目标拟合 SHA-256</dt><dd id="review-fit-sha"></dd>
+              </dl>
+            </details>
+          </div>
+          <fieldset id="review-fields" class="review-fields">
+            <legend>提交当前目标的研究审核记录</legend>
+            <label for="review-allowed">允许采样 mask · L PNG</label>
+            <input id="review-allowed" data-testid="review-allowed" type="file" accept="image/png" />
+            <label for="review-occluded">排除 mask · L PNG</label>
+            <input id="review-occluded" data-testid="review-occluded" type="file" accept="image/png" />
+            <p class="hint">两张图必须为 1024×1024 灰度二值 PNG，且允许区与排除区互斥。未指定区域不会自动放行。</p>
+            <div class="review-meta-row">
+              <div><label for="review-reviewer">审核者记录</label><input id="review-reviewer" data-testid="review-reviewer" type="text" maxlength="256" autocomplete="off" /></div>
+              <div><label for="review-kind">记录来源</label><select id="review-kind" data-testid="review-kind"><option value="ai">AI 研究复核</option><option value="human">人工研究复核</option></select></div>
+            </div>
+            <label for="review-method">审核方法与保守范围</label>
+            <textarea id="review-method" data-testid="review-method" rows="3" maxlength="256"></textarea>
+            <label for="review-version">审核版本</label>
+            <input id="review-version" data-testid="review-version" type="text" maxlength="256" autocomplete="off" />
+            <button id="register-review" data-testid="register-review" class="primary" type="button" disabled>提交审核并注册纹理</button>
+            <p class="hint">此记录只绑定当前三项指纹，不授予独立质量、身份或 G3 验收。</p>
+          </fieldset>
+        </div>
+      </section>
+
+      <section class="status-panel" aria-label="当前状态">
+        <p id="status" data-testid="status" role="status" aria-live="polite">准备连接本机研究服务。</p>
+        <p id="error" data-testid="error" role="alert" hidden></p>
+        <p class="privacy-note">原始照片、纹理和显示只在本机研究流程中处理。关闭页面释放本页资源；后台原生任务与会话到期由服务管理。</p>
+      </section>
+    </main>
+    <script type="module" src="./session.ts"></script>
+  </body>
+</html>

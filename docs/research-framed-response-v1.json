@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-research-framed-response-v1",
+  "status": "prospective-development-protocol",
+  "objective": "Restore installed Chromium compatibility without removing no-store, the response payload budget, cancellation, truncation detection or prior failed evidence",
+  "candidate": "A native response.arrayBuffer branch only after proving the response falls within an inspected Chromium HTTP/1 framing path; every other response retains the current actual-count bounded stream path",
+  "native_conditions": [
+    "Verified Chromium major 156 or158 in the observed Windows platform; other browser environments keep the current stream path",
+    "Target URL uses cleartext HTTP and the configured loopback service; HTTPS and uncertain transport keep stream path",
+    "Request origin differs from document origin and response.type is exactly cors, not basic/default/opaque",
+    "No active ServiceWorker controller before native reading; recheck after reading and abort native work if controller changes",
+    "The readable Access-Control-Expose-Headers token list explicitly contains itself, Content-Length, Content-Encoding and Transfer-Encoding; wildcard/malformed/missing declarations do not enable native mode",
+    "Content-Length is a positive safe integer within the per-endpoint success or error payload budget; invalid/malformed or over-budget lengths remain errors",
+    "Content-Encoding and Transfer-Encoding headers are genuinely absent, including absence of empty or identity-valued headers",
+    "Existing exact URL, no redirect, credentials omission, media, HTTP status and source/mask/GLB validation remain in force"
+  ],
+  "native_completion": "Preserve timeout and explicit abort. Require complete body byteLength equal to the declared length and within the budget before parsing or publishing. Never cancel/abort an already-complete successful body. Context changes fail closed with cleanup",
+  "bound_scope": "Response payload bytes exposed to the application on the inspected/observed Chromium HTTP/1 transport. Not a universal RFC-only theorem for all UAs, not process RSS, GPU memory or internal browser/network copies",
+  "fallback": "Unknown UA/version/platform, same-origin/basic/default, ServiceWorker, HTTPS, invisible framing metadata, missing length, content/transfer coding or uncertain conditions use the existing bounded stream consumer; never downgrade to an unbounded native read",
+  "counterexample_preserved": "Header-only candidate failed: a ServiceWorker can synthesize type basic and a matching URL with small Content-Length while native consumption greatly exceeds budget. This candidate is not implemented or accepted",
+  "required_controls": [
+    "Installed Chrome and Edge real cross-origin HTTP no-store positive split/multi-chunk responses with exact payload hashes and native network finished events",
+    "Current stream negative baseline reproduces the previously observed Chromium completion annotation defect",
+    "Over-budget declared length rejected before native body consumption; missing length/chunked and hidden or compressed encoding keep actual-count stream budget",
+    "Raw HTTP excess body data cannot reach the application beyond declared payload length; excess may be discarded or rejected according to Chromium parser behavior, not necessarily reported as a transport error",
+    "Truncation, conflicting lengths and malformed transfer framing remain failures",
+    "ServiceWorker basic/synthetic responses never select native; controller change cancels unfinished native consumption",
+    "Abort and timeout release the client waiter and body resources without changing native service lease semantics",
+    "Actual research worker/session/display run in installed Chrome and Edge, independent raw RGBA/geometry/source-age/provenance audit and owned cleanup; no route mocks or known-error whitelist"
+  ],
+  "sources": [
+    "https://httpwg.org/specs/rfc9112.html#message.body.length",
+    "https://fetch.spec.whatwg.org/#cors-filtered-response",
+    "https://github.com/microsoft/playwright/issues/42742"
+  ],
+  "flags": {
+    "research_only": true,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false,
+    "quality_accepted": false,
+    "independent_age_evaluation": false,
+    "legal_permission_established": false
+  }
+}

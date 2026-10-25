@@ -1,8 +1,13 @@
 import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   build: {
     rolldownOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        research_session: fileURLToPath(new URL("./research/session.html", import.meta.url)),
+      },
       output: {
         codeSplitting: {
           groups: [

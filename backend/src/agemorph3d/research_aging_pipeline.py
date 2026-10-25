@@ -18,7 +18,6 @@ import re
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
-from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -119,7 +118,8 @@ def _bytes(value: object, limit: int, exact: int | None = None) -> bytes:
     if (
         not isinstance(value, str)
         or len(value) > 4 * ((budget + 2) // 3)
-        or exact is not None and len(value) != 4 * ((exact + 2) // 3)
+        or exact is not None
+        and len(value) != 4 * ((exact + 2) // 3)
     ):
         raise ValueError("Encoded payload exceeds its declared byte budget.")
     try:
@@ -174,7 +174,8 @@ def _image(data: bytes, mode: str, size=None, *, source=False) -> np.ndarray:
             or getattr(image, "n_frames", 1) != 1
             or min(image.size) < 2
             or image.width * image.height > (16_000_000 if source else 1024**2)
-            or size is not None and image.size != size
+            or size is not None
+            and image.size != size
         ):
             raise ValueError("PNG mode or pixel frame differs.")
         return np.asarray(image).copy()
@@ -214,8 +215,13 @@ def _fit_object(raw: TddfaResult) -> dict:
         or raw.roi[3] <= raw.roi[1]
     ):
         raise ValueError("Raw topology or ROI is invalid.")
-    return {"version": "agemorph3d-research-fit-v1", "n": n, "m": m,
-            "topology_sha256": _digest(raw.topology_sha256), "arrays": arrays}
+    return {
+        "version": "agemorph3d-research-fit-v1",
+        "n": n,
+        "m": m,
+        "topology_sha256": _digest(raw.topology_sha256),
+        "arrays": arrays,
+    }
 
 
 def _read_fit(value: dict) -> TddfaResult:
@@ -230,7 +236,14 @@ def _read_fit(value: dict) -> TddfaResult:
     ):
         raise ValueError("Raw fit schema or dimensions differ.")
     n, m, arrays = value["n"], value["m"], value["arrays"]
-    if not isinstance(arrays, dict) or set(arrays) != {"shape", "expr", "vertices", "triangles", "projection", "roi"}:
+    if not isinstance(arrays, dict) or set(arrays) != {
+        "shape",
+        "expr",
+        "vertices",
+        "triangles",
+        "projection",
+        "roi",
+    }:
         raise ValueError("Raw fit array names differ.")
     raw = TddfaResult(
         _read_array(arrays["shape"], "<f4", (40,)),
@@ -254,32 +267,57 @@ def source_fingerprint(source: SessionSource) -> str:
     if not isinstance(source, SessionSource) or source.payload_bytes > MAX_SOURCE_BYTES:
         raise ValueError("A bounded immutable source is required.")
     digest = hashlib.sha256(b"agemorph3d:research-source:v1\0")
-    for data in (source.source_age_json, source.original_rgb, source.aligned_png, source.correspondence,
-                 source.glb, source.texture_png, np.asarray(source.shape, dtype="<f8").tobytes()):
+    for data in (
+        source.source_age_json,
+        source.original_rgb,
+        source.aligned_png,
+        source.correspondence,
+        source.glb,
+        source.texture_png,
+        np.asarray(source.shape, dtype="<f8").tobytes(),
+    ):
         digest.update(len(data).to_bytes(8, "little"))
         digest.update(data)
     return digest.hexdigest()
 
 
 def _topology(raw: TddfaResult, keypoints: np.ndarray) -> None:
-    if keypoints.dtype != np.int64 or keypoints.shape != (68, 3) or np.any(keypoints < 0) or np.any(keypoints >= 3 * len(raw.vertices)):
+    if (
+        keypoints.dtype != np.int64
+        or keypoints.shape != (68, 3)
+        or np.any(keypoints < 0)
+        or np.any(keypoints >= 3 * len(raw.vertices))
+    ):
         raise ValueError("Keypoints must be68 ordered triples of coordinate addresses.")
     digest = hashlib.sha256(b"agemorph3d:tddfa-topology:v2\0")
-    for array in (np.array([len(raw.vertices), len(raw.triangles)], dtype="<i8"),
-                  raw.triangles.astype("<i8"), keypoints.astype("<i8")):
+    for array in (
+        np.array([len(raw.vertices), len(raw.triangles)], dtype="<i8"),
+        raw.triangles.astype("<i8"),
+        keypoints.astype("<i8"),
+    ):
         digest.update(array.tobytes(order="C"))
     if digest.hexdigest() != raw.topology_sha256:
         raise ValueError("Raw topology and keypoint order differ from topology-v2 identity.")
 
 
-def prepare_source_context(rgb, raw, keypoint_coordinates, common_uv, source_age, bindings) -> SessionSource:
+def prepare_source_context(
+    rgb, raw, keypoint_coordinates, common_uv, source_age, bindings
+) -> SessionSource:
     """Build original RGB/FFHQ/fit/source-canonical assets without model or file IO."""
     if not isinstance(bindings, ResearchBindings) or not isinstance(source_age, SourceAge):
-        raise ValueError("Explicit model bindings and validated source-age provenance are required.")
+        raise ValueError(
+            "Explicit model bindings and validated source-age provenance are required."
+        )
     rgb, keypoints, uv = np.asarray(rgb), np.asarray(keypoint_coordinates), np.asarray(common_uv)
     _fit_object(raw)
     _topology(raw, keypoints)
-    if uv.dtype != np.float32 or uv.shape != (len(raw.vertices), 2) or not np.isfinite(uv).all() or np.any(uv < 0) or np.any(uv > 1):
+    if (
+        uv.dtype != np.float32
+        or uv.shape != (len(raw.vertices), 2)
+        or not np.isfinite(uv).all()
+        or np.any(uv < 0)
+        or np.any(uv > 1)
+    ):
         raise ValueError("Source UV must bind the complete ordered source topology.")
     alignment = align_ffhq(rgb, project_vertices(raw, keypoints))
     original, aligned = _png(rgb), _png(alignment.rgb)
@@ -288,19 +326,35 @@ def prepare_source_context(rgb, raw, keypoint_coordinates, common_uv, source_age
     texture = project_photo_texture(rgb, raw, uv)
     mesh = build_static_mesh(raw, source_age.model_dump(), texture=texture)
     metadata = {
-        "version": CONTEXT_VERSION, "bindings": asdict(bindings), "raw": _fit_object(raw),
-        "keypoints": _array(keypoints, "<i8", (68, 3)), "uv": _array(uv, "<f4", (len(raw.vertices), 2)),
-        "alignment": {"source_to_aligned": _array(alignment.source_to_aligned, "<f8", (3, 3)),
+        "version": CONTEXT_VERSION,
+        "bindings": asdict(bindings),
+        "raw": _fit_object(raw),
+        "keypoints": _array(keypoints, "<i8", (68, 3)),
+        "uv": _array(uv, "<f4", (len(raw.vertices), 2)),
+        "alignment": {
+            "source_to_aligned": _array(alignment.source_to_aligned, "<f8", (3, 3)),
             "aligned_to_source": _array(alignment.aligned_to_source, "<f8", (3, 3)),
             "source_quad": _array(alignment.source_quad, "<f8", (4, 2)),
             "valid_mask": _array(alignment.valid_mask.astype(np.uint8), "|u1", (256, 256)),
-            "metadata": alignment.metadata},
-        "source_age": source_age.model_dump(mode="json"), "original_sha256": _sha(original),
-        "aligned_sha256": _sha(aligned), "glb_sha256": _sha(mesh.glb), "texture_sha256": _sha(texture.png),
-        "uv_array_sha256": _sha(uv.tobytes(order="C")), **_CLOSED_FLAGS,
+            "metadata": alignment.metadata,
+        },
+        "source_age": source_age.model_dump(mode="json"),
+        "original_sha256": _sha(original),
+        "aligned_sha256": _sha(aligned),
+        "glb_sha256": _sha(mesh.glb),
+        "texture_sha256": _sha(texture.png),
+        "uv_array_sha256": _sha(uv.tobytes(order="C")),
+        **_CLOSED_FLAGS,
     }
-    result = SessionSource(source_age.model_dump_json().encode(), original, aligned,
-        _encode(metadata, MAX_CONTEXT_BYTES), mesh.glb, texture.png, tuple(float(x) for x in raw.shape))
+    result = SessionSource(
+        source_age.model_dump_json().encode(),
+        original,
+        aligned,
+        _encode(metadata, MAX_CONTEXT_BYTES),
+        mesh.glb,
+        texture.png,
+        tuple(float(x) for x in raw.shape),
+    )
     source_fingerprint(result)
     return result
 
@@ -314,8 +368,12 @@ def _load_source(source: SessionSource, bindings: ResearchBindings):
         raise ValueError("Research context cannot grant capabilities.")
     if meta["source_age"] != source.source_age.model_dump(mode="json"):
         raise ValueError("Source age was reassigned.")
-    for name, data in (("original", source.original_rgb), ("aligned", source.aligned_png),
-                       ("glb", source.glb), ("texture", source.texture_png)):
+    for name, data in (
+        ("original", source.original_rgb),
+        ("aligned", source.aligned_png),
+        ("glb", source.glb),
+        ("texture", source.texture_png),
+    ):
         if _digest(meta[name + "_sha256"]) != _sha(data):
             raise ValueError("Source payload integrity changed.")
     raw = _read_fit(meta["raw"])
@@ -336,7 +394,9 @@ def _load_source(source: SessionSource, bindings: ResearchBindings):
     ):
         if not np.array_equal(_read_array(meta["alignment"][name], dtype, shape), actual):
             raise ValueError("Source alignment geometry changed.")
-    if meta["alignment"]["metadata"] != alignment.metadata or not np.array_equal(_image(source.aligned_png, "RGB", (256, 256)), alignment.rgb):
+    if meta["alignment"]["metadata"] != alignment.metadata or not np.array_equal(
+        _image(source.aligned_png, "RGB", (256, 256)), alignment.rgb
+    ):
         raise ValueError("Source alignment pixels or semantics changed.")
     texture = project_photo_texture(rgb, raw, uv)
     mesh = build_static_mesh(raw, source.source_age.model_dump(), texture=texture)
@@ -388,7 +448,10 @@ class TargetMaskReview:
             _text(value)
         if self.reviewer_kind not in {"ai", "human"}:
             raise ValueError("Review provenance must identify AI or human scope.")
-        if any(type(data) is not bytes or not 0 < len(data) <= MAX_PNG_BYTES for data in (self.allowed_png, self.occluded_png)):
+        if any(
+            type(data) is not bytes or not 0 < len(data) <= MAX_PNG_BYTES
+            for data in (self.allowed_png, self.occluded_png)
+        ):
             raise ValueError("Review masks must be bounded immutable PNG bytes.")
 
 
@@ -411,6 +474,10 @@ async def _drain(task: asyncio.Task):
             await asyncio.shield(task)
         except asyncio.CancelledError:
             cancelled = True
+        except BaseException:
+            if not task.done():
+                raise
+            break
     if cancelled:
         # Retrieve an abandoned failure before propagating caller cancellation.
         if not task.cancelled():
@@ -428,9 +495,16 @@ class ResearchAgingProcessor:
     ``sweep_stages`` provides explicit idle purging without another background task.
     """
 
-    def __init__(self, worker, target_refitter: Callable[[np.ndarray], TddfaResult],
-                 bindings: ResearchBindings, review_provider=None, *, stage_cache=None,
-                 max_stage_entries: int = 4):
+    def __init__(
+        self,
+        worker,
+        target_refitter: Callable[[np.ndarray], TddfaResult],
+        bindings: ResearchBindings,
+        review_provider=None,
+        *,
+        stage_cache=None,
+        max_stage_entries: int = 4,
+    ):
         if not callable(target_refitter) or not isinstance(bindings, ResearchBindings):
             raise ValueError("An explicit refitter and model bindings are required.")
         if review_provider is not None and not callable(review_provider):
@@ -439,10 +513,27 @@ class ResearchAgingProcessor:
             raise ValueError("Stage index must have a fixed small entry budget.")
         self.worker, self.bindings = worker, bindings
         self._refitter, self._review_provider = target_refitter, review_provider
-        self._cache = stage_cache if stage_cache is not None else AssetCache(
-            max_bytes=64 * 1024**2, max_entries=4, max_asset_bytes=MAX_STAGE_BYTES, ttl_seconds=300)
+        self._cache = (
+            stage_cache
+            if stage_cache is not None
+            else AssetCache(
+                max_bytes=64 * 1024**2,
+                max_entries=max_stage_entries,
+                max_asset_bytes=MAX_STAGE_BYTES,
+                ttl_seconds=300,
+            )
+        )
         if not isinstance(self._cache, AssetCache):
             raise ValueError("Staged payloads require the existing bounded lease cache.")
+        # The existing internal cache has no public limits accessor. Validate its
+        # configuration here rather than altering that frozen implementation.
+        if (
+            self._cache._max_entries != max_stage_entries
+            or self._cache._max_bytes > 64 * 1024**2
+            or self._cache._max_asset_bytes > MAX_STAGE_BYTES
+            or self._cache._ttl_seconds > 300
+        ):
+            raise ValueError("Stage store limits must match the bounded research configuration.")
         self._index: OrderedDict[tuple[str, int], StagedTarget] = OrderedDict()
         self._index_limit = max_stage_entries
         self._active: asyncio.Task | None = None
@@ -452,9 +543,13 @@ class ResearchAgingProcessor:
 
     @property
     def snapshot(self) -> dict:
-        return {"closed": self._closed, "active": self._active is not None and not self._active.done(),
-                "native_cpu_active": self._cpu is not None and not self._cpu.done(),
-                "stage_index_entries": len(self._index), **_CLOSED_FLAGS}
+        return {
+            "closed": self._closed,
+            "active": self._active is not None and not self._active.done(),
+            "native_cpu_active": self._cpu is not None and not self._cpu.done(),
+            "stage_index_entries": len(self._index),
+            **_CLOSED_FLAGS,
+        }
 
     async def _native(self, function, *args):
         task = asyncio.create_task(asyncio.to_thread(function, *args))
@@ -540,7 +635,11 @@ class ResearchAgingProcessor:
         rgb = _image(png, "RGB", (1024, 1024))
         raw = self._refitter(rgb)
         _fit_object(raw)
-        if raw.topology_sha256 != source_raw.topology_sha256 or not np.array_equal(raw.triangles, source_raw.triangles) or raw.vertices.shape != source_raw.vertices.shape:
+        if (
+            raw.topology_sha256 != source_raw.topology_sha256
+            or not np.array_equal(raw.triangles, source_raw.triangles)
+            or raw.vertices.shape != source_raw.vertices.shape
+        ):
             raise ValueError("Target fit changed the source's ordered topology.")
         points = project_vertices(raw, keypoints)[:, :2]
         if points.shape != (68, 2) or not np.isfinite(points).all():
@@ -563,19 +662,31 @@ class ResearchAgingProcessor:
             finally:
                 await self.worker.wait_idle()
         except SamWorkerError as error:
-            code = error.code if error.code in {"BUSY", "TIMEOUT", "WORKER_CLOSED", "WORKER_PROTOCOL"} else "WORKER_FAILED"
-            raise ApiError(504 if code == "TIMEOUT" else 429 if code == "BUSY" else 503, code, "研究生成未能完成。") from None
+            code = (
+                error.code
+                if error.code in {"BUSY", "TIMEOUT", "WORKER_CLOSED", "WORKER_PROTOCOL"}
+                else "WORKER_FAILED"
+            )
+            raise ApiError(
+                504 if code == "TIMEOUT" else 429 if code == "BUSY" else 503,
+                code,
+                "研究生成未能完成。",
+            ) from None
         if (
             not isinstance(generated, SamGeneration)
             or generated.sha256 != _sha(generated.png)
             or generated.input_sha256 != _sha(source.aligned_png)
-            or type(generated.target_age) is not int or generated.target_age != condition
-            or type(generated.pid) is not int or generated.pid <= 0 or generated.load_count != 1
+            or type(generated.target_age) is not int
+            or generated.target_age != condition
+            or type(generated.pid) is not int
+            or generated.pid <= 0
+            or generated.load_count != 1
             or generated.provenance.get("pid") != generated.pid
             or generated.provenance.get("load_count") != 1
             or generated.provenance.get("research_only") is not True
             or generated.provenance.get("service_ready") is not False
-            or generated.provenance.get("pins", {}).get("manifest_sha256") != self.bindings.sam_manifest_sha256
+            or generated.provenance.get("pins", {}).get("manifest_sha256")
+            != self.bindings.sam_manifest_sha256
         ):
             raise ApiError(502, "WORKER_PROTOCOL", "研究生成来源或图像指纹不匹配。")
         try:
@@ -587,11 +698,21 @@ class ResearchAgingProcessor:
         if self._closed:
             raise ApiError(503, "MODEL_NOT_READY", "研究处理器正在关闭。")
         try:
-            data = _encode({"version": STAGE_VERSION, "source_fingerprint": fingerprint,
-                "target_condition": condition, "generated_sha256": generated.sha256, "fit_sha256": _sha(fit),
-                "png": _b64(generated.png), "fit": _b64(fit), "landmarks_xy": points,
-                "generation": _json(_encode(generated.provenance, _META_BYTES), _META_BYTES),
-                **_CLOSED_FLAGS}, MAX_STAGE_BYTES)
+            data = _encode(
+                {
+                    "version": STAGE_VERSION,
+                    "source_fingerprint": fingerprint,
+                    "target_condition": condition,
+                    "generated_sha256": generated.sha256,
+                    "fit_sha256": _sha(fit),
+                    "png": _b64(generated.png),
+                    "fit": _b64(fit),
+                    "landmarks_xy": points,
+                    "generation": _json(_encode(generated.provenance, _META_BYTES), _META_BYTES),
+                    **_CLOSED_FLAGS,
+                },
+                MAX_STAGE_BYTES,
+            )
             stage_id = self._cache.publish(data)
         except (AssetCapacityError, ValueError):
             raise ApiError(429, "BUSY", "研究暂存空间不足。") from None
@@ -604,30 +725,72 @@ class ResearchAgingProcessor:
     def _register(self, source, loaded, data, target, review):
         fingerprint, source_raw, _keypoints, uv = loaded
         value, png, _fit_bytes, target_raw = self._stage_data(data, target)
-        if not isinstance(review, TargetMaskReview) or (review.source_fingerprint, review.generated_sha256, review.fit_sha256) != (fingerprint, target.generated_sha256, target.fit_sha256):
+        if not isinstance(review, TargetMaskReview) or (
+            review.source_fingerprint,
+            review.generated_sha256,
+            review.fit_sha256,
+        ) != (fingerprint, target.generated_sha256, target.fit_sha256):
             raise ReviewRequired(target)
         try:
-            allowed, occluded = (_image(p, "L", (1024, 1024)) for p in (review.allowed_png, review.occluded_png))
-            if not np.isin(allowed, (0, 255)).all() or not np.isin(occluded, (0, 255)).all() or np.any((allowed != 0) & (occluded != 0)):
+            allowed, occluded = (
+                _image(p, "L", (1024, 1024)) for p in (review.allowed_png, review.occluded_png)
+            )
+            if (
+                not np.isin(allowed, (0, 255)).all()
+                or not np.isin(occluded, (0, 255)).all()
+                or np.any((allowed != 0) & (occluded != 0))
+            ):
                 raise ValueError("Reviewed target masks must be binary and disjoint.")
         except (ValueError, OSError, TypeError):
             raise ReviewRequired(target) from None
-        provenance = {"version": "agemorph3d-research-registered-condition-v1",
-            "source_fingerprint": fingerprint, "target_condition": target.target_condition,
+        provenance = {
+            "version": "agemorph3d-research-registered-condition-v1",
+            "source_fingerprint": fingerprint,
+            "target_condition": target.target_condition,
             "condition_semantics": "SAM integer generation condition; not biological age truth",
-            "source_age": source.source_age.model_dump(mode="json"), "shape_route": "static_fallback",
-            "generated_sha256": target.generated_sha256, "target_fit_sha256": target.fit_sha256,
-            "allowed_png_sha256": _sha(review.allowed_png), "occluded_png_sha256": _sha(review.occluded_png),
-            "reviewer": review.reviewer, "reviewer_kind": review.reviewer_kind, "review_method": review.method,
-            "review_version": review.version, "model_bindings": asdict(self.bindings),
-            "generation": value["generation"], **_CLOSED_FLAGS}
-        texture = register_generated_texture(_image(png, "RGB", (1024, 1024)), target_raw, uv, allowed != 0)
+            "source_age": source.source_age.model_dump(mode="json"),
+            "shape_route": "static_fallback",
+            "generated_sha256": target.generated_sha256,
+            "target_fit_sha256": target.fit_sha256,
+            "allowed_png_sha256": _sha(review.allowed_png),
+            "occluded_png_sha256": _sha(review.occluded_png),
+            "reviewer": review.reviewer,
+            "reviewer_kind": review.reviewer_kind,
+            "review_method": review.method,
+            "review_version": review.version,
+            "model_bindings": asdict(self.bindings),
+            "generation": value["generation"],
+            **_CLOSED_FLAGS,
+        }
+        texture = register_generated_texture(
+            _image(png, "RGB", (1024, 1024)), target_raw, uv, allowed != 0
+        )
         if not np.all(texture.rgba[~texture.coverage] == 0):
             raise ValueError("Unknown texels were filled.")
-        metadata = {**texture.metadata, "kind": "sam_generated_registered_uv", "research_pipeline": provenance}
-        mesh = build_static_mesh(source_raw, source.source_age.model_dump(), texture=replace(texture, metadata=metadata))
-        return RegisteredConditionResult(SessionResult(mesh.glb, texture.png, source.shape, "sam_registered_uv"),
-                                         _encode(provenance, _META_BYTES))
+        provenance_json = _encode(provenance, _META_BYTES)
+        # A glTF document repeats scene extras. Keep its fixed16KiB budget:
+        # bind the full worker record without copying it into both scene/root.
+        embedded = {
+            **provenance,
+            "provenance_sha256": _sha(provenance_json),
+            "generation": {
+                "pid": value["generation"].get("pid"),
+                "load_count": value["generation"].get("load_count"),
+                "provenance_sha256": _sha(_encode(value["generation"], _META_BYTES)),
+            },
+        }
+        metadata = {
+            **texture.metadata,
+            "kind": "sam_generated_registered_uv",
+            "research_pipeline": embedded,
+        }
+        mesh = build_static_mesh(
+            source_raw, source.source_age.model_dump(), texture=replace(texture, metadata=metadata)
+        )
+        return RegisteredConditionResult(
+            SessionResult(mesh.glb, texture.png, source.shape, "sam_registered_uv"),
+            provenance_json,
+        )
 
     async def register_reviewed(self, source, target, review) -> RegisteredConditionResult:
         return await self._admit(self._reviewed, source, target, review)
@@ -639,7 +802,9 @@ class ResearchAgingProcessor:
         lease = self._lease(target)
         try:
             try:
-                result = await self._native(self._register, source, loaded, lease.data, target, review)
+                result = await self._native(
+                    self._register, source, loaded, lease.data, target, review
+                )
             except ApiError:
                 raise
             except Exception:
@@ -658,10 +823,16 @@ class ResearchAgingProcessor:
             raise ApiError(422, "BAD_INPUT", "目标年龄必须为20—70的有限数值。")
         if age == source.source_age.value:
             await self._admit(self._source, source)
+            if self._closed:
+                raise ApiError(503, "MODEL_NOT_READY", "研究处理器正在关闭。")
             return SessionResult(source.glb, source.texture_png, source.shape, "source_reset")
         condition = _condition(int(age)) if float(age).is_integer() else _condition(age)
         target = await self.stage_condition(source, condition)
-        review = None if self._review_provider is None else self._review_provider(self.preview_staged(target))
+        review = (
+            None
+            if self._review_provider is None
+            else self._review_provider(self.preview_staged(target))
+        )
         if not isinstance(review, TargetMaskReview):
             raise ReviewRequired(target)
         return (await self.register_reviewed(source, target, review)).result
