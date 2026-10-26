@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>原生像素遮罩草稿 · AgeMorph3D</title>
+    <link rel="stylesheet" href="./mask-editor.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">AgeMorph3D · 本机研究工具</p>
+        <h1>原生像素遮罩草稿</h1>
+        <p>对当前目标逐区标注允许与遮挡，导出后回会话页显式提交。</p>
+      </div>
+      <a href="./session.html" target="_blank" rel="noopener">打开研究会话</a>
+    </header>
+    <main id="mask-editor" data-state="empty" aria-busy="false">
+      <aside class="panel input-panel" aria-labelledby="input-title">
+        <h2 id="input-title">1 · 当前阶段文件</h2>
+        <label for="editor-binding">会话页导出的编辑绑定 JSON</label>
+        <input id="editor-binding" type="file" accept="application/json,.json" />
+        <label for="editor-target">同次导出的目标 PNG</label>
+        <input id="editor-target" type="file" accept="image/png" />
+        <p class="hint">JSON 不超过 16 KiB，目标图不超过 4 MiB、原生尺寸为 1024×1024。核对 PNG 指纹后才可编辑。</p>
+        <div class="button-row">
+          <button id="load-editor" type="button" class="primary" disabled>核对并载入</button>
+          <button id="clear-editor" type="button">清除本页输入</button>
+        </div>
+        <p id="editor-stage" class="hint">尚未载入目标</p>
+        <details>
+          <summary>当前三项指纹</summary>
+          <dl class="fingerprints">
+            <dt>源上下文</dt><dd id="editor-source-sha"></dd>
+            <dt>目标 PNG</dt><dd id="editor-generated-sha"></dd>
+            <dt>目标拟合</dt><dd id="editor-fit-sha"></dd>
+          </dl>
+        </details>
+        <p class="hint">离线文件只核对这张 PNG 与绑定是否匹配；源与拟合指纹是导出声明。会话阶段可能到期或被回收，草稿不会延长它的可用时间。</p>
+        <h2>2 · 多边形</h2>
+        <label for="polygon-kind">本次区域</label>
+        <select id="polygon-kind" disabled>
+          <option value="">请选择允许区或遮挡区</option>
+          <option value="allowed">允许区 · 青绿</option>
+          <option value="occluded">遮挡区 · 琥珀</option>
+        </select>
+        <p class="hint">单击原图添加顶点。Enter 封闭，Escape 取消当前点列。允许与遮挡重叠时，遮挡始终优先；未标注区域保持未知。</p>
+        <div class="button-row">
+          <button id="finish-polygon" type="button" disabled>封闭当前区域</button>
+          <button id="cancel-polygon" type="button" disabled>取消当前点列</button>
+        </div>
+        <div class="button-row">
+          <button id="undo-polygon" type="button" disabled>撤销最后区域</button>
+          <button id="clear-polygons" type="button" disabled>清空画区</button>
+        </div>
+        <p class="hint">已封闭 <output id="polygon-count">0</output> 区域；当前 <output id="pending-count">0</output> 顶点。最多 64 区域、每区 128 点、总计 4096 点。</p>
+      </aside>
+
+      <section class="panel canvas-panel" aria-labelledby="canvas-title">
+        <div class="canvas-heading">
+          <h2 id="canvas-title">目标原图与标注预览</h2>
+          <label class="check"><input id="show-overlay" type="checkbox" checked />显示标注</label>
+        </div>
+        <div class="zoom-row">
+          <label for="editor-zoom">查看缩放</label>
+          <input id="editor-zoom" type="range" min="25" max="150" step="25" value="50" />
+          <output id="zoom-value" for="editor-zoom">50%</output>
+        </div>
+        <div class="canvas-scroll">
+          <canvas id="mask-canvas" width="1024" height="1024" tabindex="0" aria-label="目标原图多边形编辑画布，点击加点，Enter封闭，Escape取消"></canvas>
+        </div>
+        <div class="legend" aria-label="遮罩图例">
+          <span><i class="allowed"></i>允许采样</span>
+          <span><i class="occluded"></i>遮挡／排除</span>
+          <span><i class="unknown"></i>未标注／未知</span>
+        </div>
+        <dl class="counts">
+          <div><dt>允许像素</dt><dd id="allowed-count">0</dd></div>
+          <div><dt>遮挡像素</dt><dd id="occluded-count">0</dd></div>
+          <div><dt>未知像素</dt><dd id="unknown-count">1048576</dd></div>
+        </dl>
+        <p class="hint">计数与导出按原生像素中心计算。查看缩放及显示叠加不会改变遮罩；画布抗锯齿不参与导出。</p>
+      </section>
+
+      <aside class="panel export-panel" aria-labelledby="export-title">
+        <h2 id="export-title">3 · 草稿记录与导出</h2>
+        <label for="editor-reviewer">记录者</label>
+        <input id="editor-reviewer" type="text" maxlength="128" autocomplete="off" disabled />
+        <label for="editor-review-kind">实际记录来源</label>
+        <select id="editor-review-kind" disabled>
+          <option value="">请选择实际来源</option>
+          <option value="ai">AI 研究标注</option>
+          <option value="human">人工研究标注</option>
+        </select>
+        <label for="editor-method">观察依据与保守范围</label>
+        <textarea id="editor-method" rows="4" maxlength="256" disabled></textarea>
+        <label for="editor-version">草稿版本</label>
+        <input id="editor-version" type="text" maxlength="64" autocomplete="off" disabled />
+        <button id="prepare-export" type="button" class="primary" disabled>核对并准备导出快照</button>
+        <div class="download-buttons">
+          <button id="download-allowed" type="button" disabled>下载允许区 L PNG</button>
+          <button id="download-occluded" type="button" disabled>下载遮挡区 L PNG</button>
+          <button id="download-draft" type="button" disabled>下载绑定草稿 JSON</button>
+        </div>
+        <p class="hint">三份文件来自同一不可变快照。修改区域或记录信息会作废已准备快照。允许区为空时不能导出。</p>
+        <p class="notice">草稿尚未提交。这里不判断皮肤真值、不自动注册，也不授予人工质量、年龄、身份或 G3 验收。回会话页核对当前阶段后，另行显式提交。</p>
+      </aside>
+      <section class="status-panel" aria-label="当前状态">
+        <p id="editor-status" role="status" aria-live="polite">请从研究会话下载当前编辑绑定与目标 PNG。</p>
+        <p id="editor-error" role="alert" hidden></p>
+        <p class="hint">文件留在本页内存，不上传、不自动保存。更换任一输入、清除或离开页面会清空标注与记录。</p>
+      </section>
+    </main>
+    <script type="module" src="./mask-editor.ts"></script>
+  </body>
+</html>

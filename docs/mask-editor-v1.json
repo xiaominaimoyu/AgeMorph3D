@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "development_revision": 2,
+  "protocol_id": "agemorph3d-mask-editor-v1",
+  "scope": "Independent local research polygon editor and draft export; no automatic registration, human approval, model inference or G3 acceptance",
+  "input": {
+    "binding": "Exact versioned binding JSON exported by the research session after preview and fit byte hashes were checked",
+    "fields": ["schema_version", "protocol_id", "stage", "width", "height", "research_only"],
+    "stage_fields": ["stage_id", "source_fingerprint", "target_condition", "generated_sha256", "fit_sha256"],
+    "identifiers": "stage_id is 32 lowercase hexadecimal characters; all three fingerprints are 64 lowercase hexadecimal characters; target_condition is an integer 20 through 70",
+    "dimensions": [1024, 1024],
+    "max_binding_bytes": 16384,
+    "max_target_png_bytes": 4194304,
+    "png": "Bounded, CRC-checked, noninterlaced 8-bit RGB or RGBA target PNG with exact native dimensions; recompute generated_sha256 before displaying or editing",
+    "trust": "Offline source/fit hashes are carried declarations from the export, not signatures or independent checks of those assets. Binding does not establish a live stage, authorization or stage lifetime"
+  },
+  "geometry": {
+    "origin": "Native image upper-left corner; x increases right and y increases down",
+    "vertices": "Finite coordinates in the closed [0,width] x [0,height] image extent; no implicit clipping or CSS rounding",
+    "polygons": "Simple nondegenerate polygons with at least three distinct vertices; reject self-intersections and zero-area polygons",
+    "pixel_rule": "A pixel is covered when its native center (x+0.5,y+0.5) is inside by even-odd crossing or on a polygon edge. Edge membership uses absolute cross-product tolerance 1e-9 with inclusive segment extent",
+    "max_polygons": 64,
+    "max_vertices_per_polygon": 128,
+    "max_total_vertices": 4096,
+    "rasterization": "Bounded scanline rasterization; display Canvas antialiasing is never used as mask data",
+    "composition": "Union allowed polygons and union occluded polygons separately, then subtract occluded from allowed. Occlusion wins regardless of drawing order; unmarked pixels are zero in both masks",
+    "initial_state": "No polygons and two zero masks. No default face, skin, hull, source-mask fallback or all-allowed fill"
+  },
+  "outputs": {
+    "masks": "Two immutable-snapshot 1024x1024 binary L8 PNGs, color type 0, bit depth 8, no interlace, only IHDR/IDAT/IEND chunks; pixels are 0 or 255 and masks are disjoint",
+    "png_encoding": "Explicit grayscale scanlines and deflate, CRC checked on readback; never Canvas.toBlob or the RGBA exporter",
+    "draft": "Versioned draft JSON carrying binding, native coordinate policy, polygons, reviewer name/kind/method/version, pixel counts and both PNG SHA256 values",
+    "reviewer": "Name, method and version must be nonblank bounded text; reviewer_kind is explicitly selected ai or human with no default human selection",
+    "closed_flags": "research_only=true; human_review_completed, identity_quality_accepted, age_quality_accepted, visual_seam_quality_accepted, years_calibrated, service_ready, production_enabled and g3_complete all false",
+    "status": "draft_unsubmitted; never a ReviewInput request, quality decision, registration receipt or approval",
+    "empty_or_full_allowed": "Refuse export when no allowed pixel remains or all 1024x1024 pixels are allowed, preserving the existing pipeline prohibition of all-allowed masks. Never alter pixels automatically to evade rejection"
+  },
+  "lifecycle": {
+    "page": "Separate research/mask-editor.html; no production UI, API, old readonly workbench or automatic registration changes",
+    "bridge": "Research session can explicitly download current verified PNG and binding; clearReview invalidates both buttons and cached editor input",
+    "replacement": "Starting a new input load, changing either input, clear, failed load or pagehide immediately blanks polygons, pending points, reviewer fields, decoded target, masks and object URLs",
+    "async": "A monotonically changing operation epoch guards decoded previews, compression and downloads; stale asynchronous completions must not publish or repopulate state",
+    "persistence": "No localStorage, IndexedDB, cookies, remote image URLs, file upload or automatic draft restoration; only explicit local downloads",
+    "stage_expiry": "Server TTL/LRU can invalidate a stage while editing. Exports do not renew it. Return to current session and submit explicitly; server remains authoritative"
+  },
+  "acceptance": {
+    "unit": "Independent small-grid membership oracle, overlap priority, edge/vertex, winding, invalid/degenerate/self-crossing geometry, bounded inputs, PNG color0/CRC/zlib readback, binary/disjoint/unknown pixels, binding/hash rejection and snapshot immutability",
+    "browser": "Actual installed Chrome and Edge, loopback page, synthetic target and stage declarations only; real pointer and keyboard editing, downloads, independent PNG readback, binding replacement/clear/error and URL release. Frozen code and input pins before the first run",
+    "scope": "Engineering contract checks only; synthetic automation is not human review, real SAM generation, stable-browser service display qualification or texture/identity/age acceptance"
+  },
+  "flags": {
+    "research_only": true,
+    "human_review_completed": false,
+    "identity_quality_accepted": false,
+    "age_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "years_calibrated": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

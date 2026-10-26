@@ -7,6 +7,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         research_session: fileURLToPath(new URL("./research/session.html", import.meta.url)),
+        research_mask_editor: fileURLToPath(new URL("./research/mask-editor.html", import.meta.url)),
       },
       output: {
         codeSplitting: {

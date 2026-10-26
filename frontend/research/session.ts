@@ -20,6 +20,7 @@ import type {
   SessionInfo,
   StageReply,
 } from "../src/research-session.ts";
+import { createMaskEditorBinding } from "../src/research-mask-editor.ts";
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -41,6 +42,8 @@ const stageButton = element<HTMLButtonElement>("stage-condition");
 const loadConditionButton = element<HTMLButtonElement>("load-condition");
 const reviewArea = element<HTMLElement>("review-area");
 const previewImage = element<HTMLImageElement>("target-preview");
+const editorBindingButton = element<HTMLButtonElement>("download-editor-binding");
+const editorTargetButton = element<HTMLButtonElement>("download-editor-target");
 const reviewFields = element<HTMLFieldSetElement>("review-fields");
 const allowedInput = element<HTMLInputElement>("review-allowed");
 const occludedInput = element<HTMLInputElement>("review-occluded");
@@ -73,6 +76,7 @@ let info: SessionInfo | null = null;
 let source: LoadedSource | null = null;
 let sourcePixels: Uint8ClampedArray | null = null;
 let staged: StageReply | null = null;
+let editorTargetBytes: ArrayBuffer | null = null;
 let timeline: ResearchTimeline | null = null;
 let frame: ResearchTextureFrame | null = null;
 let selectedAge: number | null = null;
@@ -123,6 +127,8 @@ function revokeAllUrls(): void {
 
 function clearReview(): void {
   staged = null;
+  editorTargetBytes = null;
+  editorBindingButton.disabled = editorTargetButton.disabled = true;
   if (previewUrl) revokeUrl(previewUrl);
   previewUrl = null;
   previewImage.removeAttribute("src");
@@ -174,6 +180,7 @@ function refreshControls(): void {
   stageButton.disabled = !bound || busy;
   loadConditionButton.disabled = !bound || busy;
   reviewFields.disabled = !staged || busy || !bound;
+  editorBindingButton.disabled = editorTargetButton.disabled = !staged || !editorTargetBytes || busy || !bound;
   registerButton.disabled = !staged || busy || !bound || !allowedInput.files?.length
     || !occludedInput.files?.length || !reviewerInput.value.trim()
     || !methodInput.value.trim() || !versionInput.value.trim();
@@ -487,6 +494,7 @@ stageButton.addEventListener("click", () => {
     ]);
     ensureCurrent(operation.token, operation.signal);
     staged = target;
+    editorTargetBytes = png.slice(0);
     previewUrl = URL.createObjectURL(new Blob([png], { type: "image/png" }));
     objectUrls.add(previewUrl);
     previewImage.src = previewUrl;
@@ -497,6 +505,18 @@ stageButton.addEventListener("click", () => {
     element("target-summary").textContent = `当前生成条件 ${condition}。PNG与目标拟合指纹已核对；尚未注册为纹理。`;
     setStatus("目标已暂存。请查看当前图像，并提供与它匹配的保守mask和审核记录。");
   });
+});
+
+editorBindingButton.addEventListener("click", () => {
+  if (!staged || !editorTargetBytes || busy || destroyed) return;
+  const binding = createMaskEditorBinding(staged.staged);
+  download(new Blob([JSON.stringify(binding, null, 2) + "\n"], { type: "application/json" }),
+    `mask-editor-${staged.staged.stage_id.slice(0, 8)}-binding.json`);
+});
+editorTargetButton.addEventListener("click", () => {
+  if (!staged || !editorTargetBytes || busy || destroyed) return;
+  download(new Blob([editorTargetBytes.slice(0)], { type: "image/png" }),
+    `mask-editor-${staged.staged.stage_id.slice(0, 8)}-target.png`);
 });
 
 loadConditionButton.addEventListener("click", () => {
