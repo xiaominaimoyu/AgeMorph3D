@@ -4,7 +4,11 @@
 
 ## 已完成
 
-最近一次已核验发布为`3b52809e676683c1b8f1f7e33feadbd4d1f757da`：用户确认的10个身份校准文件已提交并推送`github/main`，本地/远端相同，见[发布收据](output/research/git-publication-20261026-calibration/publication-result.json)。
+2026-10-26[真实额头候选复核](docs/真实额头候选注册与质量复核.md)已完成工程与研究评价：33输入先冻结、33项新增和完整2058后端通过；4组mask独立逐像素一致，保护新增放行0、其他33行保持。完整37注册新增5329/5143/5151/5125 UV点，源几何/目标投影/旧RGBA保持；两版同一当前查看器752帧、Chrome/Edge74次往返通过，独立952指纹/94GLB/344非重点RGBA一致。两版身份、年龄各218成功/158NO_FACE，145配对有效/151失败；共同9源的有效集合不变，指标delta0，独立5459次数值复算一致。重点32帧仍全NO_FACE，AI查看八配置仍有眼区/侧面大缺口，不授予候选纹理、年龄、身份、接缝或G3质量。上轮0590e439已发布，本轮无Git操作；原资产与历史失败保留。
+
+上一轮编辑器发布记录为`0590e439de8806aff89ef6526ff4a4d16d65dfd2`：确认的18个文件已提交并推送`github/main`，当次本地/远端一致，见[发布收据](output/research/git-publication-20261026-mask-editor/publication-result.json)。本轮未重新执行Git检查。
+
+更早的身份校准发布为`3b52809e676683c1b8f1f7e33feadbd4d1f757da`：用户确认的10个文件已提交并推送`github/main`，当次本地/远端相同，见[发布收据](output/research/git-publication-20261026-calibration/publication-result.json)。
 
 上一批已核验发布为`45c40f22b5749b37c2d3ec11429394628113b379`：用户确认的41文件已提交并推送GitHub `github/main`，提交父项为`954054703a7614c10ddf196445dab0e6546d7fc0`，见[发布收据](output/research/git-publication-20261025T133508Z/publication-result.json)。发布包含真实研究处理器、HTTP会话、独立连续显示和联合UV支持诊断。2026-10-24的`70455278636e847362c20f7b5e37d19baf8d8b1c`已提交此前N8、近重复、评价器、渲染及遮罩研究；更早14文件提交`5a0c0f33306a47a0e459b91aa87a0302402a56ee`的“仅本地”是当时状态。当时后续身份校准开发尚未提交或推送，没有重新执行Git检查；研究资产与输出继续保留在忽略目录。以下按批次保留历史验证与当时提交状态。
 

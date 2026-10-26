@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-observed-skin-candidate-v1",
+  "scope": "Versioned offline forehead-skin extension of four existing real generated targets; full37 registration and paired current-viewer quality diagnostics",
+  "cohort": {
+    "parent_review": "output/research/conservative-mask-20261024/candidate/mask-review.json",
+    "focus": ["fgnet-004a63--sam-020", "fgnet-004a63--sam-045", "fgnet-004a63--sam-063", "fgnet-004a63--sam-070"],
+    "targets": 37,
+    "sources": 10,
+    "same_age_research_labels": 8,
+    "other_labelled_conditions": 23,
+    "unknown_source_conditions": 6,
+    "upstream_failures": "Retain the historical four failed fits as upstream failures, not successful registered targets or silently omitted requests",
+    "source_age_api": {"value": null, "method": "unknown", "calibration_id": null},
+    "new_sam_or_fit": false,
+    "heldout_opened": false
+  },
+  "annotations": {
+    "schema_version": 1,
+    "protocol_id": "agemorph3d-observed-skin-annotations-v1",
+    "reviewer_kind": "ai",
+    "image_observation": "All four native1024 targets were viewed before new candidate pixels, atlases, renders or scores. Prior results and support deficits were already known; this is development, not blind evaluation",
+    "skin": "Explicit per-target interior forehead polygons bounded away from hair, eyebrows, lenses and frame; no release of lens-visible eyes or uncertain surfaces",
+    "protection": "Inherit the exact per-target protected lens/frame/bridge polygons from the previous frozen annotation package and retain the twelve-native-pixel square margin",
+    "coordinates": "Integer native target-image pixels, origin upper-left; each target has its own observed polygons and image/fit pins",
+    "rasterization": "OpenCV LINE_8 shift0, each simple polygon filled separately then unioned; deliberately retain the prior offline candidate raster rule rather than claim the interactive editor pixel-center rule",
+    "bounds": "At most64 polygons per category, 3..128 integer vertices each, at most4096 total; reject nonfinite, noninteger, out-of-range, duplicate, degenerate, self-intersecting or touching nonadjacent edges"
+  },
+  "composition": {
+    "allowed": "old_conservative_allowed OR (explicit_forehead_skin AND NOT dilated_protected)",
+    "occluded": "old_conservative_occluded AND NOT newly_allowed",
+    "extension": "Unlike the previous candidate, explicit visible forehead skin need not be inside the old0..26-landmark convex hull or oldB uncertainty band",
+    "invariants": "Original allowed pixels remain allowed; new additions must lie inside the observed polygons and outside protected margin. Both masks stay binary/disjoint; all unmarked pixels remain unchanged",
+    "forbidden": "No source color fallback, inferred skin behind glasses, eye release, mirrored texture, inpainting, geometric/projection/UV changes, or automatic all-allowed mask",
+    "other33": "Inherit the complete other33 review objects unchanged; do not relabel them as newly reviewed"
+  },
+  "freezing": {
+    "roles": ["protocol", "parent_review", "annotations", "parent_annotations"],
+    "inputs": "Closed hash-pinned metadata, focus PNG/fit/old-mask inputs, exact imported implementation/test sources and selected runtime; no recursive hidden asset reads",
+    "file_bounds": "Bound metadata and binaries before allocation; read at most declared length plus one byte and recheck before atomic publication",
+    "publication": "Fresh ignored output directories; preserve original masks, all prior plans, results and failures; four candidate mask sets and a new full37 review only after all inputs validate",
+    "live_stage": "These existing offline targets have no current live stage. Do not fabricate stage_id or claim an API session registration"
+  },
+  "registration": {
+    "implementation": "Reuse unchanged target_uv_probe.py with a separately pinned variant protocol and full37 review",
+    "coordinates": "Each target's own full fit/projection/ROI and original fixed source canonical geometry; common topology-bound UV and ordered indices unchanged",
+    "comparison": "Compare against conservative registration as primary and retain originalN4 as historical structural reference; four focus changes may only be target-mask-rejected class5 to sampled class6. All prior sampled RGBA and other33 assets/classifications remain exact",
+    "unknown": "Unsampled RGBA exactly zero; no color fill or cross-unknown interpolation",
+    "roundtrip": "Full37 offline checks plus actual Chrome/Edge export and reimport with fixed geometry/UV/RGBA/material checks"
+  },
+  "quality": {
+    "renderer_drift": "Current viewer source differs from20261024. Recapture conservative and new variants under the same current frozen viewer/browser/build, rather than compare new masks only to old archived PNGs",
+    "matrix": "Each variant has10 original sources plus37 targets, eight unchanged MASK/BLEND x front/90-degree-side x black/white configurations:376 frames and296 target-source pairs; total752 capture requests. Repeated original80 frames are controls, not new independent subjects",
+    "visual": "AI review of all four focus eight-configuration comparisons, side completeness, lens protection, unknown boundaries and seams; preserve failures and do not represent AI observation as human signoff",
+    "identity_age": "Redetect all376 frames per variant with fixed YuNet/SFace. MiVOLO uses only that variant's new identity detections/status. Retain all NO_FACE and other failures, requested/scored/failed denominators and effective source counts",
+    "comparison": "Report effective-set entries/exits and compare paired deltas only on common valid pairs/sources. Keep same-age generator drift separate from cross-age conditions and true age error",
+    "thresholds": "Identity quality_threshold remains null; original-photo-domain reference0.30832315136297866 is not a sparse-render acceptance threshold. Generated conditions are not age truth",
+    "statistics": "Reuse frozen identity/age aggregation and source-cluster bootstrap policies; intervals and quality decisions remain separate",
+    "acceptance": "Engineering registration success does not imply texture completeness, causal explanation of detector failure, calibrated years, identity preservation, human quality approval or G3"
+  },
+  "flags": {
+    "research_only": true,
+    "human_review_completed": false,
+    "usable_mask_candidate_accepted": false,
+    "age_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "years_calibrated": false,
+    "independent_evaluation": false,
+    "legal_permission_established": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}
