@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "development_revision": 2,
+  "protocol_id": "agemorph3d-identity-calibration-v1",
+  "scope": "Retrospective development-only calibration of saved original-photo identity comparisons; no new feature extraction, authentication deployment or G3 acceptance",
+  "observations": {
+    "historical_scores_and_aggregate_results_already_seen": true,
+    "group_counts_and_schema_inspected_before_protocol": true,
+    "new_threshold_sweep_or_operating_point_computed_before_protocol": false,
+    "calibration_research_is_blind_or_external_independent_test": false,
+    "training_identity_overlap_excluded": false
+  },
+  "roles": [
+    "protocol", "identity_protocol", "identity_study_plan", "identity_verification",
+    "identity_report", "identity_pairs", "n0_manifest"
+  ],
+  "input_policy": {
+    "closed_set": "Only the seven hash-pinned roles and new CLI/test source files are read. Do not recursively open descendants of old metadata",
+    "provenance": "Old verification evidence must bind exact saved report, CSV and old plan. Old plan/report input pins must bind the same identity protocol and N0 manifest",
+    "cohort": "Use the 155 N0 development/calibration originals in the historical 194-image report; original image pins/subject/group/research age must agree one-to-one with N0 metadata",
+    "external_bookkeeping": "Historical non-original source/generated records may carry external:<safe-id> bookkeeping labels. Validate their exclusion, never promote them to original identity truth, selection units or the bootstrap universe. Original N0 identifiers retain their strict format",
+    "held_out": "N0 held-out paths/hashes are metadata exclusion guards only; do not read held-out photos, embeddings, age predictions or comparison scores",
+    "binary_and_models": "Do not open original photos, generated images, masks, GLBs or weights; saved feature numbers are used only to verify original CSV score bindings",
+    "bounds": "Bound files, JSON structures, CSV columns/row counts/field lengths and feature dimensions before use. Read and recheck at most each declared length plus one byte",
+    "publication": "Freeze actual source bytes, selected Python runtime and all inputs before the first new sweep. Recheck after report serialization before atomic publication; reject existing output directories"
+  },
+  "selection": {
+    "policy_id": "macro-discrete-balance-gap-ber-high-v1",
+    "group": "development",
+    "positive": "original_comparison same_identity_cross_age only",
+    "negative": "original_comparison different_identity_same_age and different_identity_cross_age combined per unordered subject pair",
+    "excluded": "All source_generated_comparison rows and same_identity_same_age rows are excluded from threshold selection; keep their request counts explicit",
+    "decision": "Accept when the saved finite cosine score is >= threshold; reject otherwise. Score range is [-1,1]",
+    "units": "Classify each scored pair first. Average false decisions within each positive subject or negative unordered subject pair, then equally average effective units. Never threshold a mean cosine",
+    "candidates": "Sorted distinct scored development values plus math.nextafter(max_development_score,+infinity), which rejects all DEVELOPMENT scores only. No calibration value enters candidates, selection or ties",
+    "objective": "Minimize abs(macro conditional FMR - macro conditional FNMR); then minimize their balanced mean; then select the higher threshold. Compare rates as exact rational weights to resolve ties deterministically",
+    "name": "Discrete development balanced candidate; not an interpolated EER, operating security requirement or accepted identity-quality threshold",
+    "empty_class": "If either class has no effective scored unit, reject selection without inventing a threshold"
+  },
+  "evaluation": {
+    "missing_policy_id": "eligible-unit-missing-outcome-bounds-v1",
+    "groups": ["development", "calibration_research"],
+    "fixed_threshold": "Apply the one selected development threshold unchanged to both groups; never sweep or retune on calibration_research",
+    "accounting": "Preserve requested/scored/failed pairs and eligible/effective units for both classes, including entirely failed units",
+    "conditional_errors": "FMR uses scored nonmated comparisons, FNMR scored mated comparisons; failures are neither automatic correct rejections nor silently successful matches",
+    "missing_bounds": "Within each eligible unit, lower=observed false decisions/requested and upper=(observed false decisions+failed)/requested; average over all eligible units. Entirely unscored units contribute [0,1]. These are missing-outcome bounds, not sampling confidence intervals",
+    "same_age": "Evaluate original same-identity same-age rows only as a separately labelled fixed-threshold diagnostic; never add them to cross-age selection or infer generated-image preservation",
+    "labels": "FG-NET identities and ages remain research dataset labels. Unknown API source_age remains unknown; this tool creates no SourceAge or age truth"
+  },
+  "uncertainty": {
+    "policy_id": "subject-multiplicity-paired-randrange-v1",
+    "method": "Fixed-threshold subject-cluster bootstrap, conditional on the saved observed cohort and selected threshold",
+    "replicates": 1000,
+    "seed": 20261026,
+    "group_seed": "seed for development, seed+1 for calibration_research",
+    "subjects": "Each group's sorted distinct subject_id values from ALL its original records, including single-image and failed-image subjects. Never remove subjects because a metric has no effective unit",
+    "draw": "Use Python random.Random(group_seed); for each replicate make N consecutive rng.randrange(N) calls into that sorted N-subject list. One shared draw supplies all positive/negative and missing-bound metrics in that replicate",
+    "resampling": "Subject multiplicity weights positive units; product of endpoint multiplicities weights negative units. Do not independently resample pairs or fabricate different-person trials between copies of the same subject. Zero-request units are absent rather than false decisions",
+    "metrics": ["conditional_fmr", "conditional_fnmr", "requested_fmr_lower", "requested_fmr_upper", "requested_fnmr_lower", "requested_fnmr_upper"],
+    "empty_replicates": "Record null/invalid counts separately for each metric; do not turn an empty class into zero error",
+    "interval": "2.5th and 97.5th percentile using linear interpolation at (n-1)*p over finite replicates; null if none. Do not reselect a threshold within bootstrap",
+    "limitations": "Conditional descriptive intervals, not independent-population guarantees; do not include threshold-selection uncertainty, training overlap uncertainty, unobserved identities or new devices"
+  },
+  "output_policy": "Fresh ignored output/research directory with JSON development curve, selected reference threshold, fixed-threshold per-group/unit accounting, bootstrap summaries and pins. No source feature vectors, photos, masks, modified model/config or per-person identity decisions",
+  "quality_threshold": null,
+  "primary_definitions": [
+    "https://pages.nist.gov/frvt/html/frvt11.html",
+    "https://nvlpubs.nist.gov/nistpubs/ir/2019/NIST.IR.8280.pdf"
+  ],
+  "flags": {
+    "research_only": true,
+    "new_model_inference": false,
+    "calibration_threshold_retuned": false,
+    "independent_evaluation": false,
+    "training_overlap_excluded": false,
+    "legal_permission_established": false,
+    "identity_quality_accepted": false,
+    "age_quality_accepted": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}
