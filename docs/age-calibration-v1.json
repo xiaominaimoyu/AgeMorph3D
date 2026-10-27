@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-age-calibration-v1",
+  "date": "2026-10-27",
+  "scope": "Retrospective additive bias calibration of saved original-photograph MiVOLO scores; no image/model reads or qualification changes",
+  "roles": ["protocol", "age_protocol", "age_study_plan", "age_verification", "age_report", "n0_manifest"],
+  "observations": [
+    "Historical original age scores and summaries have already been viewed; this is not blind or independent evaluation.",
+    "Filename ages are unverified research labels. SAM conditions and estimated source ages are not ground truth.",
+    "Calibration lacks ages 60-70, development lacks age 70, and training-identity overlap and allowed uses remain unresolved."
+  ],
+  "selection": {
+    "policy_id": "development-subject-macro-additive-offset-v1",
+    "fit_group": "development",
+    "formula": "offset = -mean_over_effective_development_subjects(mean_over_scored_originals(prediction - filename_label))",
+    "objective": "Minimize subject-macro squared error over one constant additive offset; no model alternatives or calibration-group selection",
+    "prediction": "corrected = saved_prediction + offset; never round or clamp",
+    "failures": "Null predictions remain null; no effective development subject is an error"
+  },
+  "evaluation": {
+    "groups": ["development", "calibration_research"],
+    "age_strata": ["all", "20-29", "30-39", "40-49", "50-59", "60-69", "70"],
+    "metrics": "Raw/corrected subject-macro MAE, signed bias, and sqrt(mean(subject mean squared error)); paired reductions are raw minus corrected MAE/RMSE",
+    "population": "Exactly original-role development/calibration rows bound one-to-one to N0; exclude generated and source-only records; no held-out predictions",
+    "denominators": "Retain requested/scored/failed and eligible/effective subjects for each group and stratum; empty means remain null",
+    "missing_mae_lower": "Average across eligible subjects of sum(known absolute errors)/all requested observations for that subject; all-failed subject contributes zero only to this lower bound",
+    "missing_mae_upper": "Null when any prediction is missing because no valid prediction range bounds the missing error; with complete data upper equals lower; with zero requests both are null",
+    "domain": "Original-photo corrections do not establish generated-image, sparse-render or production age calibration"
+  },
+  "uncertainty": {
+    "policy_id": "fixed-offset-subject-paired-randrange-v1",
+    "replicates": 1000,
+    "seed": 20261027,
+    "key": "original/{group}/{age_stratum}",
+    "stratum_seed": "seed + int(SHA256(UTF8(key)).hexdigest()[:16], 16)",
+    "draws": "Effective subject IDs sorted lexicographically; each replicate draws n indices using random.Random(stratum_seed).randrange(n), with replacement, shared across all raw/corrected/paired metrics",
+    "interval": "Sorted linear interpolation at (replicates-1)*q for q=0.025 and 0.975; zero effective subjects yield null intervals; one subject yields a degenerate interval",
+    "replicate_digest": "SHA256 of UTF8 json.dumps(replicates, separators=(',', ':'), allow_nan=False), no newline",
+    "limitations": "Fixed-offset conditional intervals exclude offset-fitting uncertainty and missingness; development is in-sample, high-age gaps remain, and no multiple-comparison or population-generalization claim is made"
+  },
+  "integrity": "Exact six metadata roles plus CLI/test/local standard-library helper pins; bounded declared-length reads and final checks, prior verification/report/plan/N0 links, original source and age-formula consistency, no duplicate or cross-group identity/image leakage; atomic fresh report publication",
+  "quality_threshold": null,
+  "flags": {
+    "research_only": true,
+    "new_model_inference": false,
+    "holdout_age_predictions_extracted": false,
+    "calibration_group_refitted": false,
+    "years_calibrated": false,
+    "age_quality_accepted": false,
+    "identity_quality_accepted": false,
+    "independent_evaluation": false,
+    "training_overlap_excluded": false,
+    "legal_permission_established": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

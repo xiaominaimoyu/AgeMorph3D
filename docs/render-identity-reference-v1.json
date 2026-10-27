@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-render-identity-reference-v1",
+  "date": "2026-10-27",
+  "scope": "Retrospective fixed-photo-reference diagnostic on saved original-static 3D render embeddings only; no new inference or identity qualification",
+  "roles": ["protocol", "n0_manifest", "photo_report", "reference_report", "reference_verification", "render_report", "render_verification", "capture_report", "source_reset_report"],
+  "reference": {
+    "policy_id": "saved-photo-threshold-no-retuning-v1",
+    "threshold": 0.30832315136297866,
+    "source": "Exact development_candidate_threshold from the frozen original-photograph identity-calibration report",
+    "decision": "cosine >= diagnostic_reference_threshold accepts; equality accepts",
+    "interpretation": "Descriptive reference only; quality_threshold remains null; no threshold curve, selection, retuning or render calibration"
+  },
+  "cohort": {
+    "source_count": 8,
+    "external_source_count": 2,
+    "sam_asset_count": 37,
+    "group": "development",
+    "configurations": ["MASK/front/black", "MASK/front/white", "MASK/side/black", "MASK/side/white", "BLEND/front/black", "BLEND/front/white", "BLEND/side/black", "BLEND/side/white"],
+    "sources": "All known N0 development bridge sources, each a distinct identity; exact source-reset input pin matches the N0 original photo and saved photo feature record",
+    "renders": "Only original_static_3d baseline frames with null target_age; one per source and configuration, bound to the frozen capture asset and frame",
+    "exclusions": "All SAM target frames and original frames of the two external sources are excluded; held-out source paths or hashes are rejected in every record role",
+    "observed_inventory": "Eight sources x eight configurations gives 64 render frames and 512 comparisons; saved frame failures remain in every associated requested pair"
+  },
+  "statistics": {
+    "policy_id": "directed-render-photo-comparisons-v1",
+    "positive": "Each render versus its exact source photo is one same-identity pair",
+    "negative": "Each render versus every other source identity photo is a directed different-identity pair; reverse directions remain distinct and no self-identity negative is created",
+    "units": "One positive unit per identity and one negative unit per ordered render-identity/photo-identity pair within each configuration",
+    "summaries": "Eight configurations separately; positive conditional FNMR and negative conditional FMR, requested/scored/failed, false decisions, eligible/effective units and missing-outcome lower/upper bounds",
+    "missing_bounds": "Within each requested unit use false/scored for conditional error when scored>0; lower=false/requested, upper=(false+failed)/requested; all-failed units have null conditional and [0,1] bounds; zero-request class has null bounds",
+    "pooling": "Never pool eight views as independent subjects or report a new population-level acceptance score"
+  },
+  "bootstrap": {
+    "policy_id": "full-subject-multiplicity-v1",
+    "replicates": 1000,
+    "seed": 20261027,
+    "key": "reference/{config_id}",
+    "stratum_seed": "seed + int(SHA256(UTF8(key)).hexdigest()[:16],16)",
+    "draws": "All eligible subject IDs sorted lexicographically, including failed renders; n calls to random.Random(stratum_seed).randrange(n) per replicate, with replacement",
+    "weights": "Positive unit weight=m_i; directed negative pair(i,j) weight=m_i*m_j for i!=j; copies of the same identity never form new impostor pairs",
+    "metrics": ["conditional_fmr", "conditional_fnmr", "requested_fmr_lower", "requested_fmr_upper", "requested_fnmr_lower", "requested_fnmr_upper"],
+    "nulls": "The same identity draw is shared across all metrics; retain null when no effective or eligible units remain; never redraw or discard the replicate",
+    "interval": "Percentile 2.5/97.5 of non-null values using sorted linear interpolation at (N-1)*q; report valid/null counts and null interval when no values exist",
+    "digest": "SHA256 of the entire ordered 1000-value nullable array encoded by UTF8 json.dumps(separators=(',', ':'),allow_nan=False), no newline",
+    "limitations": "Conditional descriptive uncertainty for these exposed source identities at one fixed photo reference; not threshold-fitting uncertainty, missingness correction, simultaneous intervals or independent validation"
+  },
+  "integrity": {
+    "metadata_max_bytes": 8388608,
+    "closed_inputs": "Exactly nine selected JSON metadata roles and CLI/test/local standard-library helper source pins; no recursive image/GLB/model reads",
+    "bindings": "Prior reference/render verification receipts, photo/reference/N0 links, render/capture/reset/N0 links, reset source to original photo, and selected capture frame/image/observed/source-check consistency",
+    "model": "Photo and render model pins and environment must match exactly; successful embeddings are finite nonzero 128-dimensional vectors, failures retain null",
+    "publication": "Bounded reads at declared length+1, loaded source hash checks, final input/plan/runtime rechecks after computation and serialization; atomic fresh output only"
+  },
+  "observations": [
+    "Original-photo scores, source textures and old render-domain results have already been viewed; the eight source photos belong to the reference's development cohort.",
+    "The saved render cohort is the 2026-10-23 SwiftShader/old-viewer capture, not the current viewer, ordinary GPU configuration or stable-browser real-service acceptance.",
+    "This measures rendering, pose, alpha/material, coverage and detection confounds; generated-image identity, human appearance approval, independent data, training overlap and allowed uses remain unresolved."
+  ],
+  "quality_threshold": null,
+  "flags": {
+    "research_only": true,
+    "new_model_inference": false,
+    "reference_threshold_reselected": false,
+    "render_threshold_calibrated": false,
+    "holdout_embeddings_extracted": false,
+    "identity_quality_accepted": false,
+    "age_quality_accepted": false,
+    "human_review_completed": false,
+    "independent_evaluation": false,
+    "training_overlap_excluded": false,
+    "legal_permission_established": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}
