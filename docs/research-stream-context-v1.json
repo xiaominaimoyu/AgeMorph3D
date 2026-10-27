@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-bounded-stream-context-v1",
+  "date": "2026-10-27",
+  "scope": "Synthetic loopback ASGI responses only; investigate stable Chrome/Edge network completion without changing production or research session code",
+  "baseline": "Exact current ResearchSessionApi.bytes, actual chunk budget, no-store, EOF and declared-length verification",
+  "candidates": [
+    {
+      "name": "counted-native-bridge",
+      "path": "Original fetch body -> TransformStream checks cumulative actual bytes before enqueue -> new Response(stream).arrayBuffer",
+      "hypothesis": "A bounded downstream native consumer may change completion handling; original network body still streams, so success is not inferred",
+      "budget": "The downstream consumer must never receive bytes above the endpoint budget; header length does not substitute for actual counting"
+    },
+    {
+      "name": "worker-current-client",
+      "path": "Dedicated module Worker imports exact current ResearchSessionApi and calls its unchanged bytes implementation",
+      "hypothesis": "A worker fetch context may differ from the document loader; source equivalence and native worker network events must be observed"
+    }
+  ],
+  "positive_controls": "Both installed browsers; eight repetitions each of fixed and fixed-split responses per arm; exact size and SHA-256, no unexpected native or Playwright request failures",
+  "negative_controls": [
+    "Declared length over budget",
+    "Actual chunked payload over budget",
+    "Compressed expansion with visible and hidden encoding",
+    "Truncation and length mismatch",
+    "Explicit cancellation",
+    "Actual SDK timeout",
+    "Empty body"
+  ],
+  "falsification": "Any positive native loadingFailed/requestfailed, incorrect payload, accepted negative or input mutation rejects that candidate; never whitelist the known ERR_ABORTED symptom",
+  "observability": "Observe original request terminals before teardown, including worker CDP target for worker requests; distinguish harness error from observed candidate failure",
+  "freeze": "Versioned fresh output directories, executed harness/server and current application source hashes, dependency manifests, browser binary/version and before/after input verification",
+  "cleanup": "Owned workers, contexts, browsers, loopback Vite/Python listeners and native service processes must exit; preserve reports and failures",
+  "promotion": "Synthetic success alone does not qualify the real research service. Review source and cancellation/budget boundaries before changing a client; then separately freeze the actual worker/session/display/export/original-restoration run",
+  "excluded": "No model inference, private photos, training, downloads, system browser/configuration changes, dependency changes, clone/tee workaround, Git commands or edits to old frozen reports",
+  "flags": {
+    "research_only": true,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false,
+    "human_review_completed": false,
+    "quality_accepted": false
+  }
+}
