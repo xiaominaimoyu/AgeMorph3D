@@ -527,6 +527,21 @@ export class ResearchSessionApi {
     flags(data);
     return this.parseStage(data, sid, target);
   }
+  async checkStage(sid: string, stage: StageReply, signal?: AbortSignal): Promise<void> {
+    identifier(sid);
+    const expected = this.parseStage(stage, sid);
+    const path = `/research/sessions/${sid}/stages/${expected.staged.stage_id}/status`;
+    const data = object(parseJson(await this.bytes(this.url(path, path), {}, 16 * 1024,
+      "application/json", signal, 10_000)));
+    flags(data);
+    if (data.status !== "available" || data.ttl_extended !== false || data.reservation_held !== false)
+      invalid("阶段检查不能续期或保留提交资格。");
+    const raw = object(data.staged);
+    if (Object.keys(raw).length !== 5 || Object.entries(expected.staged).some(([key, value]) => raw[key] !== value))
+      invalid("可用阶段与当前审核绑定不一致。");
+    const live = this.parseStage(data, sid, expected.staged.target_condition);
+    if (!equal(live.staged, expected.staged)) invalid("当前审核阶段已改变。");
+  }
   async preview(sid: string, stage: StageReply, signal?: AbortSignal): Promise<ArrayBuffer> {
     identifier(sid); const checked = this.parseStage(stage, sid);
     const bytes = await this.bytes(checked.preview_url, {}, PNG_LIMIT, "image/png", signal, 30_000);

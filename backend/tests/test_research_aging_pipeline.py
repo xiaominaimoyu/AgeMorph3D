@@ -576,6 +576,45 @@ async def test_unknown_source_allows_condition_staging_but_never_defaults_absolu
         await processor.close()
 
 
+async def test_stage_status_uses_real_cache_without_decode_lease_or_worker(
+    color_fixture, bindings, monkeypatch
+):
+    source, raw = color_fixture
+    now = [0.0]
+    cache = AssetCache(
+        max_bytes=32 * 1024**2,
+        max_asset_bytes=16 * 1024**2,
+        ttl_seconds=1,
+        max_entries=1,
+        clock=lambda: now[0],
+    )
+    worker = TinyWorker(bindings)
+    processor = pipeline.ResearchAgingProcessor(
+        worker, lambda rgb: raw, bindings, stage_cache=cache, max_stage_entries=1
+    )
+    try:
+        target = await processor.stage_condition(source, 45)
+
+        def forbidden(*args, **kwargs):
+            pytest.fail("Availability check tried to decode or acquire stage payload.")
+
+        monkeypatch.setattr(processor, "_stage_data", forbidden)
+        monkeypatch.setattr(cache, "acquire", forbidden)
+        for moment in (0.1, 0.5, 0.99):
+            now[0] = moment
+            assert processor.check_staged(target) is None
+            assert cache._entries[target.stage_id].pins == 0 and len(worker.calls) == 1
+        now[0] = 1
+        with pytest.raises(ApiError) as caught:
+            processor.check_staged(target)
+        assert caught.value.code == "STAGE_EXPIRED" and len(worker.calls) == 1
+    finally:
+        await processor.close()
+    with pytest.raises(ApiError) as caught:
+        processor.check_staged(target)
+    assert caught.value.code == "MODEL_NOT_READY"
+
+
 async def test_stage_ttl_is_absolute_and_expired_handle_cannot_revive_payload(
     color_fixture, bindings
 ):

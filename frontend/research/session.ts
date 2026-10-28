@@ -45,6 +45,8 @@ const reviewArea = element<HTMLElement>("review-area");
 const previewImage = element<HTMLImageElement>("target-preview");
 const editorBindingButton = element<HTMLButtonElement>("download-editor-binding");
 const editorTargetButton = element<HTMLButtonElement>("download-editor-target");
+const checkStageButton = element<HTMLButtonElement>("check-review-stage");
+const stageStatus = element<HTMLElement>("review-stage-status");
 const reviewFields = element<HTMLFieldSetElement>("review-fields");
 const allowedInput = element<HTMLInputElement>("review-allowed");
 const occludedInput = element<HTMLInputElement>("review-occluded");
@@ -82,6 +84,7 @@ let source: LoadedSource | null = null;
 let sourcePixels: Uint8ClampedArray | null = null;
 let staged: StageReply | null = null;
 let editorTargetBytes: ArrayBuffer | null = null;
+let stageCheckToken: number | null = null;
 let draftImportEpoch = 0;
 let draftImportBusy = false;
 type VerifiedDraft = {
@@ -172,6 +175,9 @@ function currentVerifiedDraft(): VerifiedDraft | null {
 }
 
 function clearReview(): void {
+  stageCheckToken = null;
+  stageStatus.dataset.state = "unchecked";
+  stageStatus.textContent = "尚未检查阶段活性。离线文件不能保证阶段仍可提交。";
   draftInput.value = "";
   invalidateDraftImport(true);
   staged = null;
@@ -225,6 +231,7 @@ function refreshControls(): void {
   loadConditionButton.disabled = !bound || busy;
   reviewFields.disabled = !staged || busy || !bound;
   editorBindingButton.disabled = editorTargetButton.disabled = !staged || !editorTargetBytes || busy || !bound;
+  checkStageButton.disabled = !staged || busy || !bound;
   verifyDraftButton.disabled = !staged || !editorTargetBytes || busy || !bound
     || !draftInput.files?.length || !allowedInput.files?.length || !occludedInput.files?.length;
   clearDraftButton.disabled = busy || !draftInput.files?.length;
@@ -579,6 +586,35 @@ loadConditionButton.addEventListener("click", () => {
   });
 });
 
+checkStageButton.addEventListener("click", () => {
+  const current = info, target = staged;
+  if (busy || destroyed || !current || !target || !source) return;
+  void perform("正在检查当前待审核阶段…", async operation => {
+    stageCheckToken = operation.token;
+    stageStatus.dataset.state = "checking";
+    stageStatus.textContent = "正在查询阶段状态，不续期或保留提交名额…";
+    try {
+      await operation.client.checkStage(current.session_id, target, operation.signal);
+      ensureCurrent(operation.token, operation.signal);
+      if (info !== current || staged !== target || conditionInput.valueAsNumber !== target.staged.target_condition)
+        throw new DOMException("检查期间审核阶段已改变。", "AbortError");
+      stageStatus.dataset.state = "available";
+      stageStatus.textContent = "上次检查时阶段可用。本次检查不续期、不保留提交名额，提交时服务仍会再次核验。";
+      setStatus("已检查待审核阶段；没有下载目标图、生成或提交审核记录。");
+    } catch (value) {
+      if (operation.token === generation && !operation.signal.aborted) {
+        stageStatus.dataset.state = "unknown";
+        stageStatus.textContent = "未核实阶段可用性，请查看错误提示或重新检查。";
+      }
+      if (value instanceof ResearchApiError && value.code === "TIMEOUT")
+        throw new Error("待审核阶段检查超时，可用性尚未核实。本次检查没有续期或保留提交名额，请稍后重新检查。");
+      throw value;
+    } finally {
+      if (stageCheckToken === operation.token) stageCheckToken = null;
+    }
+  });
+});
+
 verifyDraftButton.addEventListener("click", () => {
   if (busy || destroyed) return;
   const target = staged, targetBytes = editorTargetBytes;
@@ -753,8 +789,9 @@ existingIdInput.addEventListener("input", () => {
 });
 conditionInput.addEventListener("input", () => {
   const importing = draftImportBusy;
-  if (importing) pending?.abort();
-  if (!busy || importing) clearReview();
+  const checkingStage = stageCheckToken === generation;
+  if (importing || checkingStage) pending?.abort();
+  if (!busy || importing || checkingStage) clearReview();
   clearError();
   refreshControls();
 });
@@ -812,6 +849,7 @@ if (import.meta.env.DEV) {
       exactSourceDisplay: frame?.exactSource ?? false,
       displayMode: frame ? "research-blend" : source ? "original" : "empty",
       pendingStage: staged ? { ...staged.staged } : null,
+      stageCheckPending: stageCheckToken === generation,
       draftVerified: !!currentVerifiedDraft(), draftImportBusy,
       objectUrls: objectUrls.size, hasSourceBytes: source !== null,
       research_only: true, service_ready: false, g3_complete: false,

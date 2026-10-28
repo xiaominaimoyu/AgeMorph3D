@@ -94,7 +94,9 @@
             <div class="button-row">
               <button id="download-editor-binding" type="button" disabled>下载编辑绑定 JSON</button>
               <button id="download-editor-target" type="button" disabled>下载当前目标 PNG</button>
+              <button id="check-review-stage" type="button" disabled>检查待审核阶段</button>
             </div>
+            <p id="review-stage-status" class="hint" role="status" aria-live="polite">尚未检查阶段活性。离线文件不能保证阶段仍可提交。</p>
             <p class="hint"><a href="./mask-editor.html" target="_blank" rel="noopener">在独立遮罩编辑器打开这两份文件</a>。编辑器只导出草稿；阶段可能到期，返回本页后仍须核对并显式提交。</p>
             <details>
               <summary>核对当前目标指纹</summary>

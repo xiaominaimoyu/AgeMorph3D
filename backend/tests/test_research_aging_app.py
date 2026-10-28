@@ -103,6 +103,12 @@ class SyntheticService:
             "shape": [0.0] * 40,
         }
 
+    def check_stage(self, session_id, stage_id):
+        self._source(session_id)
+        if stage_id != STAGED.stage_id:
+            raise ApiError(404, "STAGE_EXPIRED", "private stage detail")
+        return STAGED
+
     async def stage(self, session_id, condition, timeout_seconds=180):
         self._source(session_id)
         self.stage_calls.append(condition)
@@ -682,3 +688,50 @@ async def test_reconnect_expired_session_has_no_private_metadata(client):
     response = await http.get(BASE)
     assert response.status_code == 404 and response.json()["code"] == "SESSION_EXPIRED"
     assert "private source detail" not in response.text
+
+
+async def test_stage_status_is_small_private_nonrenewing_json_without_new_work(client):
+    http, service = client
+    await create(http, age=None)
+    await http.post(BASE + "/conditions", json={"condition": 45})
+    before = (list(service.stage_calls), list(service.register_calls), service.downloads)
+    response = await http.get(BASE + "/stages/" + STAGED.stage_id + "/status")
+    assert response.status_code == 200 and len(response.content) < 16384
+    value = response.json()
+    assert value["status"] == "available"
+    assert value["staged"]["stage_id"] == STAGED.stage_id
+    assert value["ttl_extended"] is False and value["reservation_held"] is False
+    assert value["research_only"] is True
+    assert all(
+        value[k] is False
+        for k in ("service_ready", "g3_complete", "human_review_completed", "production_enabled")
+    )
+    assert "no-store" in response.headers["cache-control"]
+    assert before == (service.stage_calls, service.register_calls, service.downloads)
+    assert service.age.model_dump() == UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "suffix,code",
+    [
+        ("/stages/" + "f" * 32 + "/status", "STAGE_EXPIRED"),
+        ("/stages/invalid/status", "STAGE_EXPIRED"),
+    ],
+)
+async def test_stage_status_rejects_missing_or_invalid_stage_safely(client, suffix, code):
+    http, service = client
+    await create(http)
+    response = await http.get(BASE + suffix)
+    assert response.status_code == 404 and response.json()["code"] == code
+    assert "private" not in response.text
+    assert service.downloads == 0 and service.register_calls == []
+
+
+async def test_stage_status_does_not_disclose_another_session(client):
+    http, service = client
+    await create(http)
+    response = await http.get(
+        "/research/sessions/" + "f" * 32 + "/stages/" + STAGED.stage_id + "/status"
+    )
+    assert response.status_code == 404 and response.json()["code"] == "SESSION_EXPIRED"
+    assert STAGED.source_fingerprint not in response.text

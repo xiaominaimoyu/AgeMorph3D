@@ -369,3 +369,60 @@ test("a failed asset cancels the concurrent peer request", async t => {
   await assert.rejects(api.loadSource(info), error => error instanceof ResearchApiError && error.code === "SESSION_EXPIRED");
   assert.ok(peerAborted);
 });
+
+function availableStage(data = fixture()): any {
+  return { ...structuredClone(data.stage), ...FLAGS, status: "available", ttl_extended: false, reservation_held: false };
+}
+
+test("stage availability uses only one bounded GET and does not request assets or register", async t => {
+  const data = fixture(); let calls = 0;
+  fakeFetch(t, (url, init) => {
+    calls++; assert.equal(new URL(url).pathname, `/research/sessions/${SID}/stages/${STAGE}/status`);
+    assert.equal(init.method ?? "GET", "GET"); assert.equal(init.body, undefined);
+    assert.equal(init.cache, "no-store"); return jsonResponse(availableStage(data));
+  });
+  assert.equal(await new ResearchSessionApi(BASE).checkStage(SID, data.stage), undefined);
+  assert.equal(calls, 1);
+});
+
+for (const [name, edit] of [
+  ["stage ID", (v: any) => { v.staged.stage_id = "e".repeat(32); }],
+  ["source binding", (v: any) => { v.staged.source_fingerprint = "e".repeat(64); }],
+  ["generated binding", (v: any) => { v.staged.generated_sha256 = "e".repeat(64); }],
+  ["fit binding", (v: any) => { v.staged.fit_sha256 = "e".repeat(64); }],
+  ["condition", (v: any) => { v.staged.target_condition = 46; }],
+  ["extra binding field", (v: any) => { v.staged.approved = true; }],
+  ["renewal", (v: any) => { v.ttl_extended = true; }],
+  ["reservation", (v: any) => { v.reservation_held = true; }],
+  ["missing reservation declaration", (v: any) => { delete v.reservation_held; }],
+  ["wrong status", (v: any) => { v.status = "ready"; }],
+  ["production flag", (v: any) => { v.service_ready = true; }],
+  ["human flag", (v: any) => { v.human_review_completed = true; }],
+  ["foreign URL", (v: any) => { v.preview_url = "https://example.test/private.png"; }],
+] as const) test(`stage availability rejects ${name}`, async t => {
+  const data = fixture(), response = availableStage(data); edit(response);
+  fakeFetch(t, () => jsonResponse(response));
+  await assert.rejects(new ResearchSessionApi(BASE).checkStage(SID, data.stage));
+});
+
+test("stage availability rejects oversized JSON and propagates stage expiry", async t => {
+  const data = fixture(), api = new ResearchSessionApi(BASE);
+  fakeFetch(t, () => jsonResponse({ ...availableStage(data), padding: "x".repeat(16 * 1024) }));
+  await assert.rejects(api.checkStage(SID, data.stage));
+  fakeFetch(t, () => jsonResponse({ code: "STAGE_EXPIRED" }, 404));
+  await assert.rejects(api.checkStage(SID, data.stage), (e: unknown) => e instanceof ResearchApiError && e.code === "STAGE_EXPIRED");
+});
+
+test("stage availability snapshots caller binding and supports cancellation", async t => {
+  const data = fixture(), response = availableStage(data), api = new ResearchSessionApi(BASE);
+  let release!: () => void;
+  fakeFetch(t, () => new Promise<Response>(resolve => { release = () => resolve(jsonResponse(response)); }));
+  const pending = api.checkStage(SID, data.stage);
+  data.stage.staged.fit_sha256 = "e".repeat(64); release(); await pending;
+  let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  fakeFetch(t, (_url, init) => new Promise<Response>((_resolve, reject) => {
+    init.signal!.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), { once: true }); entered();
+  }));
+  const controller = new AbortController(), cancelled = api.checkStage(SID, fixture().stage, controller.signal);
+  await started; controller.abort(); await assert.rejects(cancelled, (e: any) => e.name === "AbortError");
+});

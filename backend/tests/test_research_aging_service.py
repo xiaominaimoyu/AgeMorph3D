@@ -174,6 +174,10 @@ class SyntheticProcessor:
 
         return await self.native("stage", stage)
 
+    def check_staged(self, handle):
+        if handle.stage_id not in self.previews:
+            raise ApiError(404, "STAGE_EXPIRED", "Synthetic stage is absent.")
+
     def preview_staged(self, handle):
         if handle.stage_id not in self.previews:
             raise ApiError(404, "STAGE_EXPIRED", "Synthetic stage is absent.")
@@ -795,6 +799,10 @@ class CacheBackedSyntheticProcessor(SyntheticProcessor):
 
         return await self.native("stage", stage)
 
+    def check_staged(self, target):
+        if not self.stage_store.contains_current(target.stage_id):
+            raise ApiError(404, "STAGE_EXPIRED", "Synthetic charged stage expired.")
+
     def _lease(self, target):
         try:
             return self.stage_store.acquire(target.stage_id)
@@ -908,5 +916,59 @@ async def test_conflicting_review_result_is_rejected_without_changing_cached_dow
             assert texture.data == first.result.texture_png
         retry = await service.register(identifier, target.stage_id, b"synthetic-review-one")
         assert retry.result == first.result
+    finally:
+        await service.close()
+
+
+async def test_stage_check_is_owned_nonrenewing_and_does_not_download_or_start_native(monkeypatch):
+    now = [0.0]
+    processor = CacheBackedSyntheticProcessor(clock=lambda: now[0])
+    cache = AgingSessionCache(ttl_seconds=10, clock=lambda: now[0])
+    service = ResearchAgingService(processor, SyntheticBuilder(), cache=cache)
+    try:
+        first = await create_source(service, age=UNKNOWN)
+        other = await create_source(service, image=b"other synthetic source", age=UNKNOWN)
+        target = await service.stage(first, 45)
+        native_calls = list(processor.calls)
+
+        def forbidden(*args, **kwargs):
+            pytest.fail("Status check attempted a preview decode or download.")
+
+        monkeypatch.setattr(processor, "preview_staged", forbidden)
+        monkeypatch.setattr(service, "asset", forbidden)
+        monkeypatch.setattr("agemorph3d.research_aging_service.source_fingerprint", forbidden)
+        for moment in (0.1, 0.7, 0.99):
+            now[0] = moment
+            assert service.check_stage(first, target.stage_id) == target
+            assert processor.calls == native_calls
+            assert cache.stats["pins"] == processor.stage_store._entries[target.stage_id].pins == 0
+            assert service.snapshot()["downloads"] == 0
+        with pytest.raises(ApiError) as caught:
+            service.check_stage(other, target.stage_id)
+        assert caught.value.code == "STAGE_EXPIRED"
+        now[0] = 1
+        with pytest.raises(ApiError) as caught:
+            service.check_stage(first, target.stage_id)
+        assert caught.value.code == "STAGE_EXPIRED" and processor.calls == native_calls
+        with cache.acquire(first) as lease:
+            assert lease.source.source_age.model_dump() == UNKNOWN.model_dump()
+    finally:
+        await service.close()
+
+
+async def test_stage_check_rejects_expired_source_even_when_stage_storage_is_live():
+    now = [0.0]
+    processor = CacheBackedSyntheticProcessor(clock=lambda: now[0])
+    cache = AgingSessionCache(ttl_seconds=0.5, clock=lambda: now[0])
+    service = ResearchAgingService(processor, SyntheticBuilder(), cache=cache)
+    try:
+        sid = await create_source(service)
+        target = await service.stage(sid, 45)
+        now[0] = 0.5
+        assert processor.stage_store.contains_current(target.stage_id)
+        with pytest.raises(ApiError) as caught:
+            service.check_stage(sid, target.stage_id)
+        assert caught.value.code == "SESSION_EXPIRED"
+        assert cache.stats["pins"] == processor.stage_store._entries[target.stage_id].pins == 0
     finally:
         await service.close()

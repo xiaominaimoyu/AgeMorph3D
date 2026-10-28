@@ -36,6 +36,8 @@ SAM二维输出、目标拟合几何与输出源canonical几何分别保存来�
 
 ## 资源和依赖边界
 
+[阶段状态分支](docs/研究阶段可用性检查记录.md)由共享AssetCache.contains_current提供不触stage LRU/不pin/不续期的存在性查询，隔离processor→service以活源和会话stage别名核归属→GET status返回关闭资格快照。SDK复用原有有界读取，16KiB/10秒；页面generation与当前对象阻止旧状态回填。原缓存publish/acquire、模型配置、生产路由及注册权威判断保持。
+
 [编辑器回读分支](docs/遮罩编辑器草稿回读记录.md)复用research-mask-draft严格校验，增加分离的多边形快照返回；mask-editor页面将当前回读所有权绑定epoch，成功后重建原生栅格/叠加。清除、文件与阶段更换或离页使旧完成失效，回读和导出是两个显式动作；旧编码器、会话页、服务及生产链不改。
 
 [草稿回导分支](docs/mask-draft-import-v1.json)使用独立`research-mask-draft.ts`校验旧编辑器草稿，复用原生像素栅格并通过有界L8解码核上传PNG。当前stage/目标PNG、两遮罩原字节和多边形必须一致，返回自有字节快照；会话页以操作generation和独立epoch阻止旧异步结果回填，注册仍需显式操作。该分支不改变旧导出格式、后端或模型入口。

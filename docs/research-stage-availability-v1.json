@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-research-stage-availability-v1",
+  "date": "2026-10-28",
+  "scope": "Explicit lightweight availability snapshot for the current research review stage; no generation, download, renewal, reservation or quality acceptance",
+  "endpoint": {
+    "method": "GET",
+    "path": "/research/sessions/{sid}/stages/{stageid}/status",
+    "success": "status=available, exact existing staged metadata and owned preview/fit URLs, ttl_extended=false, reservation_held=false, existing research-only closed flags",
+    "limits": "Small JSON only, client budget16KiB; existing loopback middleware, identifier validation, sanitized errors, no-store and CORS remain",
+    "failure": "SESSION_EXPIRED or STAGE_EXPIRED through existing safe error envelope; no cross-session stage disclosure, model fallback or automatic restaging"
+  },
+  "cache": {
+    "semantics": "New contains_current check validates a current stored ID under the existing cache lock without acquiring a value lease or touching LRU. Normal expired unpinned cleanup is allowed",
+    "ttl": "Publication deadline never extends on checks; exact deadline rejects even while an old lease retains expired bytes",
+    "capacity": "No payload copy/read, no stage lease/download slot/native task, no eviction of live entries or LRU promotion by the stage-cache check",
+    "service": "Validate live source/session ownership before probing its bound stage; release transient source lease before returning. A successful check is a momentary snapshot and cannot reserve later registration"
+  },
+  "client": {
+    "validation": "Validate input IDs and owned stage URLs, all returned five binding fields, condition, no-renew/no-reservation fields and closed flags before declaring availability",
+    "timeout_ms": 10000,
+    "trigger": "Explicit user button in current review area; no timer or automatic check/renew on draft import or editing",
+    "success": "Show current availability with nonrenewing/nonreserving wording. Existing register remains an independent action and rechecks server state",
+    "failure": "Expired stage clears current review image/files/import state; expired session clears source via original error handling. Other errors do not pretend active status",
+    "async": "Current operation generation and exact stage/session identities govern publication; changing condition/source/stage or cancel/pagehide invalidates obsolete checks. No stale active message after reset"
+  },
+  "acceptance": {
+    "backend": "Fake-clock TTL/nonrenewal, no pin/copy/LRU changes, expiry during pinned retention, closed/invalid IDs; actual processor metadata path avoids decode/native work; source ownership, ASGI route and safe errors",
+    "frontend": "Strict response/binding/flags and size/error tests; installed Chrome/Edge synthetic actual UI tests for explicit GET, no POST/model/assets in check, current stage snapshot, expiry clearing and cancellation/late response isolation",
+    "boundaries": "Synthetic HTTP/UI and cache tests are not real model execution, stable-browser live-service acceptance, human approval, independent evaluation or G3"
+  },
+  "flags": {
+    "research_only": true,
+    "human_review_completed": false,
+    "identity_quality_accepted": false,
+    "age_quality_accepted": false,
+    "years_calibrated": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

@@ -608,6 +608,19 @@ class ResearchAgingProcessor:
         raw = _read_fit(_json(fit, MAX_CONTEXT_BYTES))
         return value, png, fit, raw
 
+    def check_staged(self, target: StagedTarget) -> None:
+        """Check an opaque stage's current storage without reading its payload."""
+        if self._closed:
+            raise ApiError(503, "MODEL_NOT_READY", "研究处理器正在关闭。")
+        if not isinstance(target, StagedTarget):
+            raise ValueError("An opaque staged target is required.")
+        try:
+            current = self._cache.contains_current(target.stage_id)
+        except AssetCacheClosed:
+            current = False
+        if not current:
+            raise ApiError(404, "STAGE_EXPIRED", "研究暂存目标不存在或已过期。")
+
     def preview_staged(self, target: StagedTarget) -> StagedPreview:
         try:
             with self._lease(target) as lease:

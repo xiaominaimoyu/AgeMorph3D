@@ -161,6 +161,17 @@ class AssetCache:
             self._retained_bytes += len(data)
             return mesh_id
 
+    def contains_current(self, mesh_id: str) -> bool:
+        """Check availability without copying, pinning, touching LRU or renewing TTL."""
+        with self._lock:
+            self._require_open()
+            if not isinstance(mesh_id, str) or self._ID.fullmatch(mesh_id) is None:
+                return False
+            now = self._now()
+            self._purge_expired(now)
+            entry = self._entries.get(mesh_id)
+            return entry is not None and entry.expires_at > now
+
     def acquire(self, mesh_id: str) -> AssetLease:
         """Pin a current value without extending its publication deadline."""
         with self._lock:

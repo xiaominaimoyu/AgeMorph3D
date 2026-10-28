@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event
 
 import pytest
-
 from agemorph3d.asset_cache import (
     AssetCache,
     AssetCacheClosed,
@@ -21,6 +20,48 @@ class Clock:
 
     def __call__(self) -> float:
         return self.value
+
+
+def test_current_metadata_checks_never_pin_renew_or_promote_lru():
+    clock = Clock()
+    cache = AssetCache(max_bytes=3, max_asset_bytes=1, max_entries=2, ttl_seconds=10, clock=clock)
+    first, second = cache.publish(b"a"), cache.publish(b"b")
+    for moment in (1, 5, 9):
+        clock.value = moment
+        assert cache.contains_current(first)
+        assert cache._entries[first].pins == 0
+    third = cache.publish(b"c")
+    assert not cache.contains_current(first), "Checking must not protect the oldest LRU entry."
+    assert cache.contains_current(second) and cache.contains_current(third)
+    clock.value = 10
+    assert not cache.contains_current(second)
+    assert cache.contains_current(third)
+
+
+def test_metadata_expiry_rejects_pinned_retained_bytes_without_releasing_the_owner():
+    clock = Clock()
+    cache = AssetCache(ttl_seconds=1, clock=clock)
+    identifier = cache.publish(b"retained")
+    lease = cache.acquire(identifier)
+    clock.value = 1
+    assert not cache.contains_current(identifier)
+    assert lease.data == b"retained" and cache._entries[identifier].pins == 1
+    lease.close()
+    assert cache._entries == {} and cache._retained_bytes == 0
+
+
+@pytest.mark.parametrize("identifier", [None, True, 1, "", "a" * 31, "G" * 32])
+def test_invalid_metadata_id_is_unavailable(identifier):
+    cache = AssetCache()
+    assert cache.contains_current(identifier) is False
+
+
+def test_closed_metadata_cache_cannot_report_available():
+    cache = AssetCache()
+    identifier = cache.publish(b"data")
+    cache.close()
+    with pytest.raises(AssetCacheClosed):
+        cache.contains_current(identifier)
 
 
 @pytest.mark.parametrize("name", ["max_bytes", "max_entries", "max_asset_bytes"])

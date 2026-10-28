@@ -409,6 +409,19 @@ def create_research_app(service: ResearchAgingService, settings: Settings | None
         _identifier(sid)
         return {**service.source_info(sid), **_source_urls(sid), **_FLAGS}
 
+    @app.get("/research/sessions/{sid}/stages/{stageid}/status")
+    async def stage_status(sid: str, stageid: str):
+        _identifier(sid)
+        _identifier(stageid, stage=True)
+        staged = service.check_stage(sid, stageid)
+        return {
+            **_stage_urls(sid, staged),
+            "status": "available",
+            "ttl_extended": False,
+            "reservation_held": False,
+            **_FLAGS,
+        }
+
     @app.get("/research/sessions/{sid}/stages/{stageid}/preview.png")
     async def staged_preview(sid: str, stageid: str):
         _identifier(sid)

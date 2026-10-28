@@ -157,6 +157,7 @@ class ResearchAgingService:
             raise ValueError("An explicit processor and synchronous source builder are required.")
         for name in (
             "stage_condition",
+            "check_staged",
             "preview_staged",
             "register_reviewed",
             "sweep_stages",
@@ -366,6 +367,14 @@ class ResearchAgingService:
             return target
         finally:
             lease.close()
+
+    def check_stage(self, session_id: str, stage_id: str) -> StagedTarget:
+        """Return a momentary owned-stage snapshot without renewing either TTL."""
+        with self._acquire(session_id):
+            target = self._target(session_id, stage_id)
+            self.processor.check_staged(target)
+            self._fresh(session_id)
+            return target
 
     def preview(self, session_id: str, stage_id: str) -> StagedPreview:
         with self._acquire(session_id):
