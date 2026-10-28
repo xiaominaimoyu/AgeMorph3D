@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-mask-editor-resume-v1",
+  "date": "2026-10-28",
+  "scope": "Explicitly restore exported research annotations for further local editing; no automatic load, export, registration, stage renewal or approval",
+  "compatibility": "Keep editor export and mask-editor-v1 protocol unchanged. Reuse mask-draft-import-v1 strict verification; add detached polygons to the verified result without changing existing review, PNG or count semantics",
+  "inputs": {
+    "current_target": "First explicitly load the existing binding JSON and target PNG through the original bounded verification path",
+    "restore_files": "Then explicitly select draft JSON and the two matching L8 masks; press the button labelled as replacing current annotations",
+    "bounds": "JSON nonempty <=512KiB UTF8, depth<=32; each PNG <=4MiB; native1024x1024, existing64 polygons/128 vertices per polygon/4096 total; check File sizes before reads",
+    "validation": "All current five stage fields, target PNG, exact JSON schema and closed flags, raw PNG SHA/bytes, CRC, grayscale decoding, polygon pixel equivalence and counts must match through validateMaskDraft",
+    "ownership": "Return separately owned polygon points before any await; asynchronous caller mutation must not change restored annotations"
+  },
+  "lifecycle": {
+    "start": "The replacement button explicitly clears current polygons, pending points, reviewer fields and prepared downloads while retaining the verified current target image; do not partially mix old and imported annotations",
+    "success": "Atomically install verified polygons, rebuild native masks/overlay, restore declared record metadata and counters. Do not mark prepared, download or send a request; the user must continue editing or explicitly prepare a fresh snapshot",
+    "failure": "Keep current target image but leave empty polygons, metadata and no eligible downloads; report failure without auto-fixing inputs",
+    "selection": "Selecting restore files alone never applies annotations. File changes invalidate outstanding restore/export work; the explicit replacement action is required",
+    "async": "Use current operation epoch and owned stage/target/file identities before installing. Invalidate on changed input, manual edits, clear, new target or pagehide. Obsolete finally/completion must not clear or populate a newer operation",
+    "editing": "Disable annotation and export controls during owned restore work, keep explicit clear available, and block canvas handlers as well as buttons",
+    "persistence": "No localStorage, IndexedDB, cookies, automatic restore or remote file upload"
+  },
+  "acceptance": {
+    "unit": "Existing strict import/export regressions, detached polygon result and mutation after first await; no change to old export format",
+    "browser": "Installed Chrome/Edge with synthetic target and fixed software graphics: load actual editor, explicit restore, exact native counts, edit restored annotation and export, independent saved PNG/draft comparison, mismatched stage/flag/pixels refusal, changed selection/clear during delayed reads, stale old completion after newer success, pagehide cleanup",
+    "limits": "Synthetic operation and native mask agreement do not prove manual mask correctness, observed skin quality, real service/display, licensed independent evaluation or G3"
+  },
+  "flags": {
+    "research_only": true,
+    "human_review_completed": false,
+    "identity_quality_accepted": false,
+    "age_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "years_calibrated": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

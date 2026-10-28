@@ -4,6 +4,7 @@ import {
   rasterizeMaskPolygons,
   validateMaskEditorTarget,
 } from "../src/research-mask-editor.ts";
+import { MAX_MASK_DRAFT_BYTES, validateMaskDraft } from "../src/research-mask-draft.ts";
 import type {
   MaskEditorBinding,
   MaskPoint,
@@ -22,6 +23,11 @@ const bindingInput = element<HTMLInputElement>("editor-binding");
 const targetInput = element<HTMLInputElement>("editor-target");
 const loadButton = element<HTMLButtonElement>("load-editor");
 const clearButton = element<HTMLButtonElement>("clear-editor");
+const resumeDraftInput = element<HTMLInputElement>("resume-draft");
+const resumeAllowedInput = element<HTMLInputElement>("resume-allowed");
+const resumeOccludedInput = element<HTMLInputElement>("resume-occluded");
+const resumeButton = element<HTMLButtonElement>("resume-editor");
+const resumeInputs = [resumeDraftInput, resumeAllowedInput, resumeOccludedInput];
 const canvas = element<HTMLCanvasElement>("mask-canvas");
 const context = canvas.getContext("2d");
 if (!context) throw new Error("本机浏览器不能建立二维标注画布。");
@@ -53,6 +59,7 @@ let epoch = 0;
 let disposed = false;
 let loadInFlight = false;
 let activeLoadEpoch: number | null = null;
+let activeResumeEpoch: number | null = null;
 let exportInFlight = false;
 let binding: MaskEditorBinding | null = null;
 let targetBytes: Uint8Array | null = null;
@@ -91,23 +98,28 @@ function metadataReady(): boolean {
 function refresh(): void {
   const loaded = !!binding && !!bitmap && !!targetBytes && !disposed;
   const loading = loadInFlight && activeLoadEpoch === epoch;
+  const resuming = activeResumeEpoch !== null && activeResumeEpoch === epoch;
+  const editable = loaded && !resuming;
   main.dataset.state = disposed ? "disposed" : loading ? "loading" : !loaded ? "empty"
-    : exportInFlight ? "exporting" : prepared ? "prepared" : "ready";
-  main.setAttribute("aria-busy", String(loading || exportInFlight));
-  loadButton.disabled = disposed || loadInFlight || !bindingInput.files?.length || !targetInput.files?.length;
+    : resuming ? "resuming" : exportInFlight ? "exporting" : prepared ? "prepared" : "ready";
+  main.setAttribute("aria-busy", String(loading || exportInFlight || resuming));
+  loadButton.disabled = disposed || loadInFlight || resuming || !bindingInput.files?.length || !targetInput.files?.length;
   clearButton.disabled = disposed;
-  kindInput.disabled = !loaded;
-  finishButton.disabled = !loaded || points.length < 3;
-  cancelButton.disabled = !loaded || !points.length;
-  undoButton.disabled = !loaded || !polygons.length;
-  clearPolygonsButton.disabled = !loaded || !polygons.length && !points.length;
-  for (const field of metadataFields) field.disabled = !loaded;
-  prepareButton.disabled = !loaded || exportInFlight || !!points.length || !masks?.allowedCount || !metadataReady();
-  allowedButton.disabled = occludedButton.disabled = draftButton.disabled = !loaded || !prepared;
+  for (const input of resumeInputs) input.disabled = !loaded;
+  resumeButton.disabled = !loaded || resuming || exportInFlight || resumeInputs.some(input => !input.files?.length);
+  kindInput.disabled = !editable;
+  finishButton.disabled = !editable || points.length < 3;
+  cancelButton.disabled = !editable || !points.length;
+  undoButton.disabled = !editable || !polygons.length;
+  clearPolygonsButton.disabled = !editable || !polygons.length && !points.length;
+  for (const field of metadataFields) field.disabled = !editable;
+  prepareButton.disabled = !editable || exportInFlight || !!points.length || !masks?.allowedCount || !metadataReady();
+  allowedButton.disabled = occludedButton.disabled = draftButton.disabled = !editable || !prepared;
   counts();
 }
 function invalidateExport(): void {
   epoch++;
+  activeResumeEpoch = null;
   prepared = null;
   releaseDownloads();
   clearError();
@@ -122,6 +134,7 @@ function reset(forgetFiles: boolean, message: string): void {
   polygons = [];
   points = [];
   masks = null;
+  for (const input of resumeInputs) input.value = "";
   kindInput.value = "";
   clearMetadata();
   if (forgetFiles) bindingInput.value = targetInput.value = "";
@@ -171,7 +184,7 @@ function updateMasks(next: MaskPolygon[]): void {
   draw(); refresh();
 }
 function finishPolygon(): void {
-  if (!binding || disposed || points.length < 3) return;
+  if (!binding || disposed || activeResumeEpoch === epoch || points.length < 3) return;
   const kind = kindInput.value;
   if (kind !== "allowed" && kind !== "occluded") return;
   try {
@@ -188,7 +201,7 @@ function copyBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 loadButton.addEventListener("click", () => {
-  if (disposed || loadInFlight) return;
+  if (disposed || loadInFlight || activeResumeEpoch === epoch) return;
   const jsonFile = bindingInput.files?.[0], pngFile = targetInput.files?.[0];
   reset(false, "正在核对本地阶段绑定与目标 PNG…");
   if (!jsonFile || !pngFile || jsonFile.size < 1 || jsonFile.size > 16 * 1024
@@ -239,8 +252,60 @@ for (const input of [bindingInput, targetInput]) input.addEventListener("change"
   reset(false, "输入已更换，旧标注和记录已清空。请重新核对两份当前文件。");
 });
 clearButton.addEventListener("click", () => reset(true, "本页输入、图像、标注、记录和下载资源已清除。"));
+resumeButton.addEventListener("click", () => {
+  if (disposed || loadInFlight || exportInFlight || activeResumeEpoch === epoch || !binding || !targetBytes || !bitmap) return;
+  const currentBinding = binding, currentTarget = targetBytes;
+  const draft = resumeDraftInput.files?.[0], allowed = resumeAllowedInput.files?.[0], occluded = resumeOccludedInput.files?.[0];
+  points = [];
+  clearMetadata();
+  updateMasks([]);
+  kindInput.value = "";
+  if (!draft || !allowed || !occluded || draft.size < 1 || draft.size > MAX_MASK_DRAFT_BYTES
+    || [allowed, occluded].some(file => file.size < 1 || file.size > 4 * 1024 ** 2)) {
+    error(new Error("草稿须非空且不超过512KiB，两张遮罩须各自非空且不超过4MiB。"));
+    status("未回读草稿，当前画区和记录为空；目标图保持。"); refresh(); return;
+  }
+  const token = epoch;
+  activeResumeEpoch = token;
+  status("正在本地核对三份草稿文件，尚未恢复任何标注…"); refresh();
+  void (async () => {
+    try {
+      const [draftBytes, allowedBytes, occludedBytes] = await Promise.all([
+        draft.arrayBuffer(), allowed.arrayBuffer(), occluded.arrayBuffer(),
+      ]);
+      if (!current(token)) return;
+      if (draftBytes.byteLength !== draft.size || allowedBytes.byteLength !== allowed.size
+        || occludedBytes.byteLength !== occluded.size) throw new Error("本地文件读取长度改变，请重新选择。");
+      const restored = await validateMaskDraft(currentBinding, currentTarget,
+        new TextDecoder("utf-8", { fatal: true }).decode(draftBytes),
+        new Uint8Array(allowedBytes), new Uint8Array(occludedBytes));
+      if (!current(token) || binding !== currentBinding || targetBytes !== currentTarget
+        || resumeDraftInput.files?.[0] !== draft || resumeAllowedInput.files?.[0] !== allowed
+        || resumeOccludedInput.files?.[0] !== occluded) return;
+      updateMasks(restored.polygons);
+      reviewerInput.value = restored.review.reviewer;
+      reviewerKindInput.value = restored.review.reviewer_kind;
+      methodInput.value = restored.review.method;
+      versionInput.value = restored.review.version;
+      status("已核对并回读多边形与研究记录。可继续修改；仍须重新准备导出，尚未提交或签收质量。");
+      refresh();
+    } catch (value) {
+      if (current(token)) {
+        error(value);
+        status("草稿未通过核对，画区和记录为空；当前目标图保持。");
+      }
+    } finally {
+      if (activeResumeEpoch === token) { activeResumeEpoch = null; refresh(); }
+    }
+  })();
+});
+for (const input of resumeInputs) input.addEventListener("change", () => {
+  invalidateExport();
+  status("回读文件已改变。点击回读按钮才会替换当前标注；旧核对及下载资格已失效。");
+  refresh();
+});
 canvas.addEventListener("click", event => {
-  if (!binding || disposed) return;
+  if (!binding || disposed || activeResumeEpoch === epoch) return;
   const kind = kindInput.value;
   if (kind !== "allowed" && kind !== "occluded") {
     error(new Error("请先选择本次区域为允许区或遮挡区。")); return;

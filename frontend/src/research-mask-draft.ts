@@ -21,6 +21,7 @@ const STAGE_KEYS = ["stage_id", "source_fingerprint", "target_condition", "gener
 
 export interface VerifiedMaskDraft {
   review: MaskReviewer;
+  polygons: MaskPolygon[];
   allowedPng: Uint8Array;
   occludedPng: Uint8Array;
   pixelCounts: { allowed: number; occluded: number; unknown: number };
@@ -116,6 +117,9 @@ export async function validateMaskDraft(
   const allowedManifest = manifest(masks.allowed), occludedManifest = manifest(masks.occluded);
   const counts = exact(draft.pixel_counts, ["allowed", "occluded", "unknown"]);
   const expected = rasterizeMaskPolygons(draft.polygons as MaskPolygon[]);
+  const restoredPolygons = (draft.polygons as MaskPolygon[]).map(polygon => ({
+    kind: polygon.kind, points: polygon.points.map(point => ({ x: point.x, y: point.y })),
+  }));
   if (!expected.allowedCount || expected.allowedCount === SIZE * SIZE) fail("允许区不得为空或整图全部放行。");
   const pixelCounts = { allowed: expected.allowedCount, occluded: expected.occludedCount, unknown: expected.unknownCount };
   if (Object.entries(pixelCounts).some(([key, value]) => integer(counts[key], SIZE * SIZE) !== value)
@@ -132,5 +136,5 @@ export async function validateMaskDraft(
   const [allowedPixels, occludedPixels] = await Promise.all([decodeMaskPng(allowed), decodeMaskPng(occluded)]);
   if (allowedPixels.some((value, index) => value !== expected.allowed[index])
     || occludedPixels.some((value, index) => value !== expected.occluded[index])) fail("遮罩像素与草稿多边形不一致。");
-  return { review: reviewer, allowedPng: allowed, occludedPng: occluded, pixelCounts };
+  return { review: reviewer, polygons: restoredPolygons, allowedPng: allowed, occludedPng: occluded, pixelCounts };
 }

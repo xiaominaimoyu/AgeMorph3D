@@ -37,6 +37,17 @@
           </dl>
         </details>
         <p class="hint">离线文件只核对这张 PNG 与绑定是否匹配；源与拟合指纹是导出声明。会话阶段可能到期或被回收，草稿不会延长它的可用时间。</p>
+        <details class="resume-draft">
+          <summary>回读已导出草稿，继续修改</summary>
+          <label for="resume-draft">绑定草稿 JSON</label>
+          <input id="resume-draft" type="file" accept="application/json,.json" disabled />
+          <label for="resume-allowed">同份草稿的允许区 L PNG</label>
+          <input id="resume-allowed" type="file" accept="image/png" disabled />
+          <label for="resume-occluded">同份草稿的遮挡区 L PNG</label>
+          <input id="resume-occluded" type="file" accept="image/png" disabled />
+          <p class="hint">先载入当前阶段文件，再选择这三份文件。回读会清除当前画区和记录；全部核对成功后才恢复草稿。完成后仍须重新准备导出，不会提交或续期。</p>
+          <button id="resume-editor" type="button" disabled>清除当前标注并核对回读</button>
+        </details>
         <h2>2 · 多边形</h2>
         <label for="polygon-kind">本次区域</label>
         <select id="polygon-kind" disabled>

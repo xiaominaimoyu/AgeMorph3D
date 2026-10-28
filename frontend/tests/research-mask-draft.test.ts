@@ -92,7 +92,7 @@ test("existing editor export roundtrip owns matching review and PNG bytes withou
   assert.deepEqual(result.pixelCounts, { allowed: 21, occluded: 4, unknown: TOTAL - 25 });
   assert.deepEqual(result.allowedPng, initial.allowedPng); assert.notEqual(result.allowedPng, initial.allowedPng);
   assert.deepEqual(result.occludedPng, initial.occludedPng); assert.notEqual(result.occludedPng, initial.occludedPng);
-  assert.deepEqual(Object.keys(result).sort(), ["review", "allowedPng", "occludedPng", "pixelCounts"].sort());
+  assert.deepEqual(Object.keys(result).sort(), ["review", "polygons", "allowedPng", "occludedPng", "pixelCounts"].sort());
 });
 test("human source remains a record value with no approval or registration return", async () => {
   const value = draft(); value.review.reviewer_kind = "human";
@@ -246,6 +246,21 @@ test("snapshots current binding and every PNG before the first asynchronous dige
   const result = await pending;
   assert.deepEqual(result.review, review);
   assert.deepEqual(result.allowedPng, initial.allowedPng); assert.deepEqual(result.occludedPng, initial.occludedPng);
+  assert.notEqual(result.polygons[0].points[0].x, 100);
+});
+
+test("restored polygons are independent between validations and can be edited for a fresh export", async () => {
+  const first = await validate(draft()), second = await validate(draft());
+  assert.deepEqual(first.polygons, second.polygons);
+  assert.notEqual(first.polygons, second.polygons);
+  assert.notEqual(first.polygons[0].points[0], second.polygons[0].points[0]);
+  first.polygons = first.polygons.filter(polygon => polygon.kind === "allowed");
+  const edited = await exportMaskDraft(binding, target, first.polygons, first.review);
+  assert.deepEqual(edited.draft.pixel_counts, { allowed: 25, occluded: 0, unknown: TOTAL - 25 });
+  assert.deepEqual(second.pixelCounts, { allowed: 21, occluded: 4, unknown: TOTAL - 25 });
+  const roundtrip = await validateMaskDraft(binding, target, JSON.stringify(edited.draft), edited.allowedPng, edited.occludedPng);
+  assert.deepEqual(roundtrip.polygons, first.polygons);
+  assert.deepEqual(roundtrip.pixelCounts, { allowed: 25, occluded: 0, unknown: TOTAL - 25 });
 });
 test("direct decoder checks dimensions, CRC, binary values and detached caller snapshot", async () => {
   const pixels = new Uint8Array([0, 255, 255, 0]);
