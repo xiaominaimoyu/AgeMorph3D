@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-age-shape-baseline-v1",
+  "registered_on": "2026-10-28",
+  "scope": "K2 exploratory research on already exposed calibration originals; not formal training or independent evaluation",
+  "dataset": {
+    "path": "output/research/age-features-20261028/export-v1/dataset.json",
+    "sha256": "a51211f99cfcbf6387142a098065e7df2f606e36cff6182c11218e103af5b8cb",
+    "bytes": 232882
+  },
+  "bfm_direction": {
+    "path": "output/backend/b45/prepared-age/age_direction.npz",
+    "sha256": "e94e8f294a2a36264a6751eaffdcd4854f7587800de1ccde31d4969424850b5b",
+    "bytes": 895148
+  },
+  "cohort": {"group": "calibration_research", "requested": 70, "identities": 15, "pair_eligible_identities": 13, "directed_distinct_age_pairs": 314},
+  "fit": {
+    "model": "shape_ij - mean_shape_i = (age_ij - mean_age_i) * d + residual",
+    "weighting": "each informative identity has total photo weight one; age-span leverage remains",
+    "relative_ridge_grid": [0.0, 0.1, 1.0, 10.0],
+    "solution": "d = sum_i mean_j(centered_age * centered_shape) / ((1 + alpha) * sum_i mean_j(centered_age^2))",
+    "standardization": "none; raw 40-dimensional shape space, no expression/projection predictors",
+    "single_age_identities": "retain records, exclude from fitting and fold age coverage",
+    "failed_fits": "retain requested rows and pairs; never impute coefficients"
+  },
+  "validation": {
+    "outer": "leave each pair-eligible calibration identity out",
+    "inner": "leave each informative identity in outer training out; choose alpha using only inner pairs",
+    "objective": "mean per-identity mean source-canonical neutral RMS, on exactly the same covered pairs for every alpha",
+    "coverage": "nonzero requests require source and target ages inside informative successful training age range; no clipping/extrapolation",
+    "tie": "isclose rtol=1e-12 atol=1e-15; prefer larger alpha",
+    "full_fit": "choose alpha by inner leave-identity-out on all calibration identities; full fit is exploratory only",
+    "old_results_exposed": true,
+    "research_holdout_opened": false
+  },
+  "geometry": {
+    "definition": "neutral geometry reconstructed in float64 from raw shape40 and pinned w_shp; not the old saved float32 neutral-vertex metric",
+    "metric": "Gram([w_shp_first40, full_mapped_BFM_direction]) / vertex_count; original source canonical scale for every comparison",
+    "candidates": ["no_change", "bfm_direction_refit", "identity_centered_ridge"],
+    "bfm": "refit signed full-direction scalar using only each outer training fold under the same coefficient-derived geometry proxy",
+    "bfm_strength_bound": 50.0,
+    "new_direction_bound": "predicted displacement RMS cannot exceed the largest observed within-person displacement RMS in the training fold; no clipping",
+    "identity_proxy": "same source frame; nearest other training identity at exactly the target label age; absent references stay unavailable",
+    "ground_truth": false
+  },
+  "stability": {
+    "definition": "geometry-metric cosine and norm ratio of each outer direction to the full direction; not positive signs for every component",
+    "research_direction_agreement_gate": "all nonzero outer directions have strictly positive metric cosine to nonzero full direction; diagnostics only, not independent quality acceptance"
+  },
+  "anchors": "always calculate from immutable original; exact known source-age reset; unknown absolute source age rejected; fractional ages preserved, finite 20-70 only; continuous within fold coverage and displacement bound",
+  "reporting": "all requested pairs and failures retained; comparable summaries use the intersection of all three valid candidate outcomes; no age MAE or identity accuracy claim",
+  "selection": "exploratory ranking only; Ridge requires positive direction agreement, BFM requires positive full and every outer beta; choose lowest common-pair macro RMS only when improving no_change, prefer static on numerical ties; no production selection",
+  "service_ready": false,
+  "training_use": false,
+  "years_calibrated": false,
+  "identity_accepted": false,
+  "g3_complete": false,
+  "production_route_selected": null
+}
