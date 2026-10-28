@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-research-stream-recheck-v1",
+  "date": "2026-10-28",
+  "scope": "Opt-in reproducible installed Chrome/Edge synthetic transport gate; not a reader workaround, model run, live research service or G3 acceptance",
+  "positive": { "fixed_repeats": 4, "split_repeats": 4, "body_bytes": 131072, "budget_bytes": 262144 },
+  "negative_cases": ["declared-over", "actual-over", "prefix-over", "wrong-media", "empty", "truncated", "timeout", "abort", "http-error"],
+  "transport": "Node HTTP/1 loopback, no-store, no credentials, redirects or external service; Vite serves the unchanged real ResearchSessionApi module in a fresh context per installed browser",
+  "observations": "For every unique request retain application result, Playwright original terminal, CDP original terminal and server writes/finish/close. Collect terminals before teardown; missing, duplicated or inconsistent observations cannot pass",
+  "prefix_controls": "prefix-over/timeout/abort send a 512-byte prefix; remainder is gated on the browser observing that first read. Prefix-over then exceeds the cumulative budget; timeout and abort never send the remainder",
+  "gate": "Every positive must have exact bytes/hash and both raw completion events; every negative must reject for its intended reason. Payload correctness never excuses an original request failure",
+  "freeze": "Fresh plan before run pins fixture, protocol, harness, matrix/tests, current frontend modules/config/dependency metadata, Node and browser executables; save source snapshots and check all pins again after cleanup",
+  "exit_codes": { "0": "Complete synthetic gate passed", "1": "Complete observations, transport gate blocked", "2": "Diagnostic/integrity error or incomplete evidence" },
+  "boundary": "Application retained/published byte budget only; no claim of browser RSS/internal-buffer bounds. No native arrayBuffer/clone/tee replacement, system update, browser flag workaround or real assets",
+  "flags": { "research_only": true, "human_review_completed": false, "identity_quality_accepted": false, "age_quality_accepted": false, "visual_seam_quality_accepted": false, "years_calibrated": false, "service_ready": false, "production_enabled": false, "g3_complete": false }
+}

@@ -1,5 +1,9 @@
 # 当前进度与交接
 
+2026-10-28稳定版入口收口：[合成流重验工具](docs/稳定浏览器流重验入口记录.md)已纳入源码，先冻27来源/1合成body、双执行文件与Node，收齐34条SDK/服务/Playwright/CDP记录。最终Chrome/Edge原始正向完成3/8、1/8，16份payload全正确且各9负例按预期拒绝，门槛仍blocked；不降低条件或替换SDK。新增7项判定器/完整299前端及严格helper类型检查、7实际CLI负控与独立保存记录审计通过。保留v1可选CDP查询拒绝、v2 Node自动CL导致错误负例、v3与v4完整阻挡及两次tsc入口错误。四轮8端口无监听，生产/模型/人工/G3不开放，本批无Git。
+
+上一批21文件已按确认提交并推送`dca11298d0a7f3db18389c9a746aef56c9b72088`，当次本地/远端/跟踪一致，见[发布收据](output/research/git-publication-20261028-stage-availability/publication-result.json)。敏感扫描命中的拒绝URL合成测试已获用户明确保留确认；旧交接文档未纳入，本批不重新执行Git检查。
+
 2026-10-28阶段可用性收口：[轻量状态接口及显式按钮](docs/研究阶段可用性检查记录.md)已完成，固定TTL、无stage payload/源图像重算、无stage租约/下载/模型/续期或保留；源与stage过期分别清理。新增后端16/前端16项，当前全量2175后端/292前端、Ruff/格式/类型检查/构建通过。最终42来源/17合成输入先冻，Chrome/Edge各12项，保存审计核22次无body GET及0审核POST；各3条主动status取消、2/4条资产流失败分开保留，未修复稳定真实服务。两轮测试观察/类型错误和去掉源重算的版本记录保留。未运行模型、未执行Git，质量/G3关闭。
 
 上一批13文件按确认提交并推送`2e1137aca286b0fb5006be36037720074df0b334`，当次本地/远端/跟踪一致，见[发布收据](output/research/git-publication-20261028-mask-editor-resume-format-fix/publication-result.json)。提交前EOF空行检查失败按规则暂停，经用户授权仅删除尾部空行后复核通过，原失败/格式等价证据保留；本批不重新执行Git检查。
