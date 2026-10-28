@@ -112,6 +112,13 @@
             <label for="review-occluded">排除 mask · L PNG</label>
             <input id="review-occluded" data-testid="review-occluded" type="file" accept="image/png" />
             <p class="hint">两张图必须为 1024×1024 灰度二值 PNG，且允许区与排除区互斥。未指定区域不会自动放行。</p>
+            <label for="review-draft">编辑器草稿 JSON（可选）</label>
+            <input id="review-draft" data-testid="review-draft" type="file" accept="application/json,.json" />
+            <div class="button-row">
+              <button id="verify-review-draft" data-testid="verify-review-draft" type="button" disabled>本地核对草稿与两张遮罩</button>
+              <button id="clear-review-draft" type="button" disabled>移除草稿，改为手动填写</button>
+            </div>
+            <p id="review-draft-status" data-testid="review-draft-status" class="hint" role="status" aria-live="polite">尚未导入草稿。选择三份文件后显式核对；核对不会提交或续期。</p>
             <div class="review-meta-row">
               <div><label for="review-reviewer">审核者记录</label><input id="review-reviewer" data-testid="review-reviewer" type="text" maxlength="256" autocomplete="off" /></div>
               <div><label for="review-kind">记录来源</label><select id="review-kind" data-testid="review-kind"><option value="ai">AI 研究复核</option><option value="human">人工研究复核</option></select></div>

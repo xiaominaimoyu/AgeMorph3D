@@ -21,6 +21,7 @@ import type {
   StageReply,
 } from "../src/research-session.ts";
 import { createMaskEditorBinding } from "../src/research-mask-editor.ts";
+import { MAX_MASK_DRAFT_BYTES, validateMaskDraft } from "../src/research-mask-draft.ts";
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -47,6 +48,10 @@ const editorTargetButton = element<HTMLButtonElement>("download-editor-target");
 const reviewFields = element<HTMLFieldSetElement>("review-fields");
 const allowedInput = element<HTMLInputElement>("review-allowed");
 const occludedInput = element<HTMLInputElement>("review-occluded");
+const draftInput = element<HTMLInputElement>("review-draft");
+const verifyDraftButton = element<HTMLButtonElement>("verify-review-draft");
+const clearDraftButton = element<HTMLButtonElement>("clear-review-draft");
+const draftStatus = element<HTMLElement>("review-draft-status");
 const reviewerInput = element<HTMLInputElement>("review-reviewer");
 const methodInput = element<HTMLTextAreaElement>("review-method");
 const versionInput = element<HTMLInputElement>("review-version");
@@ -77,6 +82,18 @@ let source: LoadedSource | null = null;
 let sourcePixels: Uint8ClampedArray | null = null;
 let staged: StageReply | null = null;
 let editorTargetBytes: ArrayBuffer | null = null;
+let draftImportEpoch = 0;
+let draftImportBusy = false;
+type VerifiedDraft = {
+  result: Awaited<ReturnType<typeof validateMaskDraft>>;
+  draftFile: File;
+  allowedFile: File;
+  occludedFile: File;
+  target: StageReply;
+  bindingKey: string;
+  epoch: number;
+};
+let verifiedDraft: VerifiedDraft | null = null;
 let timeline: ResearchTimeline | null = null;
 let frame: ResearchTextureFrame | null = null;
 let selectedAge: number | null = null;
@@ -125,7 +142,38 @@ function revokeAllUrls(): void {
   previewUrl = null;
 }
 
+function clearReviewerFields(): void {
+  reviewerInput.value = methodInput.value = versionInput.value = "";
+  reviewKindInput.value = "ai";
+}
+
+function invalidateDraftImport(clearMetadata = false): void {
+  draftImportEpoch++;
+  draftImportBusy = false;
+  verifiedDraft = null;
+  if (clearMetadata) clearReviewerFields();
+  draftStatus.dataset.state = "unverified";
+  draftStatus.textContent = draftInput.files?.length
+    ? "草稿尚未核对；更改文件或记录后须重新核对，或移除草稿后手动填写。"
+    : "尚未导入草稿。选择三份文件后显式核对；核对不会提交或续期。";
+}
+
+function currentVerifiedDraft(): VerifiedDraft | null {
+  const current = verifiedDraft;
+  if (!current || current.epoch !== draftImportEpoch || current.target !== staged
+    || draftInput.files?.[0] !== current.draftFile || allowedInput.files?.[0] !== current.allowedFile
+    || occludedInput.files?.[0] !== current.occludedFile
+    || JSON.stringify(createMaskEditorBinding(current.target.staged)) !== current.bindingKey
+    || conditionInput.valueAsNumber !== current.target.staged.target_condition
+    || reviewerInput.value !== current.result.review.reviewer
+    || methodInput.value !== current.result.review.method || versionInput.value !== current.result.review.version
+    || reviewKindInput.value !== current.result.review.reviewer_kind) return null;
+  return current;
+}
+
 function clearReview(): void {
+  draftInput.value = "";
+  invalidateDraftImport(true);
   staged = null;
   editorTargetBytes = null;
   editorBindingButton.disabled = editorTargetButton.disabled = true;
@@ -135,10 +183,6 @@ function clearReview(): void {
   reviewArea.hidden = true;
   allowedInput.value = "";
   occludedInput.value = "";
-  reviewerInput.value = "";
-  methodInput.value = "";
-  versionInput.value = "";
-  reviewKindInput.value = "ai";
   for (const id of ["review-source-sha", "review-png-sha", "review-fit-sha", "target-summary"])
     element(id).textContent = "";
 }
@@ -181,9 +225,13 @@ function refreshControls(): void {
   loadConditionButton.disabled = !bound || busy;
   reviewFields.disabled = !staged || busy || !bound;
   editorBindingButton.disabled = editorTargetButton.disabled = !staged || !editorTargetBytes || busy || !bound;
+  verifyDraftButton.disabled = !staged || !editorTargetBytes || busy || !bound
+    || !draftInput.files?.length || !allowedInput.files?.length || !occludedInput.files?.length;
+  clearDraftButton.disabled = busy || !draftInput.files?.length;
   registerButton.disabled = !staged || busy || !bound || !allowedInput.files?.length
     || !occludedInput.files?.length || !reviewerInput.value.trim()
-    || !methodInput.value.trim() || !versionInput.value.trim();
+    || !methodInput.value.trim() || !versionInput.value.trim()
+    || !!draftInput.files?.length && !currentVerifiedDraft();
   slider.disabled = busy || !hasTimelineRange;
   ageNumber.disabled = busy || !hasTimelineRange;
   restoreButton.disabled = !bound || busy;
@@ -531,10 +579,80 @@ loadConditionButton.addEventListener("click", () => {
   });
 });
 
+verifyDraftButton.addEventListener("click", () => {
+  if (busy || destroyed) return;
+  const target = staged, targetBytes = editorTargetBytes;
+  const draft = draftInput.files?.[0], allowed = allowedInput.files?.[0], occluded = occludedInput.files?.[0];
+  invalidateDraftImport(true);
+  clearError();
+  if (!target || !targetBytes || !draft || !allowed || !occluded) {
+    showError("需要当前待审核目标、草稿JSON和两张配套遮罩。"); refreshControls(); return;
+  }
+  if (draft.size < 1 || draft.size > MAX_MASK_DRAFT_BYTES
+    || [allowed, occluded].some(file => file.size < 1 || file.size > 4 * 1024 ** 2)) {
+    showError("草稿必须非空且不超过512KiB；每张遮罩必须非空且不超过4MiB。");
+    refreshControls(); return;
+  }
+  const epoch = draftImportEpoch;
+  const binding = createMaskEditorBinding(target.staged);
+  const bindingKey = JSON.stringify(binding);
+  void perform("正在本地核对草稿、当前目标和两张遮罩…", async operation => {
+    draftImportBusy = true;
+    try {
+      const [draftBytes, allowedBytes, occludedBytes] = await Promise.all([
+        draft.arrayBuffer(), allowed.arrayBuffer(), occluded.arrayBuffer(),
+      ]);
+      ensureCurrent(operation.token, operation.signal);
+      if (draftBytes.byteLength !== draft.size || allowedBytes.byteLength !== allowed.size
+        || occludedBytes.byteLength !== occluded.size) throw new Error("本地文件读取长度发生变化，请重新选择。");
+      const result = await validateMaskDraft(binding, new Uint8Array(targetBytes),
+        new TextDecoder("utf-8", { fatal: true }).decode(draftBytes),
+        new Uint8Array(allowedBytes), new Uint8Array(occludedBytes));
+      ensureCurrent(operation.token, operation.signal);
+      if (epoch !== draftImportEpoch || staged !== target || editorTargetBytes !== targetBytes
+        || draftInput.files?.[0] !== draft || allowedInput.files?.[0] !== allowed
+        || occludedInput.files?.[0] !== occluded
+        || JSON.stringify(createMaskEditorBinding(target.staged)) !== bindingKey
+        || conditionInput.valueAsNumber !== target.staged.target_condition)
+        throw new DOMException("草稿核对期间输入已改变。", "AbortError");
+      reviewerInput.value = result.review.reviewer;
+      methodInput.value = result.review.method;
+      versionInput.value = result.review.version;
+      reviewKindInput.value = result.review.reviewer_kind;
+      verifiedDraft = { result, draftFile: draft, allowedFile: allowed, occludedFile: occluded,
+        target, bindingKey, epoch };
+      draftStatus.dataset.state = "verified";
+      draftStatus.textContent = `本地文件核对通过：允许 ${result.pixelCounts.allowed}、遮挡 ${result.pixelCounts.occluded}、未知 ${result.pixelCounts.unknown} 像素。尚未提交，阶段有效性由服务核验。`;
+      setStatus("草稿及两张遮罩已在本地核对；请检查记录后显式提交，核对不代表人工质量签收。");
+    } finally {
+      if (epoch === draftImportEpoch) draftImportBusy = false;
+    }
+  });
+});
+
+clearDraftButton.addEventListener("click", () => {
+  if (busy || destroyed) return;
+  draftInput.value = "";
+  invalidateDraftImport(true);
+  clearError();
+  setStatus("已移除草稿及其审核字段。可以保留当前两张mask，手动填写研究审核记录。");
+  refreshControls();
+});
+
 registerButton.addEventListener("click", () => {
+  if (busy || destroyed) return;
   const current = info, original = source, target = staged;
   const allowed = allowedInput.files?.[0], occluded = occludedInput.files?.[0];
   if (!current || !original || !target || !allowed || !occluded) return;
+  const imported = currentVerifiedDraft();
+  if (draftInput.files?.length && !imported) {
+    showError("所选草稿尚未核对或输入已改变，请重新核对，或移除草稿后手动填写。"); return;
+  }
+  // Verified imports submit owned snapshots rather than rereading selected disk files.
+  const submittedAllowed = imported ? new File([new Uint8Array(imported.result.allowedPng)],
+    allowed.name, { type: "image/png" }) : allowed;
+  const submittedOccluded = imported ? new File([new Uint8Array(imported.result.occludedPng)],
+    occluded.name, { type: "image/png" }) : occluded;
   const reviewer = reviewerInput.value.trim(), method = methodInput.value.trim(), version = versionInput.value.trim();
   const kind = reviewKindInput.value;
   if (!reviewer || !method || !version || kind !== "ai" && kind !== "human") {
@@ -544,9 +662,12 @@ registerButton.addEventListener("click", () => {
     showError("每张审核mask必须非空且不超过4MiB。"); return;
   }
   void perform("正在核对二值mask并注册当前目标…", async operation => {
-    await validateMasks(allowed, occluded, operation);
+    await validateMasks(submittedAllowed, submittedOccluded, operation);
+    ensureCurrent(operation.token, operation.signal);
+    if (imported && currentVerifiedDraft() !== imported)
+      throw new DOMException("注册前草稿或审核输入已改变。", "AbortError");
     const registered = await operation.client.register(current.session_id, target, {
-      allowed, occluded, reviewer, reviewer_kind: kind, method, version,
+      allowed: submittedAllowed, occluded: submittedOccluded, reviewer, reviewer_kind: kind, method, version,
     }, operation.signal);
     ensureCurrent(operation.token, operation.signal);
     const loaded = await operation.client.loadCondition(current, target.staged.target_condition,
@@ -631,13 +752,29 @@ existingIdInput.addEventListener("input", () => {
   invalidate("会话标识已改变，载入前不会显示上一会话的网格。");
 });
 conditionInput.addEventListener("input", () => {
-  if (!busy) clearReview();
+  const importing = draftImportBusy;
+  if (importing) pending?.abort();
+  if (!busy || importing) clearReview();
   clearError();
   refreshControls();
 });
-for (const input of [allowedInput, occludedInput, reviewerInput, methodInput, versionInput, reviewKindInput]) {
-  input.addEventListener("input", refreshControls);
-  input.addEventListener("change", refreshControls);
+for (const input of [draftInput, allowedInput, occludedInput]) {
+  input.addEventListener("change", () => {
+    const hadDraft = !!draftInput.files?.length || !!verifiedDraft;
+    if (draftImportBusy) pending?.abort();
+    invalidateDraftImport(hadDraft);
+    clearError();
+    refreshControls();
+  });
+}
+for (const input of [reviewerInput, methodInput, versionInput, reviewKindInput]) {
+  const changed = (): void => {
+    if (draftImportBusy) pending?.abort();
+    invalidateDraftImport();
+    refreshControls();
+  };
+  input.addEventListener("input", changed);
+  input.addEventListener("change", changed);
 }
 
 function destroy(): void {
@@ -675,6 +812,7 @@ if (import.meta.env.DEV) {
       exactSourceDisplay: frame?.exactSource ?? false,
       displayMode: frame ? "research-blend" : source ? "original" : "empty",
       pendingStage: staged ? { ...staged.staged } : null,
+      draftVerified: !!currentVerifiedDraft(), draftImportBusy,
       objectUrls: objectUrls.size, hasSourceBytes: source !== null,
       research_only: true, service_ready: false, g3_complete: false,
     }),

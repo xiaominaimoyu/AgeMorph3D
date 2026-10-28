@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-mask-draft-import-v1",
+  "date": "2026-10-27",
+  "scope": "Explicit local verification of an existing editor draft and its two mask PNGs against the current staged target; no automatic registration or quality approval",
+  "compatibility": "Keep agemorph3d-mask-editor-v1 export format and the original mask-editor-v1 protocol unchanged. Explicit user-selected import is not automatic restoration",
+  "inputs": {
+    "draft_max_bytes": 524288,
+    "json_max_nesting_depth": 32,
+    "png_max_bytes_each": 4194304,
+    "native_dimensions": [1024, 1024],
+    "selection": "User chooses draft JSON, allowed L8 PNG, and occluded L8 PNG, then explicitly starts local verification. A current session stage and previously verified target PNG are required",
+    "json": "Bound UTF8 size before parse, reject repeated keys including escaped aliases, unknown or missing fields, malformed versions/status/coordinate rule, nonfinite/overflow geometry, invalid metadata, counts, hashes or flags",
+    "binding": "Exact current stage_id, source_fingerprint, target_condition, generated_sha256 and fit_sha256; verify the current target PNG again. Offline declarations are not a signature, permission or live-stage proof",
+    "mask_files": "Snapshot bounded bytes before asynchronous work; verify original file bytes and SHA256 against the draft, CRC/chunk order, native grayscale color0/8bit/no-interlace format, bounded decoded length, binary pixels and exact raster equivalence to the exported polygons",
+    "compression": "Decode uploaded bytes and compare pixels; never re-encode and require the same deflate bytes",
+    "geometry": "Reuse the editor native pixel-center rule and existing polygon limits; occlusion wins, unknown stays zero in both files; refuse empty or all-allowed exports"
+  },
+  "workflow": {
+    "success": "Publish all verified reviewer fields and mask snapshots atomically, show local verification status, and enable only the existing explicit register action",
+    "submission": "When a draft remains selected, registration requires its current validated snapshot. Submit the verified immutable File copies, not a later reread of selected disk files. Manual input remains available after explicit draft removal",
+    "failure": "No partial reviewer fields or stale imported masks may remain eligible. Current source/stage can remain available; do not call registration",
+    "invalidation": "Changing JSON, either mask, reviewer fields, condition, stage, source, service, cancel, stage-expired response or pagehide invalidates imported status. Changing import files clears imported reviewer fields; changed metadata requires re-verification or explicit draft removal",
+    "async": "Check operation generation, stage/target identity, file selection identities and import epoch before publishing; obsolete asynchronous work cannot refill fields or submit",
+    "network": "Import verification is local only. No health, stage or register request is sent by the import action. Existing server TTL/session ownership remains authoritative on later explicit submission",
+    "persistence": "No localStorage, IndexedDB, cookies, remote uploads, automatic draft loading or quality acceptance records"
+  },
+  "acceptance": {
+    "unit": "Valid old-export roundtrip, strict JSON/flags, all binding fields, independent grayscale filters, CRC/length/format/binary/raster/count/hash negatives, input bounds, snapshots and async mutation",
+    "browser": "Synthetic local session and target only; installed Chrome and Edge; explicit file import, no POST during verification, later explicit register uses snapshots, mismatch/failed import, changed files/reviewer, cancellation, stage replacement and pagehide. Freeze source, input and harness hashes before each browser run",
+    "limits": "Synthetic engineering verification is not real SAM/model execution, actual manual review, stable-browser real-service display, current-render identity validation or independent evaluation"
+  },
+  "flags": {
+    "research_only": true,
+    "human_review_completed": false,
+    "identity_quality_accepted": false,
+    "age_quality_accepted": false,
+    "visual_seam_quality_accepted": false,
+    "years_calibrated": false,
+    "service_ready": false,
+    "production_enabled": false,
+    "g3_complete": false
+  }
+}

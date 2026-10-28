@@ -287,6 +287,35 @@ export function rasterizeMaskPolygons(value: readonly MaskPolygon[], width = SIZ
     unknownCount: width * height - allowedCount - occludedCount };
 }
 
+/** Decode only bounded binary L8 masks; never use Canvas color conversion. */
+export async function decodeMaskPng(png: Uint8Array, width = SIZE, height = SIZE): Promise<Uint8Array> {
+  dimensions(width, height);
+  if (!(png instanceof Uint8Array) || png.length < 57 || png.length > MAX_PNG)
+    fail("遮罩PNG为空、过大或存储类型无效。");
+  const frame = pngFrame(new Uint8Array(png), width, height, true);
+  const rows = await inflate(frame.compressed, (width + 1) * height);
+  const pixels = new Uint8Array(width * height);
+  for (let row = 0; row < height; row++) {
+    const filter = rows[row * (width + 1)];
+    if (filter > 4) fail("遮罩PNG扫描线过滤器无效。");
+    for (let column = 0; column < width; column++) {
+      const index = row * width + column;
+      const left = column ? pixels[index - 1] : 0;
+      const up = row ? pixels[index - width] : 0;
+      const corner = row && column ? pixels[index - width - 1] : 0;
+      const prediction = left + up - corner;
+      const dl = Math.abs(prediction - left), du = Math.abs(prediction - up), dc = Math.abs(prediction - corner);
+      const paeth = dl <= du && dl <= dc ? left : du <= dc ? up : corner;
+      const value = (rows[row * (width + 1) + column + 1]
+        + (filter === 1 ? left : filter === 2 ? up : filter === 3 ? Math.floor((left + up) / 2)
+          : filter === 4 ? paeth : 0)) & 255;
+      if (value !== 0 && value !== 255) fail("遮罩PNG像素必须为0或255。");
+      pixels[index] = value;
+    }
+  }
+  return pixels;
+}
+
 export async function encodeMaskPng(pixels: Uint8Array, width: number, height: number): Promise<Uint8Array> {
   dimensions(width, height);
   if (!(pixels instanceof Uint8Array) || pixels.length !== width * height
