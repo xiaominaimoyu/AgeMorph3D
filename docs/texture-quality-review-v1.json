@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-texture-quality-review-v1",
+  "cohort": {"sources": 10, "targets": 37, "frames_per_variant": 376, "pairs_per_variant": 296},
+  "focus": ["fgnet-004a63--sam-020", "fgnet-004a63--sam-045", "fgnet-004a63--sam-063", "fgnet-004a63--sam-070"],
+  "variants": ["conservative", "observed"],
+  "criteria": ["eyes_glasses", "side_coverage", "seams", "identity_appearance", "age_condition_appearance"],
+  "ratings": ["pending", "issue", "no_obvious_issue", "not_assessable"],
+  "scope": "Offline development review preparation and self-reported observation collection. Retain all752 saved frames and296 source-target pairs per variant, including NO_FACE. Review32 focus pairs across MASK/BLEND, front/side and black/white. Do not infer objective identity, true age, mask ground truth, independent evaluation or G3 acceptance from a completed worksheet.",
+  "inputs": "Hash-pin this protocol, both complete capture and identity reports, full37 target review and both implementation/test sources in a new study plan. Verify every saved PNG byte, capture/evaluator correspondence and common cohort/configuration. Saved producer/model execution is historical evidence, not re-executed or independently certified here.",
+  "worksheet": "Exact immutable evidence binding and32 ordered records. Five ratings and accompanying notes per variant; all pending initially. Reviewer kind human or ai, reviewer name and timezone-aware recorded_at must be explicitly self-reported for answered fields. This is not authenticated authorship. Missing or duplicated records, changed pins/configurations, extra acceptance flags or blank explanations are rejected.",
+  "delivery": "A fresh ignored output/research directory containing index.html, eight offline self-contained configuration pages, worksheet.json and report.json. Script/connect/form actions disabled by CSP; original PNG bytes are embedded without resampling. No listener, persistence, model, mask edit, registry or production integration.",
+  "limits": {"metadata_bytes": 16777216, "image_bytes": 4194304, "total_image_bytes": 1073741824, "image_side": 1024, "page_bytes": 16777216, "total_page_bytes": 134217728, "note_characters": 2000},
+  "acceptance": "Exit0 means preparation or worksheet integrity validation completed, including valid pending drafts. Exit2 means invalid input; do not publish a result. Completeness is reported separately from self-reported human/AI origin. All quality/service/production flags and human_review_completed remain false, even if every field says no_obvious_issue. Actual A/B review and acceptance require their separate recorded decision."
+}
