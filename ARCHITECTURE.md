@@ -4,6 +4,8 @@
 
 ## 技术栈与目录
 
+P02[坐标准备](docs/框与关键点坐标转换开发记录.md)已在`preprocessing/annotation_transform.py`实现：绑定D06报告/K5/标注计划 → EXIF+整数裁剪缩放 → 点中心/框边界各自变换及逆 → 新忽略目录的PNG、SVG/HTML与完整请求报告。51新增/完整2677后端、独立CLI和Chrome/Edge各6页通过；不增加NumPy/模型依赖，已有FFHQ/SAM和生产路径未改。
+
 D06[归档接续](docs/归档解压与逐图核验开发记录.md)已在`preprocessing/archive_preparation.py`实现：固定取得收据/归档/K5 → 全成员路径/类型/体积预检 → 新忽略目录的原始文件/清单 → 显式图像解码/EXIF矩阵与独立PNG → 保留接触史的K5副本和独立报告。83新增及完整2626后端通过，已有取得/K5核心和生产服务未改。
 
 D06[取得工具](docs/资源取得与校验工具开发记录.md)在`preprocessing/resource_acquisition.py`独立实现标准库CLI：冻结JSON计划/用途与入口记录 → 有界HTTP和工作目录中的partial/state → 完整字节/SHA-256校验 → 不覆盖的只读原始文件；每次尝试在忽略目录保留收据。不接服务生命周期、正式划分或训练；本批81项新增与合成loopback独立CLI核验通过，未取真实数据。
@@ -17,7 +19,7 @@ D06[取得工具](docs/资源取得与校验工具开发记录.md)在`preprocess
 | `backend/src/agemorph3d/` | Python3.11、FastAPI、Pydantic；模型生命周期、图片解码、适配器、会话/资产边界 |
 | `backend/tests/` | 契约、关闭边界、资源及研究工具的合成回归 |
 | `tools/` | 固定协议驱动的离线研究CLI；不自动改变生产能力 |
-| `preprocessing/` | K1原照片shape40特征、K5元信息/声明审计、D06直接文件取得及归档/图像核验CLI；保留用途/失败/来源，不自动划分、训练或运行模型 |
+| `preprocessing/` | K1原照片特征、K5元信息审计、D06取得/归档核验及P02坐标/叠加CLI；保留用途/失败/来源，不自动划分、训练或运行模型 |
 | `docs/`、`design/` | 协议、路线、验收记录及既有设计资料 |
 | `data/`、`output/` | 被忽略的研究数据/模型/独立环境、报告、图像、GLB和日志 |
 
