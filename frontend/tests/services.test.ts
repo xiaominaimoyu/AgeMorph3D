@@ -592,7 +592,7 @@ function streamingEnvironment(t: TestContext) {
     onopen: (() => void) | null = null;
     onmessage: ((event: { data: unknown }) => void) | null = null;
     onerror: (() => void) | null = null;
-    onclose: (() => void) | null = null;
+    onclose: ((event: { code: number; reason: string }) => void) | null = null;
     constructor(readonly url: string) {
       sockets.push(this);
     }
@@ -601,6 +601,10 @@ function streamingEnvironment(t: TestContext) {
     }
     close(): void {
       this.readyState = 3;
+    }
+    remoteClose(code: number, reason = ""): void {
+      this.readyState = 3;
+      this.onclose?.({ code, reason });
     }
     open(): void {
       this.readyState = 1;
@@ -652,6 +656,122 @@ function frame(seq = 1) {
     conf: 0.9,
   };
 }
+
+test("unstructured HTTP 503 gives uncertain unavailable guidance without echoing body", { concurrency: false }, async (t) => {
+  replaceGlobal(t, "window", globalThis);
+  for (const body of ["do-not-echo-raw-503", "null", '{"unexpected":"do-not-echo-raw-503"}']) {
+    replaceGlobal(t, "fetch", async () => new Response(body, { status: 503 }));
+    await assert.rejects(new LocalApi().health(), (error: Error) => {
+      assert.match(error.message, /HTTP 503/);
+      assert.match(error.message, /可能连接繁忙/);
+      assert.match(error.message, /手动重试/);
+      assert.doesNotMatch(error.message, /do-not-echo/);
+      return true;
+    });
+  }
+});
+
+test("structured 503 preserves missing-model detail and opaque failures do not invent a status", { concurrency: false }, async (t) => {
+  replaceGlobal(t, "window", globalThis);
+  replaceGlobal(t, "fetch", async () => Response.json({ code: "MODEL_NOT_READY", detail: "模型权重许可尚未完成核验。" }, { status: 503 }));
+  await assert.rejects(new LocalApi().health(), (error: Error) => {
+    assert.match(error.message, /模型权重许可尚未完成核验/);
+    assert.doesNotMatch(error.message, /连接繁忙/);
+    return true;
+  });
+  replaceGlobal(t, "fetch", async () => { throw new TypeError("opaque network failure"); });
+  await assert.rejects(new LocalApi().health(), (error: Error) => {
+    assert.match(error.message, /跨域访问/);
+    assert.match(error.message, /关闭其他连接后手动重试/);
+    assert.doesNotMatch(error.message, /HTTP 503|opaque network failure/);
+    return true;
+  });
+});
+
+test("unstructured 503 still obeys the existing streamed JSON byte budget", { concurrency: false }, async (t) => {
+  replaceGlobal(t, "window", globalThis);
+  replaceGlobal(t, "fetch", async () => new Response("x".repeat(128 * 1024 + 1), { status: 503 }));
+  await assert.rejects(new LocalApi().health(), /响应过大/);
+});
+
+test("protocol close codes release pending state and permit an explicit fresh connection", { concurrency: false }, async (t) => {
+  for (const [code, message] of [[1009, /服务大小限制/], [1013, /暂时不可用/], [1006, /已断开/]] as const) {
+    await t.test(String(code), { concurrency: false }, async (nested) => {
+      const env = streamingEnvironment(nested);
+      env.stream.start();
+      const socket = env.sockets[0]!;
+      socket.open();
+      env.encodes[0]!.resolve(photo());
+      await Promise.resolve();
+      assert.equal(socket.sent.length, 1);
+      const staleClose = socket.onclose!;
+      socket.remoteClose(code, "do-not-echo-untrusted-reason");
+      assert.equal(env.errors.length, 1);
+      assert.match(env.errors[0]!, message);
+      assert.doesNotMatch(env.errors[0]!, /do-not-echo/);
+      assert.equal(env.clock.timeouts.size, 0);
+      assert.equal(env.clock.intervals.size, 0);
+      env.clock.tick();
+      assert.equal(env.sockets.length, 1, "no automatic reconnect");
+      env.stream.start();
+      const next = env.sockets[1]!;
+      next.open();
+      staleClose({ code: 1009, reason: "late old close" });
+      assert.equal(env.errors.length, 1);
+      env.encodes[1]!.resolve(photo());
+      await Promise.resolve();
+      next.receive(frame(1));
+      assert.equal(env.states.length, 1);
+      env.stream.stop();
+      assert.equal(env.clock.timeouts.size, 0);
+      assert.equal(env.clock.intervals.size, 0);
+    });
+  }
+});
+
+test("invalid local frame encodings stop before send, ignore late work and allow manual recovery", { concurrency: false }, async (t) => {
+  for (const [name, blob] of [
+    ["empty", new Blob([], { type: "image/jpeg" })],
+    ["oversized", new Blob([new Uint8Array(2 * 1024 * 1024 + 1)], { type: "image/jpeg" })],
+    ["non-JPEG", new Blob(["png"], { type: "image/png" })],
+  ] as const) {
+    await t.test(name, { concurrency: false }, async (nested) => {
+      const env = streamingEnvironment(nested);
+      env.stream.start();
+      const socket = env.sockets[0]!;
+      socket.open();
+      env.encodes[0]!.resolve(blob);
+      await Promise.resolve();
+      assert.equal(socket.sent.length, 0);
+      assert.equal(env.errors.length, 1);
+      assert.match(env.errors[0]!, /编码无效或超过 2 MB/);
+      assert.equal(env.clock.timeouts.size, 0);
+      assert.equal(env.clock.intervals.size, 0);
+      env.stream.start();
+      const next = env.sockets[1]!;
+      next.open();
+      env.encodes[1]!.resolve(photo());
+      await Promise.resolve();
+      next.receive(frame(1));
+      assert.equal(env.states.length, 1);
+      env.stream.stop();
+    });
+  }
+});
+
+test("a JPEG exactly at the transport bound is sent once", { concurrency: false }, async (t) => {
+  const env = streamingEnvironment(t);
+  env.stream.start();
+  const socket = env.sockets[0]!;
+  socket.open();
+  env.encodes[0]!.resolve(new Blob([new Uint8Array(2 * 1024 * 1024)], { type: "image/jpeg" }));
+  await Promise.resolve();
+  env.clock.tick();
+  assert.equal(socket.sent.length, 1);
+  assert.equal(env.encodes.length, 1);
+  assert.equal(env.errors.length, 0);
+  env.stream.stop();
+});
 
 test(
   "realtime frames apply backpressure and ignore stale sequence numbers",

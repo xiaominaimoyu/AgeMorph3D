@@ -15,6 +15,9 @@ const REQUEST_TIMEOUT = 30_000;
 const MAX_JSON_BYTES = 128 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_FRAME_MESSAGE_BYTES = 1024;
+const MAX_FRAME_BYTES = 2 * 1024 * 1024;
+const HTTP_UNAVAILABLE_MESSAGE =
+  "本地服务暂时不可用（HTTP 503），可能连接繁忙。请稍后手动重试；若持续发生，请检查后端。";
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -342,10 +345,13 @@ export class LocalApi {
       try {
         data = JSON.parse(text);
       } catch {
-        if (!response.ok)
+        if (!response.ok) {
+          if (response.status === 503)
+            throw new Error(HTTP_UNAVAILABLE_MESSAGE);
           throw new Error(
             `本地服务请求失败（HTTP ${response.status}）。请查看后端日志。`,
           );
+        }
         throw new Error("本地服务未返回有效 JSON，请检查服务地址与接口版本。");
       }
       if (!response.ok) {
@@ -357,6 +363,8 @@ export class LocalApi {
           typeof detail === "string"
             ? `：${detail.slice(0, 300)}`
             : "。请查看后端日志。";
+        if (response.status === 503 && typeof detail !== "string")
+          throw new Error(HTTP_UNAVAILABLE_MESSAGE);
         throw new Error(
           `本地服务请求失败（HTTP ${response.status}）${explanation}`,
         );
@@ -368,7 +376,7 @@ export class LocalApi {
       if (signal?.aborted) throw cancelled();
       if (error instanceof TypeError)
         throw new Error(
-          "无法连接本地服务，请确认后端已启动、地址正确并允许当前页面跨域访问。",
+          "无法连接本地服务，请确认后端已启动、地址正确并允许当前页面跨域访问；若服务正在运行，请关闭其他连接后手动重试。",
         );
       throw error;
     } finally {
@@ -656,9 +664,14 @@ export class FrameStream {
       if (generation === this.generation)
         this.fail("实时连接失败，请确认后端已启动并支持 /ws/frame。");
     };
-    socket.onclose = () => {
-      if (generation === this.generation)
-        this.fail("实时服务已断开，点击连接可手动重试。");
+    socket.onclose = (event) => {
+      if (generation !== this.generation) return;
+      const message = event.code === 1009
+        ? "实时画面超过服务大小限制，检测已停止。请重新打开摄像头后手动连接。"
+        : event.code === 1013
+          ? "实时服务暂时不可用，可能连接繁忙。请稍后手动连接重试。"
+          : "实时服务已断开，点击连接可手动重试。";
+      this.fail(message);
     };
   }
 
@@ -688,6 +701,14 @@ export class FrameStream {
         return;
       if (!hasLiveVideo(this.video)) {
         this.fail("摄像头已断开，实时检测已停止。");
+        return;
+      }
+      if (
+        frame.blob.size === 0 ||
+        frame.blob.size > MAX_FRAME_BYTES ||
+        frame.blob.type !== "image/jpeg"
+      ) {
+        this.fail("实时画面编码无效或超过 2 MB 限制，检测已停止。请重新打开摄像头后重试。");
         return;
       }
       this.pendingSequence = ++this.sentSequence;

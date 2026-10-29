@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-transport-recovery-v1",
+  "registered_on": "2026-10-29",
+  "scope": "K3 client transport feedback and manual recovery; not G1/G2 or model quality acceptance",
+  "http": {
+    "unstructured_503": "fixed unavailable/possibly busy guidance; never echo the raw body or assert an overload cause",
+    "structured_errors": "preserve existing bounded application detail including MODEL_NOT_READY",
+    "opaque_network_failure": "backend/address/CORS checks plus closing other connections and manual retry; status and cause remain unknown",
+    "reader": "retain 128 KiB chunk-count budget, 30 second timeout, cancellation, no-store and redirect:error"
+  },
+  "websocket": {
+    "1009": "readable size-limit guidance, stop and release timers/pending frame; manual retry only",
+    "1013": "temporarily unavailable/busy guidance; no automatic retry",
+    "other_closes": "generic disconnect guidance; ignore untrusted close reason",
+    "local_frame": "before send reject empty, non-JPEG or greater-than-2097152-byte encoding; exact bound permitted",
+    "lifecycle": "keep generation isolation, single flight and deadlines; stop does not restart camera or auto-connect"
+  },
+  "validation": {
+    "unit": "message classification, bounded reading, local size/type, cleanup, stale callback and manual reconnect",
+    "browser": "installed Chrome and Edge; synthetic transport cases use real client code and are identified separately",
+    "production_transport": "unmodified loopback app and Uvicorn settings, no-model startup; real TCP overload and raw WebSocket oversized-message behavior; verify recovery after release",
+    "limits": "unreadable cross-origin 503 is an expected browser network failure, not proof that CORS was bypassed; raw oversize WS is distinct from client pre-send rejection"
+  },
+  "model_manifests_modified": false,
+  "license_override": false,
+  "g0_complete": false,
+  "g1_complete": false,
+  "g2_complete": false,
+  "g3_complete": false
+}
