@@ -1,0 +1,19 @@
+{
+  "schema_id": "agemorph3d-dataset-manifest-v1",
+  "schema_version": 1,
+  "task": "age_morph_20_70",
+  "scope": "Metadata contract and declared identity/content/lineage use audit, not formal data acquisition, training or independence acceptance. This age-label contract does not implement WIDER bounding-box/landmark annotation conversion.",
+  "manifest_fields": ["schema_id", "schema_version", "task", "manifest_id", "origin", "datasets", "records"],
+  "dataset_fields": ["dataset_id", "version", "purpose_registration", "identity_review", "training_overlap", "near_duplicate_review"],
+  "record_fields": ["sample_id", "dataset_id", "file", "subject_id", "linked_subject_id", "parent_id", "kind", "use", "age", "age_source", "exposure", "processing"],
+  "uses": ["unassigned", "development", "calibration_research", "evaluation_research_holdout", "train", "validation", "test"],
+  "age": "Exact, interval and unknown are distinct. Finite0..120 years preserve raw labels; task scope20..70 is diagnosed separately. Intervals never get midpoint ages; unknown stays null. Label source is separate from production API source age.",
+  "identity": "Local subject IDs are namespaced by dataset. Only explicitly supplied linked_subject_id joins cross-dataset identities; equal numeric IDs in different datasets do not imply the same person. Group membership and parent lineage must not cross assigned uses. Linkage is declared, not independently authenticated or discovered from pixels.",
+  "duplicates": "Group declared SHA-256 pins, flag cross-use groups and conflicting path/size declarations. Actual image bytes, near duplicates and cross-source identities are not reverified. Never silently deduplicate or delete failures.",
+  "lineage": "Original records have no parent; crop/generated/render records must point to an included parent. Missing/self/cyclic lineage is invalid; descendants inherit the parent's use component for conflict checks. Generated/render images cannot become original-age validation/test truth.",
+  "exposure": "preprocessing, model_selection and result_inspection each record yes/no/unknown. Formal test requires all three no declarations; unknown and known exposure are reported. N0 historical preprocessing stays yes; later selection/inspection stays unknown rather than inheriting stale previously_viewed=false.",
+  "processing": "not_checked/ok/failed/excluded, with a reason required for failed/excluded. Conversion does not perform decoding or infer success from file presence. Historical N0 failed bridge sources remain failed with their saved code; all other records stay not_checked.",
+  "limits": {"json_bytes": 16777216, "records": 100000, "datasets": 128},
+  "cli": "Explicit input path and SHA-256, bounded duplicate-key/nonfinite-rejecting JSON, new ignored output/research directory, no overwrite. Recheck input and producer before/after publication; remove only owned partial files on failure. Exit0 audit has no findings, exit1 a complete report has findings, exit2 invalid input and no report publication.",
+  "non_acceptance": "Even a consistent fully declared formal split never grants formal_dataset_ready, training_authorized, independent_evaluation, service_ready, production_enabled or G3. Registration/evidence pins are declarations, not independent legal/identity assessment. Statistical fitting, split assignment, images, weights and models are outside this operation."
+}
