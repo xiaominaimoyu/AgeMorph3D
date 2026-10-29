@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "protocol_id": "agemorph3d-experiment-protocol-v1",
+  "created_on": "2026-10-29",
+  "status": "engineering_protocol_pending_formal_data_and_team_review",
+  "owners": {"algorithm": "A", "system": "B", "review": "other_member"},
+  "data_policy": "Freeze dataset version/hash, actual permissions, identity/lineage/duplicate audit, model training overlap and prior exposure before final candidate selection. Existing N0 is exposed research data, not formal train/validation/test or independent evaluation. Never adjust final-test identities, thresholds or exclusions after scores.",
+  "detection": {"metric": "official WIDER FACE Easy/Medium/Hard AP and PR", "engine": "official evaluation code, pinned version, not scalar average in this module", "development": "WIDER train internal development split; official val frozen evaluation unless explicitly declared used for tuning", "quality_threshold": null},
+  "landmarks": {"metric": "2D NME ratio with explicit semantic point IDs/order, shared coordinate frame, visibility mask and positive normalization distance", "benchmark_point_set": null, "benchmark_normalization": null, "note": "The generic function is not an AFLW2000 official protocol. Freeze actual benchmark annotation/index mapping, invisible-point policy and normalizer before comparing results.", "quality_threshold": null},
+  "age_geometry_identity_uv": {"units": "identity; source geometry/coordinate system/topology fixed; source labels, generated conditions and evaluator estimates separate", "controls": ["unaltered_source", "same_age_condition", "other_age_condition"], "metrics": ["neutral_geometry_proxy_rms", "same_age_drift", "domain_validated_age_metrics", "domain_validated_identity_metrics", "observed_unknown_occluded_uv_coverage", "seam_observations"], "quality_thresholds": null},
+  "system": {"phases": ["cold_model_load", "warm_detection", "warm_reconstruction", "generator", "target_fit", "uv", "http_end_to_end", "ws_frame", "browser_display_export"], "record": "CPU/GPU/provider/device/version/input resolution separately; latency and requests/failures/cancellation, peak resources and cleanup. Chrome/Edge stable, ordinary graphics and intentional camera motion remain distinct exits.", "quality_thresholds": null},
+  "statistics": {"engine_protocol_id": "agemorph3d-paired-metrics-v1", "scalar_scope": "per-request scalar research metrics only; not AP or a replacement for benchmark evaluators", "ledger": "One frozen complete request_id/subject_id/stratum ledger, exactly one explicit ok/failed result per request per variant", "aggregation": "Reuse age_statistics.aggregate_identity_metrics; mean within identity, equal-weight identity macro; report full request and identity denominators plus conditional valid metrics", "comparison": "Right minus left on each pair's common successful request IDs only, average paired differences within identity then across identities. Keep left-only/right-only/both-failed requests and original errors; never subtract macros computed on different sets.", "bootstrap": {"unit": "identity", "seed": 20261029, "samples": 2000, "ci": "linear-interpolated2.5/97.5 percentiles of identity-mean resamples; null below2 eligible identities"}, "retrospective_validation": "Known K2 results may validate arithmetic, not become newly preregistered or independent evidence."},
+  "limits": {"json_bytes": 16777216, "requests": 10000, "variants": 8, "strata": 32, "bootstrap_samples": 10000, "bootstrap_work": 10000000, "landmark_points": 1000},
+  "production_enabled": false,
+  "independent_evaluation": false,
+  "quality_accepted": false,
+  "g3_complete": false
+}
