@@ -19,6 +19,8 @@
 
 ## 当前生产链路
 
+独立`python -m agemorph3d.model_diagnostics`复用AssetManifest schema和角色后端定义，只做有界清单/包含路径/文件哈希与变化检查，分别报告登记、角色和完整性。它属于启动前本地诊断，不调用load_model或服务factory；前置条件满足仍不代表算子/模型/服务就绪。详见[记录](docs/模型资产诊断与严格服务缺项记录.md)。
+
 K3传输子项在现有LocalApi/FrameStream内处理：有界响应读取后区分无应用详情的503与原JSON错误；不可读网络失败保持状态未知；WS关闭码提示及发送前2 MiB/JPEG检查复用原stop/代际/单飞状态。显式harness区分未修改生产入口的TCP/协议测试与合成客户端控制，见[记录](docs/严格服务传输反馈与恢复记录.md)。不新增后端接口或改变严格模型准入。
 
 [稳定流重验脚本](docs/稳定浏览器流重验入口记录.md)属于显式开发检查：Vite加载原SDK内部bytes，Node本机HTTP提供合成输入，Playwright/CDP同时记录原始终态，纯判定器汇总完整分母。先冻结来源、执行文件和输入，结束再核对；不接产品流程，blocked与diagnostic-error不授予任何服务或质量资格。

@@ -6,6 +6,16 @@
 
 ## 启动
 
+2026-10-29新增只读模型诊断。可在启动服务前核对登记、角色、每个文件的完整性；它不加载模型或授予ready。下面命令从项目根目录运行，或在`backend/`目录相应调整相对路径：
+
+```powershell
+& 'backend/.venv/Scripts/python.exe' -B -m agemorph3d.model_diagnostics `
+  --detector-manifest data/models/yolov5n05-face/manifest.json `
+  --reconstructor-manifest data/models/3ddfa-v2/manifest.json
+```
+
+也可读取既有模型manifest环境变量，显式参数优先；退出0仅表示满足加载前置条件，退出1表示报告中仍有阻塞。当前真实清单预期为1，4个配置文件完整但登记仍unresolved，详见[诊断和缺项记录](../docs/模型资产诊断与严格服务缺项记录.md)。没有任何参数可跳过严格服务的许可门槛。
+
 在 Windows PowerShell 中执行；需要 [uv](https://docs.astral.sh/uv/) 和首次下载依赖所需的网络。使用独立 Python 3.11 环境，锁定依赖见 `uv.lock`。
 
 ```powershell
