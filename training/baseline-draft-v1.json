@@ -1,0 +1,113 @@
+{
+  "schema_id": "agemorph3d-baseline-draft-v1",
+  "draft_id": "baseline-draft-20261030-v1",
+  "status": "draft_not_executable",
+  "purpose": "local_noncommercial_research_demonstration",
+  "seed": 20261030,
+  "models": [
+    {
+      "role": "detector",
+      "manifest": {
+        "path": "data/models/yolov5n05-face/manifest.json",
+        "bytes": 1097,
+        "sha256": "eb876bb179458f75da050bda3a47b2fec5a6595c755cefa013ed04cf4c963249"
+      },
+      "model_id": "yolov5n-0.5-face-clibdev-1.0.0",
+      "revision": "release:1.0.0@24e19511583ca557d467d75648afda4c68984579; reviewed-source:d3246815d8747d26a91bf980afef2485bc29f839; exact-exporter-unverified"
+    },
+    {
+      "role": "reconstructor",
+      "manifest": {
+        "path": "data/models/3ddfa-v2/manifest.json",
+        "bytes": 1726,
+        "sha256": "8122f9e1bf82ca8fb6be2f3046ad7165b63c03895b39c16cb0e459d1e5c45c44"
+      },
+      "model_id": "3ddfa-v2-mb1-120-bfm-noneck-v3-research",
+      "revision": "cleardusk:1b6c67601abffc1e9f248b291708aef0e43b55ae; conversion:agemorph3d-3ddfa-npz-v2"
+    }
+  ],
+  "candidates": [
+    {
+      "id": "detector_pretrained",
+      "version": 1,
+      "config": {
+        "input_size": 640,
+        "confidence": 0.5,
+        "iou": 0.45
+      }
+    },
+    {
+      "id": "reconstruction_pretrained",
+      "version": 1,
+      "config": {
+        "input_size": 120,
+        "shape_dimensions": 40,
+        "expression_dimensions": 10
+      }
+    },
+    {
+      "id": "age_no_change",
+      "version": 1,
+      "config": {
+        "immutable_source_anchor": true,
+        "age_range": [
+          20,
+          70
+        ]
+      }
+    },
+    {
+      "id": "age_ridge",
+      "version": 1,
+      "config": {
+        "relative_ridge_grid": [
+          0.0,
+          0.1,
+          1.0,
+          10.0
+        ],
+        "identity_weighting": "equal_identity",
+        "standardization": "none",
+        "feature_space": "same_basis_shape40"
+      }
+    }
+  ],
+  "environment": {
+    "python_spec": ">=3.11,<3.12",
+    "dependency_files": [
+      {
+        "path": "backend/pyproject.toml",
+        "bytes": 925,
+        "sha256": "bdd665228ccb97c6a9e98975ef39cf045137654c9b4701ee6003c5e3d755481c"
+      },
+      {
+        "path": "backend/uv.lock",
+        "bytes": 80557,
+        "sha256": "6433d7ba47036e2596d6e2f83e8937607f4b9a331ab9d63445ead653a32039d3"
+      }
+    ]
+  },
+  "protocol": {
+    "path": "docs/experiment-protocol-v1.json",
+    "bytes": 3652,
+    "sha256": "02b8cb94145612328e1880d93be978a9fe9e808cc879ffcc5cc7c276f94d0b96"
+  },
+  "policy": {
+    "selection_use": "validation_only",
+    "test_scores_read": false,
+    "automatic_selection": false,
+    "statistics_fit_use": "qualified_train_only",
+    "unknown_age": "retain_null_no_imputation",
+    "failed_samples": "retain_full_denominator_no_zero_fill"
+  },
+  "short_run": {
+    "steps": null,
+    "batch_size": null,
+    "device": null
+  },
+  "measured_budget": {
+    "hours": null,
+    "peak_gpu_bytes": null,
+    "storage_bytes": null
+  }
+}
