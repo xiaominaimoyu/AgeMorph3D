@@ -48,11 +48,15 @@ K3传输子项在现有LocalApi/FrameStream内处理：有界响应读取后区�
 
 ## 离线研究链路
 
+K2[实际网格重放](docs/年龄形状实际网格与渲染复核.md)由`tools/age_shape_mesh_probe.py`复用K1原始绑定、BFM与保存的外层模型，直接计算中性顶点及全942条误差，再按固定极端年龄双向选择导出static GLB。位置统一用原始源框架，法线重算、固定面序和未知API源龄不变。显式MJS将保存字节交给原FaceViewer，固定源的显示归一化及相机，捕获PNG并导出/GLTFLoader回读；没有模型、真实HTTP资产流或生产年龄API。
+
 E01新增纯标准库`agemorph3d.evaluation_metrics`，在冻结request/subject/stratum与完整路线结果上核验分母，复用原`age_statistics.aggregate_identity_metrics`做身份等权及bootstrap，共同成功请求逐条右减左后汇总。显式NME函数校验语义点/共同坐标/可见性/normalizer，不宣称benchmark等价。`tools/evaluation_metrics_probe.py`仅读所选packet及三个源码、有界JSON/工作量、新目录和前后指纹校验；不导入生产factory或模型，见[协议](docs/实验协议.md)。
 
 K5新增标准库`preprocessing.dataset_manifest`：版本化年龄元信息schema→数据集身份命名空间/显式关联及parent连通组→声明SHA/路径冲突、接触史、用途资料与正式记录审计。N0适配只消费旧JSON，保持292记录/55身份及历史失败；CLI显式SHA、有界JSON、新目录及前后漂移检查。输出不是数据完整性/授权/独立性或训练资格；不读图片/权重，不分配划分，详见[记录](docs/年龄数据清单与用途泄漏审计.md)。
 
 K4独立`tools/texture_quality_review.py`只用标准库：冻结协议/源码及两版完整capture+identity/37目标review → 全752保存PNG大小/SHA和名单/配置/几何/相机核验 → 八个自包含静态对照页及空worksheet → 相同冻结证据下回收自述观察。输入761项前后重核，新目录发布，仅清理本次自有文件；不调用模型、研究会话或G3判定器。实际来源与边界见[记录](docs/纹理质量评审准备与记录校验.md)。
+
+K4可选`tools/texture_quality_review_editor.py`复用上述load/validate/publish，再绑定TS/CSS/生成器三个来源（共764输入），用实际安装的Node剥离无运行时imports的TS，输出72张原字节PNG及原空表的自包含HTML。`frontend/src/research-quality-review.ts`管理本页草稿、明确观察者、导入替换和JSON导出；导出回原CLI核验。512 KiB JSON/64 MiB HTML、CSP禁止连接、原证据不可编辑、迟到读取代际检查，均不接产品路由或生产runtime。来源及真实导出集成见[记录](docs/纹理质量离线填写与导出开发记录.md)。
 
 K2增加`preprocessing.age_shape_baseline`数学核心及`tools/age_shape_baseline.py`CLI：重建绑定的K1数据包→实际BFM基/完整年龄方向与拓扑核验→系数中性几何Gram度量→内外层按身份留出→全部候选/失败/身份几何代理与原始源检查。NumPy用于现有本机研究环境；没有接入生产runtime。首轮结果只保留研究候选，详见[K2记录](docs/年龄形状新基线开发记录.md)。
 
