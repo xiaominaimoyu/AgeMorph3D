@@ -1,5 +1,7 @@
 # 当前进度与交接
 
+2026-10-31 L03/L04 准备：`tools/code_stats.py` 与 [B系统论文章节提纲](docs/B系统论文章节提纲.md)。统计测试 7 项通过。对当前提交跑过一次，三名 git 作者都未映射到 A/B，`passes_requirement` 为 false。提纲没有正文。G1–G3、`MODEL_NOT_READY` 和 `static_fallback` 未改。
+
 2026-10-31 L02 准备：[干净环境与离线复现准备](docs/干净环境与离线复现准备.md)和 `tools/repro_check.py`。Linux 上 13 项检查测试通过；无清单烟雾健康为 missing、能力 false，生产端口 4173，停止后端口释放。研究清单在场时健康为许可 error，四个权重缺失且不编造哈希。`l02_executed` 保持 false。另一成员尚未执行。
 
 2026-10-31 L01 生产运行方式：`--production` 用已安装的 tsc 与 vite build 生成 `frontend/dist`，由独立进程提供 `127.0.0.1:4173`。API 不改。Linux 实测健康 missing/能力 false、年龄 503、停止后 8000 与 4173 释放。21 项启动器测试通过。Windows 未复测。见[记录](docs/本机统一运行入口开发记录.md)。
