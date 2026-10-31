@@ -6,6 +6,19 @@
 
 ## 启动
 
+2026-10-31起，项目根目录有统一开发入口。它调用下面的原有单进程命令，不安装依赖，也不把健康检查变成模型就绪。日志和进程状态写在被忽略的 `output/local-run/`。
+
+```powershell
+Set-Location -LiteralPath 'D:\project file\AgeMorph3D'
+$env:AGEMORPH_NODE = 'D:\JAVA run tools\node.exe'
+.\tools\local-run.ps1 check
+.\tools\local-run.ps1 start
+.\tools\local-run.ps1 status
+.\tools\local-run.ps1 stop
+```
+
+`diagnose` 只转交下面的只读诊断。当前研究清单预期退出码 1。详细边界、退出码和尚未在 Windows 上执行的身份核对见[开发记录](../docs/本机统一运行入口开发记录.md)。原来分开开两个终端的命令仍然可用。
+
 2026-10-29新增只读模型诊断。可在启动服务前核对登记、角色、每个文件的完整性；它不加载模型或授予ready。下面命令从项目根目录运行，或在`backend/`目录相应调整相对路径：
 
 ```powershell
