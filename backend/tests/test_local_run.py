@@ -540,6 +540,107 @@ def test_diagnose_forwards_manifests_without_writing_or_granting_ready(tmp_path,
     assert payload["reported_grant_is_not_launcher_authorization"] is True
 
 
+def test_diagnose_resolves_relative_manifests_from_the_project_root(tmp_path, capsys):
+    root, state = workspace(tmp_path)
+    package = root / "backend" / "agemorph3d"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "model_diagnostics.py").write_text(
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "flag = '--detector-manifest'\n"
+        "path = sys.argv[sys.argv.index(flag) + 1]\n"
+        "print(json.dumps({'status':'blocked','grants_service_readiness':False,"
+        "'seen_path':path,'seen_is_file':Path(path).is_file(),"
+        "'models':[{'role':'detector','manifest_status':'valid',"
+        "'blocking_reasons':['LICENSE_REGISTRATION_UNRESOLVED'],"
+        "'grants_service_readiness':False}],"
+        "'operator_selftests_run':False}))\n"
+        "raise SystemExit(1)\n",
+        encoding="utf-8",
+    )
+    manifest = root / "data" / "models" / "yolov5n05-face" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    body = b'{"license_status":"unresolved"}\n'
+    manifest.write_bytes(body)
+    manifest.chmod(0o444)
+    code = local_run.main(
+        [
+            "diagnose",
+            "--root",
+            str(root),
+            "--state-dir",
+            str(state),
+            "--python",
+            sys.executable,
+            "--backend-only",
+            "--detector-manifest",
+            "data/models/yolov5n05-face/manifest.json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    seen = Path(payload["diagnostics"]["seen_path"])
+    assert code == 1
+    assert seen.is_absolute()
+    assert seen == manifest.resolve()
+    assert payload["diagnostics"]["seen_is_file"] is True
+    assert payload["diagnostics"]["models"][0]["blocking_reasons"] == [
+        "LICENSE_REGISTRATION_UNRESOLVED"
+    ]
+    assert manifest.read_bytes() == body
+    assert local_run.resolve_manifest_argument(root, Path("data/models/a.json")) == str(
+        (root / "data/models/a.json").resolve()
+    )
+
+
+def test_partial_environment_read_keeps_owner_when_a_large_read_would_fail():
+    text = f"PATH=C:\\\\Windows\0{local_run.OWNER_ENV}=abc123\0{local_run.ROLE_ENV}=backend\0\0"
+    encoded = text.encode("utf-16-le")
+    blob = encoded + b"\x00" * (17920 - len(encoded))
+    base = 0x30000 + 100
+
+    def reader(address, size):
+        if size > local_run._MEMORY_PAGE:
+            return b""
+        start = address - base
+        if start < 0 or start >= len(blob) or size <= 0:
+            return b""
+        return blob[start : start + min(size, len(blob) - start)]
+
+    assert reader(base, 128 * 1024) == b""
+    copied = local_run.read_available_memory(reader, base, 128 * 1024)
+    assert len(copied) == 17920
+    parsed = local_run.terminated_utf16_environment(copied)
+    assert parsed[local_run.OWNER_ENV] == "abc123"
+    assert parsed[local_run.ROLE_ENV] == "backend"
+    truncated = f"{local_run.OWNER_ENV}=abc123".encode("utf-16-le")
+    assert local_run.terminated_utf16_environment(truncated) is None
+    short = local_run.read_available_memory(
+        lambda address, size: truncated[:size] if address == base else b"",
+        base,
+        128 * 1024,
+    )
+    assert local_run.terminated_utf16_environment(short) is None
+
+
+def test_command_line_read_crosses_a_page_and_fails_closed_when_short():
+    command = "D:\\project file\\AgeMorph3D\\backend\\.venv\\Scripts\\python.exe -B -m agemorph3d"
+    blob = command.encode("utf-16-le")
+    base = 4096 - 30
+
+    def reader(blob_bytes):
+        def read(address, size):
+            start = address - base
+            if start < 0 or start >= len(blob_bytes) or size <= 0:
+                return b""
+            return blob_bytes[start : start + min(size, len(blob_bytes) - start)]
+
+        return read
+
+    assert local_run.read_exact_memory(reader(blob), base, len(blob)) == blob
+    assert local_run.read_exact_memory(reader(blob[:40]), base, len(blob)) is None
+
+
 def test_manifest_flags_are_rejected_outside_diagnose(tmp_path, capsys):
     root, state = workspace(tmp_path)
     code = local_run.main(

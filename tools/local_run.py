@@ -407,6 +407,67 @@ def _windows_creation_and_exe(pid: int) -> tuple[str, str] | None:
         kernel.CloseHandle(handle)
 
 
+_MEMORY_PAGE = 4096
+_MAX_ENV_BYTES = 128 * 1024
+
+
+def read_available_memory(
+    reader, address: int, size: int, *, page_size: int = _MEMORY_PAGE
+) -> bytes:
+    """Copy up to ``size`` bytes, never asking for more than the rest of one page.
+
+    One ``ReadProcessMemory`` of a whole environment block returns
+    ``ERROR_PARTIAL_COPY`` (299) when the request continues past the committed
+    pages. A short or empty chunk ends the copy; bytes already copied stay.
+    """
+    if size <= 0 or address <= 0 or page_size <= 0:
+        return b""
+    copied = bytearray()
+    cursor = address
+    remaining = size
+    while remaining:
+        step = min(remaining, page_size - (cursor % page_size))
+        chunk = reader(cursor, step)
+        if not chunk:
+            break
+        copied.extend(chunk)
+        cursor += len(chunk)
+        remaining -= len(chunk)
+        if len(chunk) < step:
+            break
+    return bytes(copied)
+
+
+def read_exact_memory(
+    reader, address: int, size: int, *, page_size: int = _MEMORY_PAGE
+) -> bytes | None:
+    """Return exactly ``size`` bytes, or None when any page is missing."""
+    data = read_available_memory(reader, address, size, page_size=page_size)
+    if len(data) != size:
+        return None
+    return data
+
+
+def terminated_utf16_environment(data: bytes) -> dict[str, str] | None:
+    """Parse a UTF-16 environment only when its terminating double-NUL is present."""
+    if len(data) < 4:
+        return None
+    end = None
+    for index in range(0, len(data) - 3, 2):
+        if data[index : index + 4] == b"\x00\x00\x00\x00":
+            end = index
+            break
+    if end is None:
+        return None
+    return parse_environment_block(data[: end + 4], encoding="utf-16-le")
+
+
+def resolve_manifest_argument(root: Path, value: Path) -> str:
+    """Documented diagnose paths are relative to the project root, not ``backend/``."""
+    candidate = value if value.is_absolute() else root / value
+    return str(candidate.resolve())
+
+
 def _windows_peb_text(pid: int) -> tuple[list[str] | None, dict[str, str] | None]:
     """Read command line and environment. Any uncertainty returns None, None."""
     if ctypes_pointer_bits() != 64:
@@ -430,15 +491,23 @@ def _windows_peb_text(pid: int) -> tuple[list[str] | None, dict[str, str] | None
     if not handle:
         return None, None
 
-    def read(address: int, size: int) -> bytes | None:
+    def read_some(address: int, size: int) -> bytes:
+        """Return only the bytes copied. A short copy does not count as a full read."""
+        if size <= 0 or address <= 0:
+            return b""
         buffer = ctypes.create_string_buffer(size)
         got = ctypes.c_size_t()
-        ok = kernel.ReadProcessMemory(
-            handle, ctypes.c_void_p(address), buffer, size, ctypes.byref(got)
-        )
-        if not ok or got.value != size:
+        kernel.ReadProcessMemory(handle, ctypes.c_void_p(address), buffer, size, ctypes.byref(got))
+        copied = int(got.value)
+        if copied <= 0 or copied > size:
+            return b""
+        return buffer.raw[:copied]
+
+    def read_full(address: int, size: int) -> bytes | None:
+        data = read_some(address, size)
+        if len(data) != size:
             return None
-        return buffer.raw
+        return data
 
     try:
         kernel.ReadProcessMemory.argtypes = [
@@ -455,29 +524,33 @@ def _windows_peb_text(pid: int) -> tuple[list[str] | None, dict[str, str] | None
         )
         if status != 0 or not info.PebBaseAddress:
             return None, None
-        parameters = read(int(info.PebBaseAddress) + 0x20, 8)
+        parameters = read_full(int(info.PebBaseAddress) + 0x20, 8)
         if parameters is None:
             return None, None
         params = int.from_bytes(parameters, "little")
-        command = read(params + 0x70, 16)
-        environment_ptr = read(params + 0x80, 8)
+        command = read_full(params + 0x70, 16)
+        environment_ptr = read_full(params + 0x80, 8)
         if command is None or environment_ptr is None:
             return None, None
         length = int.from_bytes(command[0:2], "little")
         command_address = int.from_bytes(command[8:16], "little")
         if not 0 < length <= 32768 or length % 2:
             return None, None
-        command_bytes = read(command_address, length)
         env_address = int.from_bytes(environment_ptr, "little")
-        if command_bytes is None or not env_address:
+        if not env_address:
             return None, None
-        env_bytes = read(env_address, 128 * 1024)
-        if env_bytes is None:
+        command_bytes = read_exact_memory(read_some, command_address, length)
+        env_bytes = read_available_memory(read_some, env_address, _MAX_ENV_BYTES)
+        environment = terminated_utf16_environment(env_bytes)
+        if command_bytes is None or environment is None:
             return None, None
         command_line = command_bytes.decode("utf-16-le", errors="strict")
         argc = ctypes.c_int()
         shell32 = ctypes.WinDLL("shell32", use_last_error=True)
-        shell32.CommandLineToArgvW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_int)]
+        shell32.CommandLineToArgvW.argtypes = [
+            wintypes.LPCWSTR,
+            ctypes.POINTER(ctypes.c_int),
+        ]
         shell32.CommandLineToArgvW.restype = ctypes.POINTER(wintypes.LPWSTR)
         shell32.LocalFree.argtypes = [ctypes.c_void_p]
         parsed = shell32.CommandLineToArgvW(command_line, ctypes.byref(argc))
@@ -487,7 +560,7 @@ def _windows_peb_text(pid: int) -> tuple[list[str] | None, dict[str, str] | None
             argv = [parsed[index] for index in range(argc.value)]
         finally:
             shell32.LocalFree(parsed)
-        return argv, parse_environment_block(env_bytes, encoding="utf-16-le")
+        return argv, environment
     except (OSError, UnicodeError, ValueError):
         return None, None
     finally:
@@ -547,8 +620,14 @@ def _process_table_windows() -> dict[int, dict[str, object]] | None:
     try:
         entry = PROCESSENTRY32W()
         entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-        kernel.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
-        kernel.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+        kernel.Process32FirstW.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESSENTRY32W),
+        ]
+        kernel.Process32NextW.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESSENTRY32W),
+        ]
         kernel.Process32FirstW.restype = wintypes.BOOL
         kernel.Process32NextW.restype = wintypes.BOOL
         if not kernel.Process32FirstW(snapshot, ctypes.byref(entry)):
@@ -759,7 +838,12 @@ def stop_record(record: Mapping[str, object], grace: float) -> dict[str, object]
             "signaled": True,
             "stop_method": method,
         }
-    return {"result": "stopped", "forced": forced, "signaled": True, "stop_method": method}
+    return {
+        "result": "stopped",
+        "forced": forced,
+        "signaled": True,
+        "stop_method": method,
+    }
 
 
 def child_env(owner_token: str, role: str) -> dict[str, str]:
@@ -864,12 +948,19 @@ def probe_version(executable: str, root: Path) -> dict[str, object]:
     try:
         if Path(resolved).stem.lower().startswith("python"):
             completed = _run_text(
-                [resolved, "-B", "-c", "import sys; print(sys.version.split()[0])"], root, 20
+                [resolved, "-B", "-c", "import sys; print(sys.version.split()[0])"],
+                root,
+                20,
             )
         else:
             completed = _run_text([resolved, "--version"], root, 20)
     except (OSError, subprocess.TimeoutExpired) as error:
-        return {"path": resolved, "exists": True, "version": None, "error": type(error).__name__}
+        return {
+            "path": resolved,
+            "exists": True,
+            "version": None,
+            "error": type(error).__name__,
+        }
     version = completed.stdout.strip().splitlines()[0] if completed.returncode == 0 else None
     return {
         "path": resolved,
@@ -881,12 +972,20 @@ def probe_version(executable: str, root: Path) -> dict[str, object]:
 
 def probe_backend_imports(python_executable: Path, root: Path) -> dict[str, object]:
     if not python_executable.is_file():
-        return {"ok": False, "missing": ["interpreter"], "detail": "项目虚拟环境解释器不存在。"}
+        return {
+            "ok": False,
+            "missing": ["interpreter"],
+            "detail": "项目虚拟环境解释器不存在。",
+        }
     code = "import fastapi, uvicorn, agemorph3d.__main__"
     try:
         completed = _run_text([str(python_executable), "-B", "-c", code], root / "backend", 60)
     except (OSError, subprocess.TimeoutExpired) as error:
-        return {"ok": False, "missing": ["probe_failed"], "detail": type(error).__name__}
+        return {
+            "ok": False,
+            "missing": ["probe_failed"],
+            "detail": type(error).__name__,
+        }
     if completed.returncode == 0:
         return {"ok": True, "missing": [], "detail": "导入检查通过，不代表模型已就绪。"}
     missing = []
@@ -1012,7 +1111,10 @@ def check_report(plan: Plan) -> tuple[dict[str, object], int]:
     assert isinstance(status, dict)
     services = status["services"]
     assert isinstance(services, dict)
-    for role, port in (("backend", plan.backend_port), ("frontend", plan.frontend_port)):
+    for role, port in (
+        ("backend", plan.backend_port),
+        ("frontend", plan.frontend_port),
+    ):
         if role not in plan.roles:
             continue
         info = services[role]
@@ -1146,7 +1248,10 @@ def spawn_service(plan: Plan, role: str) -> None:
 
 def _preflight_ports(plan: Plan) -> None:
     state = load_state(plan.state_dir)
-    for role, port in (("backend", plan.backend_port), ("frontend", plan.frontend_port)):
+    for role, port in (
+        ("backend", plan.backend_port),
+        ("frontend", plan.frontend_port),
+    ):
         if role not in plan.roles:
             continue
         record = state["services"].get(role)
@@ -1236,7 +1341,11 @@ def stop_services(plan: Plan, roles: Sequence[str] | None = None) -> dict[str, o
     for role in selected:
         record = state["services"].get(role)
         if not isinstance(record, dict):
-            results[role] = {"result": "not_recorded", "forced": False, "signaled": False}
+            results[role] = {
+                "result": "not_recorded",
+                "forced": False,
+                "signaled": False,
+            }
             continue
         outcome = stop_record(record, plan.stop_grace_seconds)
         results[role] = outcome
@@ -1280,9 +1389,19 @@ def diagnose_report(
         )
     argv = [str(plan.python_executable), "-B", "-m", "agemorph3d.model_diagnostics"]
     if detector_manifest is not None:
-        argv.extend(["--detector-manifest", str(detector_manifest)])
+        argv.extend(
+            [
+                "--detector-manifest",
+                resolve_manifest_argument(plan.root, detector_manifest),
+            ]
+        )
     if reconstructor_manifest is not None:
-        argv.extend(["--reconstructor-manifest", str(reconstructor_manifest)])
+        argv.extend(
+            [
+                "--reconstructor-manifest",
+                resolve_manifest_argument(plan.root, reconstructor_manifest),
+            ]
+        )
     assert_spawn_allowed(argv)
     try:
         completed = subprocess.run(
