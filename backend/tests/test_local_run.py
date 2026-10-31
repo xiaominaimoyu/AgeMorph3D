@@ -11,6 +11,7 @@ import os
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -152,6 +153,10 @@ def make_plan(root: Path, state: Path, server: Path, **kwargs) -> object:
         dependency_probe=kwargs.pop("dependency_probe", False),
         backend_argv=backend_argv,
         frontend_argv=frontend_argv,
+        mode=kwargs.pop("mode", "dev"),
+        run_build=kwargs.pop("run_build", False),
+        detector_manifest=kwargs.pop("detector_manifest", None),
+        reconstructor_manifest=kwargs.pop("reconstructor_manifest", None),
     )
 
 
@@ -182,10 +187,20 @@ def test_supported_commands_keep_loopback_ports_and_do_not_grant_readiness():
     node = "D:/JAVA run tools/node.exe"
     root = Path("D:/project file/AgeMorph3D")
     assert local_run.production_backend_argv(python) == [str(python), "-B", "-m", "agemorph3d"]
-    frontend = local_run.production_frontend_argv(node, root)
+    frontend = local_run.development_frontend_argv(node, root)
     assert frontend[:2] == [node, str(root / "frontend/node_modules/vite/bin/vite.js")]
     assert frontend[2:] == ["--host", "127.0.0.1", "--port", "5173", "--strictPort"]
     assert "--research-allow-unresolved" not in frontend
+    build = local_run.frontend_build_commands(node, root)
+    assert build[0][2:5] == ["--noEmit", "--pretty", "false"]
+    assert build[1][-1] == "build"
+    assert all("npm" not in part for command in build for part in command)
+    static = local_run.static_frontend_argv(
+        python, root / "frontend" / "dist", local_run.PRODUCTION_FRONTEND_PORT
+    )
+    assert static[2].endswith("local_static_server.py")
+    assert static[-1] == "4173"
+    assert "5173" not in static
     source = Path(local_run.__file__).read_text(encoding="utf-8")
     assert 'launcher_grants_ready": True' not in source
     assert "shell=True" not in source
@@ -645,7 +660,7 @@ def test_manifest_flags_are_rejected_outside_diagnose(tmp_path, capsys):
     root, state = workspace(tmp_path)
     code = local_run.main(
         [
-            "start",
+            "stop",
             "--root",
             str(root),
             "--state-dir",
@@ -675,6 +690,134 @@ def test_spawn_rejects_install_commands_and_research_bypass():
     os.environ.get("AGEMORPH_LOCAL_RUN_LIVE") != "1",
     reason="set AGEMORPH_LOCAL_RUN_LIVE=1 to exercise the real 8000/5173 commands",
 )
+def test_static_server_stays_inside_its_directory(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("built-page", encoding="utf-8")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do-not-serve", encoding="utf-8")
+    port = free_port()
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-B",
+            str(ROOT / "tools" / "local_static_server.py"),
+            "--directory",
+            str(dist),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 3
+        status = None
+        while time.monotonic() < deadline:
+            status, body = local_run.http_probe("127.0.0.1", port, "/index.html")
+            if status == 200:
+                break
+            time.sleep(0.05)
+        assert status == 200
+        assert body == b"built-page"
+
+        def raw_get(target: str) -> bytes:
+            with socket.create_connection(("127.0.0.1", port), timeout=2) as sock:
+                sock.sendall(f"GET {target} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n".encode())
+                return sock.recv(4096)
+
+        assert b"do-not-serve" not in raw_get("/../secret.txt")
+        assert b"do-not-serve" not in raw_get("/%2e%2e/secret.txt")
+    finally:
+        proc.terminate()
+        proc.wait(timeout=2)
+
+
+def test_production_start_builds_passes_model_path_and_cleans_up(tmp_path, monkeypatch):
+    root, state = workspace(tmp_path)
+    server = write_server(root)
+    manifest = root / "data" / "models" / "yolov5n05-face" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    body = b'{"license_status":"unresolved"}\n'
+    manifest.write_bytes(body)
+    manifest.chmod(0o444)
+    calls = []
+
+    def fake_build(plan):
+        calls.append(local_run.frontend_build_commands(plan.node_executable, plan.root))
+        dist = plan.root / "frontend" / "dist"
+        dist.mkdir(parents=True)
+        (dist / "index.html").write_text("production-html", encoding="utf-8")
+        return {"ran": True, "returncodes": [0, 0], "index": str(dist / "index.html")}
+
+    monkeypatch.setattr(local_run, "build_frontend", fake_build)
+    plan = make_plan(
+        root,
+        state,
+        server,
+        roles=("backend", "frontend"),
+        mode="production",
+        run_build=True,
+        frontend_argv=None,
+        detector_manifest=str(manifest.resolve()),
+    )
+    try:
+        started = local_run.start_services(plan)
+        assert calls and calls[0][1][-1] == "build"
+        assert started["mode"] == "production"
+        assert started["launcher_grants_ready"] is False
+        assert started["model_paths"]["detector"]["exists"] is True
+        assert started["model_paths"]["launcher_grants_aging"] is False
+        pid = started["status"]["services"]["backend"]["process"]["pid"]
+        environ = local_run.parse_environment_block(
+            Path(f"/proc/{pid}/environ").read_bytes(), encoding="utf-8"
+        )
+        assert environ["AGEMORPH_DETECTOR_MANIFEST"] == str(manifest.resolve())
+        assert manifest.read_bytes() == body
+        page, page_body = local_run.http_probe("127.0.0.1", plan.frontend_port, "/index.html")
+        assert page == 200 and page_body == b"production-html"
+        other = make_plan(
+            root,
+            state,
+            server,
+            roles=("backend", "frontend"),
+            mode="dev",
+            frontend_port=free_port(),
+            backend_port=free_port(),
+        )
+        stopped = local_run.stop_services(other)
+        assert stopped["ports"]["frontend"]["port"] == plan.frontend_port
+        assert stopped["results"]["backend"]["result"] == "stopped"
+        assert stopped["results"]["frontend"]["result"] == "stopped"
+        assert not local_run.port_accepting("127.0.0.1", plan.backend_port)
+        assert not local_run.port_accepting("127.0.0.1", plan.frontend_port)
+        assert not running(pid)
+    finally:
+        stop_quiet(plan)
+
+
+def test_failed_production_build_starts_nothing(tmp_path, monkeypatch):
+    root, state = workspace(tmp_path)
+    server = write_server(root)
+
+    def fake_build(_plan):
+        raise local_run.LocalRunError("BUILD_FAILED", "构建失败。", 5)
+
+    monkeypatch.setattr(local_run, "build_frontend", fake_build)
+    monkeypatch.setattr(
+        local_run.subprocess,
+        "Popen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("spawned")),
+    )
+    plan = make_plan(root, state, server, mode="production", run_build=True, roles=("frontend",))
+    with pytest.raises(local_run.LocalRunError) as caught:
+        local_run.start_services(plan)
+    assert caught.value.code == "BUILD_FAILED"
+    assert local_run.load_state(state)["services"] == {}
+
+
 def test_real_stack_start_stop_restart(tmp_path):
     root = local_run.project_root()
     python = local_run.default_python(root)

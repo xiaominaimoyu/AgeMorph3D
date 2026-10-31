@@ -1,8 +1,10 @@
 """Unified local start/stop/status entry for the AgeMorph3D dev stack.
 
-The supported service commands stay fixed: one loopback backend process
-(``python -B -m agemorph3d`` on 127.0.0.1:8000) and the Vite dev server
-(127.0.0.1:5173, ``--strictPort``). This tool does not install dependencies,
+Dev mode keeps one loopback backend process (``python -B -m agemorph3d`` on
+127.0.0.1:8000) and the Vite dev server (127.0.0.1:5173, ``--strictPort``).
+Production mode runs the locked ``tsc --noEmit`` and ``vite build``, then serves
+``frontend/dist`` from a separate loopback static process on 127.0.0.1:4173.
+The API process is unchanged. This tool does not install dependencies,
 edit manifests, or grant model/aging readiness. HTTP reachability is reported
 separately from the health payload the service itself returns.
 
@@ -31,6 +33,7 @@ from pathlib import Path
 HOST = "127.0.0.1"
 BACKEND_PORT = 8000
 FRONTEND_PORT = 5173
+PRODUCTION_FRONTEND_PORT = 4173
 OWNER_ENV = "AGEMORPH_LOCAL_RUN_OWNER"
 ROLE_ENV = "AGEMORPH_LOCAL_RUN_ROLE"
 SCHEMA_VERSION = 1
@@ -137,7 +140,7 @@ def production_backend_argv(python_executable: Path) -> list[str]:
     return [str(python_executable), "-B", "-m", "agemorph3d"]
 
 
-def production_frontend_argv(node_executable: str, root: Path) -> list[str]:
+def development_frontend_argv(node_executable: str, root: Path) -> list[str]:
     vite = root / "frontend" / "node_modules" / "vite" / "bin" / "vite.js"
     return [
         node_executable,
@@ -147,6 +150,37 @@ def production_frontend_argv(node_executable: str, root: Path) -> list[str]:
         "--port",
         str(FRONTEND_PORT),
         "--strictPort",
+    ]
+
+
+def production_frontend_argv(node_executable: str, root: Path) -> list[str]:
+    """Dev-server command kept under the previous name for existing callers."""
+    return development_frontend_argv(node_executable, root)
+
+
+def frontend_build_commands(node_executable: str, root: Path) -> list[list[str]]:
+    """Match ``npm run build`` using the already installed local binaries."""
+    frontend = root / "frontend"
+    tsc = frontend / "node_modules" / "typescript" / "bin" / "tsc"
+    vite = frontend / "node_modules" / "vite" / "bin" / "vite.js"
+    return [
+        [node_executable, str(tsc), "--noEmit", "--pretty", "false", "-p", "."],
+        [node_executable, str(vite), "build"],
+    ]
+
+
+def static_frontend_argv(python_executable: Path, directory: Path, port: int) -> list[str]:
+    script = Path(__file__).resolve().with_name("local_static_server.py")
+    return [
+        str(python_executable),
+        "-B",
+        str(script),
+        "--directory",
+        str(directory),
+        "--host",
+        HOST,
+        "--port",
+        str(port),
     ]
 
 
@@ -846,11 +880,18 @@ def stop_record(record: Mapping[str, object], grace: float) -> dict[str, object]
     }
 
 
-def child_env(owner_token: str, role: str) -> dict[str, str]:
+def child_env(
+    owner_token: str, role: str, manifests: Mapping[str, str] | None = None
+) -> dict[str, str]:
     env = {key: value for key, value in os.environ.items() if "\0" not in key and "\0" not in value}
     env[OWNER_ENV] = owner_token
     env[ROLE_ENV] = role
     env["PYTHONUNBUFFERED"] = "1"
+    if role == "backend" and manifests:
+        if manifests.get("detector"):
+            env["AGEMORPH_DETECTOR_MANIFEST"] = manifests["detector"]
+        if manifests.get("reconstructor"):
+            env["AGEMORPH_RECONSTRUCTOR_MANIFEST"] = manifests["reconstructor"]
     return env
 
 
@@ -1052,6 +1093,89 @@ def _health_view(status: int | None, body: bytes) -> dict[str, object]:
     }
 
 
+def model_path_report(plan: Plan) -> dict[str, object]:
+    """Show configured manifest paths without reading them or granting readiness."""
+
+    def one(path: str | None) -> dict[str, object]:
+        if not path:
+            return {
+                "configured": False,
+                "path": None,
+                "exists": False,
+                "launcher_grants_ready": False,
+            }
+        return {
+            "configured": True,
+            "path": path,
+            "exists": Path(path).is_file(),
+            "launcher_grants_ready": False,
+        }
+
+    return {
+        "detector": one(plan.detector_manifest),
+        "reconstructor": one(plan.reconstructor_manifest),
+        "launcher_grants_ready": False,
+        "launcher_grants_aging": False,
+    }
+
+
+def build_frontend(plan: Plan) -> dict[str, object]:
+    """Run the locked typecheck and vite build. Never installs packages."""
+    frontend = plan.root / "frontend"
+    tsc = frontend / "node_modules" / "typescript" / "bin" / "tsc"
+    vite = frontend / "node_modules" / "vite" / "bin" / "vite.js"
+    if not executable_exists(plan.node_executable) or not tsc.is_file() or not vite.is_file():
+        raise LocalRunError(
+            "MISSING_FRONTEND_RUNTIME",
+            "未找到 Node、TypeScript 或 Vite。启动器不会执行 npm install。",
+            2,
+        )
+    commands = frontend_build_commands(plan.node_executable, plan.root)
+    for command in commands:
+        assert_spawn_allowed(command)
+    log_path = plan.state_dir / "frontend-build.log"
+    _append_log(log_path, "frontend-build")
+    returncodes = []
+    with log_path.open("ab") as stream:
+        for command in commands:
+            stream.write((" ".join(command) + "\n").encode())
+            stream.flush()
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=str(frontend),
+                    shell=False,
+                    stdout=stream,
+                    stderr=subprocess.STDOUT,
+                    timeout=180,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise LocalRunError(
+                    "BUILD_FAILED",
+                    f"前端生产构建没有完成：{type(error).__name__}。没有安装依赖，也没有启动服务。",
+                    5,
+                    {"log_tail": _log_tail(log_path, "")},
+                ) from error
+            returncodes.append(completed.returncode)
+            if completed.returncode != 0:
+                break
+    index = frontend / "dist" / "index.html"
+    if any(code != 0 for code in returncodes) or not index.is_file():
+        raise LocalRunError(
+            "BUILD_FAILED",
+            "前端生产构建未生成 dist/index.html。启动器没有安装依赖，也没有启动服务。",
+            5,
+            {"returncodes": returncodes, "log_tail": _log_tail(log_path, "")},
+        )
+    return {
+        "ran": True,
+        "returncodes": returncodes,
+        "index": str(index),
+        "installs_dependencies": False,
+    }
+
+
 def status_report(plan: Plan) -> dict[str, object]:
     payload = base_payload("status")
     state = load_state(plan.state_dir)
@@ -1072,6 +1196,16 @@ def status_report(plan: Plan) -> dict[str, object]:
                 kind = "verified"
             else:
                 kind = "identity_mismatch"
+            recorded_port = record.get("port")
+            recorded_path = record.get("http_path")
+            if type(recorded_port) is int and 1 <= recorded_port <= 65535:
+                port = recorded_port
+            if (
+                isinstance(recorded_path, str)
+                and recorded_path.startswith("/")
+                and ".." not in recorded_path
+            ):
+                path = recorded_path
         status, body = http_probe(plan.host, port, path)
         view = _health_view(status, body if role == "backend" else b"")
         if role != "backend":
@@ -1084,6 +1218,8 @@ def status_report(plan: Plan) -> dict[str, object]:
             "listener_without_ownership": bool(view["http_reachable"] and kind != "verified"),
         }
     payload["services"] = services
+    payload["mode"] = plan.mode
+    payload["model_paths"] = model_path_report(plan)
     payload["aging_policy"] = (
         "launcher_does_not_call_/api/aging_and_does_not_change_MODEL_NOT_READY"
     )
@@ -1098,6 +1234,11 @@ def check_report(plan: Plan) -> tuple[dict[str, object], int]:
     frontend = probe_frontend_files(plan.root, plan.node_executable)
     payload["backend_imports"] = backend
     payload["frontend_files"] = frontend
+    payload["mode"] = plan.mode
+    payload["model_paths"] = model_path_report(plan)
+    payload["frontend_dist_exists"] = (plan.root / "frontend" / "dist" / "index.html").is_file()
+    tsc = plan.root / "frontend" / "node_modules" / "typescript" / "bin" / "tsc"
+    payload["typescript_entry_exists"] = tsc.is_file()
     payload["status"] = status_report(plan)
     code = 0
     problems = []
@@ -1105,6 +1246,9 @@ def check_report(plan: Plan) -> tuple[dict[str, object], int]:
         code = 2
         problems.append("MISSING_BACKEND_RUNTIME")
     if "frontend" in plan.roles and not frontend["ok"]:
+        code = 2
+        problems.append("MISSING_FRONTEND_RUNTIME")
+    if plan.mode == "production" and "frontend" in plan.roles and not tsc.is_file():
         code = 2
         problems.append("MISSING_FRONTEND_RUNTIME")
     status = payload["status"]
@@ -1160,14 +1304,35 @@ def _wait_http(
 
 
 def spawn_service(plan: Plan, role: str) -> None:
+    manifests = {
+        key: value
+        for key, value in (
+            ("detector", plan.detector_manifest),
+            ("reconstructor", plan.reconstructor_manifest),
+        )
+        if value
+    }
     if role == "backend":
         argv = list(plan.backend_argv or production_backend_argv(plan.python_executable))
         cwd = plan.root / "backend"
         port = plan.backend_port
         http_path = "/api/health"
     elif role == "frontend":
-        argv = list(plan.frontend_argv or production_frontend_argv(plan.node_executable, plan.root))
-        cwd = plan.root / "frontend"
+        if plan.frontend_argv is not None:
+            argv = list(plan.frontend_argv)
+        elif plan.mode == "production":
+            argv = static_frontend_argv(
+                plan.python_executable,
+                plan.root / "frontend" / "dist",
+                plan.frontend_port,
+            )
+        else:
+            argv = development_frontend_argv(plan.node_executable, plan.root)
+        cwd = (
+            plan.root
+            if plan.mode == "production" and plan.frontend_argv is None
+            else plan.root / "frontend"
+        )
         port = plan.frontend_port
         http_path = "/"
     else:
@@ -1180,7 +1345,7 @@ def spawn_service(plan: Plan, role: str) -> None:
         proc = subprocess.Popen(
             argv,
             cwd=str(cwd),
-            env=child_env(token, role),
+            env=child_env(token, role, manifests if role == "backend" else None),
             stdin=subprocess.DEVNULL,
             stdout=stream,
             stderr=subprocess.STDOUT,
@@ -1287,6 +1452,7 @@ def _preflight_ports(plan: Plan) -> None:
 
 
 def start_services(plan: Plan) -> dict[str, object]:
+    build_info: dict[str, object] = {"ran": False}
     if plan.dependency_probe:
         report, code = check_report(plan)
         if code == 2:
@@ -1317,6 +1483,8 @@ def start_services(plan: Plan) -> dict[str, object]:
             )
     else:
         _preflight_ports(plan)
+    if plan.mode == "production" and plan.run_build and "frontend" in plan.roles:
+        build_info = build_frontend(plan)
     started: list[str] = []
     try:
         for role in plan.roles:
@@ -1327,6 +1495,9 @@ def start_services(plan: Plan) -> dict[str, object]:
             error.extra["previous_rollback"] = stop_services(plan, tuple(started))
         raise
     payload = base_payload("start")
+    payload["mode"] = plan.mode
+    payload["build"] = build_info
+    payload["model_paths"] = model_path_report(plan)
     payload["started"] = started
     payload["status"] = status_report(plan)
     payload["detail"] = "进程已启动并可访问 HTTP。这不是模型 ready，也不授予年龄能力。"
@@ -1336,6 +1507,14 @@ def start_services(plan: Plan) -> dict[str, object]:
 def stop_services(plan: Plan, roles: Sequence[str] | None = None) -> dict[str, object]:
     selected = tuple(roles or plan.roles)
     state = load_state(plan.state_dir)
+    defaults = {"backend": plan.backend_port, "frontend": plan.frontend_port}
+    owned_ports = {}
+    for role, default in defaults.items():
+        record = state["services"].get(role)
+        port = default
+        if isinstance(record, dict) and type(record.get("port")) is int:
+            port = record["port"]
+        owned_ports[role] = port
     results = {}
     exit_code = 0
     for role in selected:
@@ -1360,14 +1539,8 @@ def stop_services(plan: Plan, roles: Sequence[str] | None = None) -> dict[str, o
     payload["results"] = results
     payload["killed_unknown_listeners"] = False
     payload["ports"] = {
-        "backend": {
-            "port": plan.backend_port,
-            "accepting": port_accepting(plan.host, plan.backend_port),
-        },
-        "frontend": {
-            "port": plan.frontend_port,
-            "accepting": port_accepting(plan.host, plan.frontend_port),
-        },
+        role: {"port": port, "accepting": port_accepting(plan.host, port)}
+        for role, port in owned_ports.items()
     }
     payload["detail"] = "只处理身份核对通过的本启动器进程；未知端口监听者保持不动。"
     if exit_code:
@@ -1462,16 +1635,24 @@ class Plan:
         dependency_probe: bool = True,
         backend_argv: Sequence[str] | None = None,
         frontend_argv: Sequence[str] | None = None,
+        mode: str = "dev",
+        run_build: bool = True,
+        detector_manifest: str | None = None,
+        reconstructor_manifest: str | None = None,
     ) -> None:
         if host != HOST:
             raise LocalRunError(
                 "HOST_NOT_LOOPBACK", "只允许绑定 127.0.0.1，以保持现有 Host 限制。", 6
             )
-        ports_fixed = backend_port == BACKEND_PORT and frontend_port == FRONTEND_PORT
-        if not ports_fixed and not allow_ephemeral_ports:
+        if mode not in {"dev", "production"}:
+            raise LocalRunError("UNKNOWN_MODE", "运行方式只支持 dev 或 production。", 6)
+        expected_frontend = PRODUCTION_FRONTEND_PORT if mode == "production" else FRONTEND_PORT
+        if not allow_ephemeral_ports and (
+            backend_port != BACKEND_PORT or frontend_port != expected_frontend
+        ):
             raise LocalRunError(
                 "PORT_FIXED",
-                "支持的入口固定为 127.0.0.1:8000 与 127.0.0.1:5173。",
+                "开发入口固定为 127.0.0.1:8000 与 127.0.0.1:5173；生产前端固定为 127.0.0.1:4173。",
                 6,
             )
         for port in (backend_port, frontend_port):
@@ -1497,6 +1678,10 @@ class Plan:
         self.dependency_probe = dependency_probe
         self.backend_argv = None if backend_argv is None else tuple(backend_argv)
         self.frontend_argv = None if frontend_argv is None else tuple(frontend_argv)
+        self.mode = mode
+        self.run_build = run_build
+        self.detector_manifest = detector_manifest
+        self.reconstructor_manifest = reconstructor_manifest
 
 
 def math_finite_positive(value: float) -> bool:
@@ -1521,6 +1706,7 @@ def build_parser() -> argparse.ArgumentParser:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--backend-only", action="store_true")
     group.add_argument("--frontend-only", action="store_true")
+    parser.add_argument("--production", action="store_true")
     parser.add_argument("--detector-manifest", type=Path, default=None)
     parser.add_argument("--reconstructor-manifest", type=Path, default=None)
     parser.add_argument("--startup-timeout", type=float, default=30.0)
@@ -1528,12 +1714,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def plan_from_namespace(args: argparse.Namespace) -> Plan:
-    if args.command != "diagnose" and (
+    if args.command in {"stop", "status"} and (
         args.detector_manifest is not None or args.reconstructor_manifest is not None
     ):
         raise LocalRunError(
             "MANIFEST_FLAG_SCOPE",
-            "模型清单参数只属于 diagnose，且只转交给现有只读诊断。",
+            "模型路径只在 check、start、diagnose 设置，且不改写清单。",
             6,
         )
     root = resolve_root(args.root)
@@ -1544,6 +1730,14 @@ def plan_from_namespace(args: argparse.Namespace) -> Plan:
         roles = ("frontend",)
     else:
         roles = ("backend", "frontend")
+    mode = "production" if args.production else "dev"
+    manifests = {}
+    if args.detector_manifest is not None:
+        manifests["detector_manifest"] = resolve_manifest_argument(root, args.detector_manifest)
+    if args.reconstructor_manifest is not None:
+        manifests["reconstructor_manifest"] = resolve_manifest_argument(
+            root, args.reconstructor_manifest
+        )
     return Plan(
         root=root,
         state_dir=resolve_state_dir(root, args.state_dir),
@@ -1552,7 +1746,10 @@ def plan_from_namespace(args: argparse.Namespace) -> Plan:
         else default_python(root),
         node_executable=args.node_executable or default_node(),
         roles=roles,
+        frontend_port=PRODUCTION_FRONTEND_PORT if mode == "production" else FRONTEND_PORT,
         startup_timeout=args.startup_timeout,
+        mode=mode,
+        **manifests,
     )
 
 
