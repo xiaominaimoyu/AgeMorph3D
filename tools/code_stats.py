@@ -8,6 +8,7 @@ line counts as original contribution or as a school acceptance.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import subprocess
 import sys
@@ -86,32 +87,31 @@ def _list_blobs(root: Path, revision: str) -> list[tuple[str, str]]:
 
 
 def _cat_blobs(root: Path, blobs: Sequence[tuple[str, str]]) -> dict[str, bytes]:
+    """Read blobs with one communicate() so a full stdout pipe cannot stall stdin."""
     if not blobs:
         return {}
-    process = subprocess.Popen(
+    payload = b"".join(f"{blob}\n".encode("ascii") for blob, _path in blobs)
+    completed = subprocess.run(
         ["git", "-C", str(root), "cat-file", "--batch"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
+        input=payload,
+        capture_output=True,
+        check=False,
     )
-    assert process.stdin is not None and process.stdout is not None
-    for blob, _path in blobs:
-        process.stdin.write(f"{blob}\n".encode())
-    process.stdin.close()
+    if completed.returncode != 0:
+        raise CodeStatsError("GIT_READ_FAILED", "git cat-file 没有成功结束。", 1)
+    stream = io.BytesIO(completed.stdout)
     contents: dict[str, bytes] = {}
     for _blob, path in blobs:
-        header = process.stdout.readline()
+        header = stream.readline()
         if not header:
             raise CodeStatsError("GIT_READ_FAILED", "读取文件内容时 git 提前结束。", 1)
         _oid, kind, size_text = header.decode("ascii").split()
         size = int(size_text)
-        data = process.stdout.read(size)
-        newline = process.stdout.read(1)
+        data = stream.read(size)
+        newline = stream.read(1)
         if kind != "blob" or len(data) != size or newline != b"\n":
             raise CodeStatsError("GIT_READ_FAILED", "git 返回的文件内容长度不一致。", 1)
         contents[path] = data
-    process.wait()
-    if process.returncode != 0:
-        raise CodeStatsError("GIT_READ_FAILED", "git cat-file 没有成功结束。", 1)
     return contents
 
 

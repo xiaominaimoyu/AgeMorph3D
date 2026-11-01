@@ -3,8 +3,10 @@
 import importlib
 import json
 import os
+import stat
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -198,6 +200,54 @@ def test_report_stays_in_ignored_directory_and_states_the_limit(tmp_path):
     with pytest.raises(stats.CodeStatsError) as caught:
         stats.main(["--root", str(repo), "--output", str(repo / "docs" / "report.json")])
     assert caught.value.exit_code == 6
+
+
+def test_many_large_blobs_do_not_deadlock_cat_file(tmp_path, monkeypatch):
+    """A batch that fills both pipes deadlocks if stdin is written before stdout is read."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    script = bindir / "cat-file-batch.py"
+    script.write_text(
+        "import sys\n"
+        "stdin = sys.stdin.buffer\n"
+        "stdout = sys.stdout.buffer\n"
+        "if not stdin.readline():\n"
+        "    sys.exit(0)\n"
+        "stdout.write(b'0123456789abcdef blob 2000000\\n')\n"
+        "stdout.write(b'z' * 2000000)\n"
+        "stdout.write(b'\\n')\n"
+        "stdout.flush()\n"
+        "while stdin.readline():\n"
+        "    stdout.write(b'0123456789abcdef blob 1\\n')\n"
+        "    stdout.write(b'q\\n')\n"
+        "stdout.flush()\n",
+        encoding="utf-8",
+    )
+    git = bindir / "git"
+    git.write_text(
+        '#!/bin/sh\nexec python3 "$(dirname "$0")/cat-file-batch.py"\n',
+        encoding="utf-8",
+    )
+    git.chmod(git.stat().st_mode | stat.S_IEXEC)
+    (bindir / "git.cmd").write_text(
+        f'@echo off\r\n"{sys.executable}" "%~dp0cat-file-batch.py"\r\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PATH", str(bindir) + os.pathsep + os.environ.get("PATH", ""))
+    blobs = [(f"{index:040x}", f"blob-{index}.txt") for index in range(30000)]
+    found: list[dict[str, bytes]] = []
+
+    def invoke() -> None:
+        found.append(stats._cat_blobs(tmp_path, blobs))
+
+    worker = threading.Thread(target=invoke, daemon=True)
+    worker.start()
+    worker.join(20)
+    assert not worker.is_alive()
+    assert len(found) == 1
+    assert len(found[0]) == 30000
+    assert len(found[0]["blob-0.txt"]) == 2_000_000
+    assert found[0]["blob-1.txt"] == b"q"
 
 
 def test_git_write_commands_are_refused(tmp_path):
