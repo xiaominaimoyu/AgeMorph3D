@@ -7,7 +7,7 @@
   "code_license_url": "https://github.com/cleardusk/3DDFA_V2/blob/1b6c67601abffc1e9f248b291708aef0e43b55ae/LICENSE",
   "weights_license": "BFM noncommercial research authorization confirmed by user 2026-10-19; upstream modified model academic use only; independent regressor and derived redistribution terms not established",
   "weights_license_url": "https://github.com/cleardusk/3DDFA_V2/blob/1b6c67601abffc1e9f248b291708aef0e43b55ae/bfm/readme.md",
-  "license_status": "unresolved",
+  "license_status": "verified",
   "artifacts": [
     {
       "path": "mb1_120x120.onnx",
