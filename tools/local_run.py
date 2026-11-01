@@ -586,19 +586,28 @@ def _windows_peb_text(pid: int) -> tuple[list[str] | None, dict[str, str] | None
             ctypes.POINTER(ctypes.c_int),
         ]
         shell32.CommandLineToArgvW.restype = ctypes.POINTER(wintypes.LPWSTR)
-        shell32.LocalFree.argtypes = [ctypes.c_void_p]
         parsed = shell32.CommandLineToArgvW(command_line, ctypes.byref(argc))
         if not parsed or argc.value <= 0:
             return None, None
         try:
             argv = [parsed[index] for index in range(argc.value)]
         finally:
-            shell32.LocalFree(parsed)
+            # CommandLineToArgvW lives in shell32; freeing the block is kernel32.
+            release_command_line_block(kernel, parsed)
         return argv, environment
-    except (OSError, UnicodeError, ValueError):
+    except (OSError, UnicodeError, ValueError, AttributeError):
         return None, None
     finally:
         kernel.CloseHandle(handle)
+
+
+def release_command_line_block(kernel32, parsed) -> None:
+    """Free a CommandLineToArgvW block. The export lives in kernel32."""
+    import ctypes
+
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    kernel32.LocalFree(parsed)
 
 
 def ctypes_pointer_bits() -> int:
@@ -679,6 +688,21 @@ def _process_table_windows() -> dict[int, dict[str, object]] | None:
     finally:
         kernel.CloseHandle(snapshot)
     return table
+
+
+def read_process_environment(pid: int) -> dict[str, str] | None:
+    """Read one process environment. Missing or unreadable identity returns None."""
+    if pid <= 0:
+        return None
+    if os.name == "nt":
+        _argv, environment = _windows_peb_text(pid)
+        return environment
+    try:
+        return parse_environment_block(
+            Path(f"/proc/{pid}/environ").read_bytes(), encoding="utf-8"
+        )
+    except OSError:
+        return None
 
 
 def observe(pid: int) -> dict[str, object] | None:
@@ -767,7 +791,8 @@ def _signal_creation(pid: int, creation: str, sig: int) -> bool:
         return False
     try:
         os.kill(pid, sig)
-    except OSError:
+    except (OSError, SystemError):
+        # CTRL_BREAK_EVENT on a CREATE_NO_WINDOW process raises SystemError.
         return False
     return True
 
