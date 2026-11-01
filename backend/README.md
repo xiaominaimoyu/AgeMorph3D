@@ -29,6 +29,13 @@ $env:AGEMORPH_NODE = 'D:\JAVA run tools\node.exe'
 
 带上清单也不会把登记改成 verified，年龄接口仍返回 `MODEL_NOT_READY`。详细边界见[开发记录](../docs/本机统一运行入口开发记录.md)。原来分开开两个终端的命令仍然可用。开发入口 `.\tools\local-run.ps1 start` 仍启动 5173 上的 Vite。
 
+另一成员的干净环境和断网复现还没做。准备说明、只读检查和空白记录在[L02 准备](../docs/干净环境与离线复现准备.md)。检查脚本不安装依赖：
+
+```powershell
+.\tools\repro-check.ps1 --smoke-mode dev
+.\tools\repro-check.ps1 --smoke-mode production
+```
+
 2026-10-29新增只读模型诊断。可在启动服务前核对登记、角色、每个文件的完整性；它不加载模型或授予ready。下面命令从项目根目录运行，或在`backend/`目录相应调整相对路径：
 
 ```powershell

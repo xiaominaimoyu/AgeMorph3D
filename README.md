@@ -1,5 +1,7 @@
 # 岁月镜 AgeMorph3D
 
+2026-10-31 L02 干净环境复现只完成准备。[说明](docs/干净环境与离线复现准备.md)给出全新 Windows 的锁文件安装、模型台账和断网启动步骤。`tools/repro_check.py` 只读核对版本、哈希和一次启动烟雾，不签署通过。另一成员尚未执行。
+
 2026-10-31 L01 生产运行方式：`tools/local-run.ps1 start --production` 构建前端并由 `http://127.0.0.1:4173` 提供静态文件，API 仍在 `http://127.0.0.1:8000`。Linux 上健康检查仍是模型 missing、年龄接口 503。见[开发记录](docs/本机统一运行入口开发记录.md)。
 
 2026-10-31 L01[本机统一运行入口](docs/本机统一运行入口开发记录.md)工程子项完成。项目根目录可执行 `tools/local-run.ps1` 或 `python -B tools/local_run.py` 做检查、启动、停止和诊断。Linux 上一次真实循环的健康检查仍是模型 missing、年龄接口 503 `MODEL_NOT_READY`。这不是最终交付或年龄功能验收。

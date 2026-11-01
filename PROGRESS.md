@@ -1,5 +1,7 @@
 # 当前进度与交接
 
+2026-10-31 L02 准备：[干净环境与离线复现准备](docs/干净环境与离线复现准备.md)和 `tools/repro_check.py`。Linux 上 13 项检查测试通过；无清单烟雾健康为 missing、能力 false，生产端口 4173，停止后端口释放。研究清单在场时健康为许可 error，四个权重缺失且不编造哈希。`l02_executed` 保持 false。另一成员尚未执行。
+
 2026-10-31 L01 生产运行方式：`--production` 用已安装的 tsc 与 vite build 生成 `frontend/dist`，由独立进程提供 `127.0.0.1:4173`。API 不改。Linux 实测健康 missing/能力 false、年龄 503、停止后 8000 与 4173 释放。21 项启动器测试通过。Windows 未复测。见[记录](docs/本机统一运行入口开发记录.md)。
 
 2026-10-31 L01[本机统一运行入口](docs/本机统一运行入口开发记录.md)工程子项完成。`tools/local_run.py` 与 Windows 包装提供检查、状态、启动、停止和只读诊断。项目虚拟环境 Python 3.11.18、Node v22.23.4 上，Ruff 通过，15 项边界通过，真实 8000/5173 循环中健康为 missing/能力 false，`/api/aging` 为 503 `MODEL_NOT_READY`，停止使用 SIGTERM 且端口释放。启动器不授予 ready。Windows 隐藏窗口和 PEB 身份未在本环境执行。生产源码未改，2956/340 未重跑。这不是 L02 或毕设整体完成。
