@@ -113,6 +113,70 @@ def test_rejects_external_symlink(manifest_path: Path, tmp_path: Path) -> None:
         outside.unlink()
 
 
+def test_optional_registration_fields_do_not_replace_the_license_gate(manifest_path: Path) -> None:
+    change_manifest(
+        manifest_path,
+        lambda data: data.update(
+            license_basis="owner_decision_only",
+            license_decided_by="fixture",
+            license_decided_at="2026-11-01",
+            redistribution="not_redistributed",
+        ),
+    )
+    result = load_verified_manifest(manifest_path)
+    assert result.license_verified
+    assert result.manifest.redistribution == "not_redistributed"
+    change_manifest(manifest_path, lambda data: data.update(redistribution="redistributed"))
+    with pytest.raises(ModelAssetError, match="Invalid model asset manifest"):
+        load_verified_manifest(manifest_path)
+
+
+def test_checked_in_manifests_record_academic_use_without_changing_artifact_pins() -> None:
+    root = Path(__file__).resolve().parents[1] / "model-manifests"
+    expected = {
+        "yolov5n05-face.research.json": [
+            (
+                "yolov5n-0.5-face.onnx",
+                "269eb1e54313f9d1f7941ed9939fa247767539bca5801fc7aa7895960e93ca43",
+                5928024,
+            )
+        ],
+        "3ddfa-v2.research.json": [
+            (
+                "mb1_120x120.onnx",
+                "1c0a8acd50db28987773324a9b2b816361468e3aa13cb6b212c911b889e08c3e",
+                13184521,
+            ),
+            (
+                "bfm.npz",
+                "aa9e819661adec8ee97ebd82930a28f05dd64c5e61c57e52c98abb2152fb3c3b",
+                22143703,
+            ),
+            (
+                "param_stats.npz",
+                "f28f64caf0e8b0962548d73de64c5ff440873ab55bbfc13ebd934a7b122e9b42",
+                1463,
+            ),
+        ],
+    }
+    for name, pins in expected.items():
+        path = root / name
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        assert manifest["license_status"] == "verified"
+        assert manifest["redistribution"] == "not_redistributed"
+        assert manifest["license_decided_at"] == "2026-11-01"
+        assert "宋明耀" in manifest["license_decided_by"]
+        assert "not an upstream grant" in manifest["weights_license"]
+        assert "not a legal clearance" in manifest["weights_license"]
+        observed = [
+            (item["path"], item["sha256"], item["size_bytes"]) for item in manifest["artifacts"]
+        ]
+        assert observed == pins
+        with pytest.raises(ModelAssetError, match="missing") as error:
+            load_verified_manifest(path)
+        assert "unresolved" not in str(error.value)
+
+
 def test_unresolved_license_requires_explicit_research_override(manifest_path: Path) -> None:
     change_manifest(manifest_path, lambda data: data.update(license_status="unresolved"))
     with pytest.raises(ModelAssetError, match="license is unresolved"):

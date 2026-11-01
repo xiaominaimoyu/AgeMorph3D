@@ -22,6 +22,7 @@ from pydantic import (
 ArtifactRole = Literal["detector", "regressor", "bfm", "param_stats", "uv"]
 HttpsUrl = Annotated[HttpUrl, UrlConstraints(allowed_schemes=["https"])]
 NonemptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+DecisionDate = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")]
 
 
 class ModelAssetError(ValueError):
@@ -68,6 +69,11 @@ class AssetManifest(BaseModel):
     weights_license: NonemptyText
     weights_license_url: HttpsUrl
     license_status: Literal["verified", "unresolved"]
+    # Registrant statements only. They do not record an upstream grant or a legal clearance.
+    license_basis: NonemptyText | None = None
+    license_decided_by: NonemptyText | None = None
+    license_decided_at: DecisionDate | None = None
+    redistribution: Literal["not_redistributed"] | None = None
     artifacts: Annotated[list[ModelArtifact], Field(min_length=1)]
 
     @field_validator("schema_version", mode="before")

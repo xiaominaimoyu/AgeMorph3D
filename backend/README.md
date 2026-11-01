@@ -72,7 +72,7 @@ $env:AGEMORPH_RECONSTRUCTOR_MANIFEST = 'D:\project file\AgeMorph3D\data\models\3
 .\.venv\Scripts\python.exe -m agemorph3d
 ```
 
-加载需要先 `uv sync --locked --extra inference`。未配置/清单不存在为 `missing`，已配置先 `loading`，严格资产核验、实例构造和真实 CPU 算子自检通过才为 `ready`；失败为脱敏 `error`。现有两份 B0 研究清单仍为 `license_status=unresolved`，使用上面的路径会得到许可核验错误，服务不会偷偷启用研究绕过。用户提供的 BFM 非商业研究授权保留在台账中，这不是整套候选资产的分发条款证明。
+加载需要先 `uv sync --locked --extra inference`。未配置/清单不存在为 `missing`，已配置先 `loading`，严格资产核验、实例构造和真实 CPU 算子自检通过才为 `ready`；失败为脱敏 `error`。2026-11-01 起，仓库里的两份研究清单按所有者决定登记为 `license_status=verified`：非商业学术/毕设演示，且 `redistribution=not_redistributed`。本地 `data/models/.../manifest.json` 若仍是旧副本，需要从 `backend/model-manifests/` 重新复制后才会读到这份登记。登记通过只去掉许可门；缺文件、哈希不符或 CPU 自检失败仍是 error。没有上游权重许可文本，商业使用和再分发不在范围内。服务不接受研究绕过开关。`/api/aging` 与两项年龄能力保持关闭。用户 2026-10-19 的 BFM 非商业研究授权保留原范围，不扩大成整套派生文件的分发许可。
 
 单个模型 `ready` 表示该算子通过加载/自检，重建自检还包含 canonical/纯旋转/GLB 构建。两模型均ready且服务未关闭时，reconstruction与realtime为true，两项年龄能力仍false。加载、HTTP和WS共用一个工作线程；忙时不排队，HTTP429/WS相关BUSY，健康状态可读取。退出先禁止新任务和迟到发布，再清除缓存、等待实际线程完成并清理实例。
 
