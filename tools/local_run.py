@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import errno
 import json
 import os
 import secrets
@@ -963,19 +964,148 @@ def http_probe(host: str, port: int, path: str, timeout: float = 0.4) -> tuple[i
         return None, b""
 
 
-def port_accepting(host: str, port: int) -> bool:
-    status, _ = http_probe(host, port, "/", timeout=0.2)
-    if status is not None:
+def _address_in_use(error: OSError) -> bool:
+    if getattr(error, "winerror", None) == 10048:
         return True
+    return error.errno == errno.EADDRINUSE
+
+
+def _tcp_connected(host: str, port: int, timeout: float) -> bool:
+    """Complete one handshake and close. Does not accept or signal the peer."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(timeout)
+        sock.connect((host, port))
+    except OSError:
+        return False
+    else:
+        return True
+    finally:
+        sock.close()
+
+
+def _proc_tcp_has_listener(text: str, port: int) -> bool:
+    needle = f"{port:04X}"
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) < 4 or fields[3] != "0A":
+            continue
+        address, separator, hex_port = fields[1].rpartition(":")
+        if separator != ":" or hex_port.upper() != needle:
+            continue
+        if address in {"00000000", "0100007F"}:
+            return True
+    return False
+
+
+def _loopback_listener(port: int) -> bool | None:
+    """True when a TCP LISTEN row is visible, False when the table has none.
+
+    None means the table could not be read. TIME_WAIT is not a listener.
+    """
+    if os.name == "nt":
+        return _windows_listen_port(port)
+    path = Path("/proc/net/tcp")
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return _proc_tcp_has_listener(text, port)
+
+
+def _windows_listen_port(port: int) -> bool | None:
+    """Listening IPv4 rows only. A full backlog still shows up here; TIME_WAIT does not."""
+    import ctypes
+    from ctypes import wintypes
+
+    table = ctypes.WinDLL("iphlpapi", use_last_error=True)
+    get_table = table.GetExtendedTcpTable
+    get_table.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.DWORD),
+        wintypes.BOOL,
+        ctypes.c_ulong,
+        ctypes.c_int,
+        ctypes.c_ulong,
+    ]
+    get_table.restype = ctypes.c_ulong
+    size = wintypes.DWORD(0)
+    buffer = None
+    status = 122
+    # TCP_TABLE_BASIC_LISTENER is 0 and returns MIB_TCPROW entries.
+    for _ in range(3):
+        pointer = ctypes.cast(buffer, ctypes.c_void_p) if buffer is not None else None
+        status = get_table(pointer, ctypes.byref(size), False, 2, 0, 0)
+        if status == 0 and buffer is not None:
+            break
+        if status != 122 or size.value == 0:
+            return None
+        buffer = ctypes.create_string_buffer(size.value)
+    else:
+        return None
+    raw = buffer.raw[: size.value]
+    if len(raw) < 4:
+        return None
+    count = int.from_bytes(raw[:4], "little")
+    row = 20
+    for index in range(count):
+        start = 4 + index * row
+        chunk = raw[start : start + row]
+        if len(chunk) < row:
+            return None
+        _state, address, local_port, _remote, _remote_port = (
+            int.from_bytes(chunk[offset : offset + 4], "little") for offset in range(0, row, 4)
+        )
+        if socket.ntohs(local_port & 0xFFFF) != port:
+            continue
+        ip = socket.inet_ntoa(address.to_bytes(4, "little"))
+        if ip in {"0.0.0.0", HOST}:
+            return True
+    return False
+
+
+def _bind_blocked_by_listener(host: str, port: int) -> bool:
+    """True when the port cannot be bound because a listener still holds it.
+
+    SO_REUSEADDR stays off. On Windows that flag can bind over an existing
+    listener and would hide a stranger. A bind that succeeds is closed at once
+    so this probe does not keep the port.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((host, port))
+    except OSError as error:
+        if not _address_in_use(error):
+            return False
+        visible = _loopback_listener(port)
+        if visible is None:
+            return True
+        return visible
+    else:
+        return False
+    finally:
+        sock.close()
+
+
+def port_accepting(host: str, port: int) -> bool:
+    """True when a loopback TCP listener holds the port.
+
+    The check is a plain connect, done before any HTTP read and closed
+    immediately. Handshake success means the port is occupied, including a
+    listen() that never accept()s or writes a response. An HTTP GET against
+    that socket times out only after the handshake, and on Windows the
+    timed-out connection stays in a one-slot backlog so a later connect() is
+    refused. Connect failure therefore falls back to a bind without
+    SO_REUSEADDR, and only a visible listener counts. Nothing here signals or
+    closes the other process.
+    """
     if host != HOST:
         return False
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(0.2)
-        try:
-            sock.connect((host, port))
-        except OSError:
-            return False
-    return True
+    if _tcp_connected(host, port, 0.2):
+        return True
+    return _bind_blocked_by_listener(host, port)
 
 
 def _run_text(argv: Sequence[str], cwd: Path, timeout: float) -> subprocess.CompletedProcess[str]:
@@ -986,6 +1116,8 @@ def _run_text(argv: Sequence[str], cwd: Path, timeout: float) -> subprocess.Comp
         shell=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         check=False,
     )
@@ -1616,7 +1748,7 @@ def diagnose_report(
         ) from error
     parsed = None
     try:
-        loaded = json.loads(completed.stdout.decode("utf-8"))
+        loaded = json.loads(completed.stdout.decode("utf-8", errors="replace"))
         if isinstance(loaded, dict):
             parsed = loaded
     except (UnicodeError, json.JSONDecodeError):
