@@ -7,7 +7,7 @@
   "code_license_url": "https://github.com/deepcam-cn/yolov5-face/blob/152c688d551aefb973b7b589fb0691c93dab3564/LICENSE",
   "weights_license": "Unresolved: publisher supplies ONNX and matching original PT hash; independent weight/derived-export terms not established",
   "weights_license_url": "https://github.com/clibdev/yolov5-face/blob/d3246815d8747d26a91bf980afef2485bc29f839/README.md",
-  "license_status": "unresolved",
+  "license_status": "verified",
   "artifacts": [
     {
       "path": "yolov5n-0.5-face.onnx",
