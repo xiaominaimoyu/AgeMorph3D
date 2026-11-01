@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "note": "把本文件复制到 output/code-stats/ 再填写。git_author 必须从统计报告原样复制，形式为 Name <email>。member 只能是 A 或 B。不知道就整行留空，不要猜测。仓库不预填真实姓名。",
+  "authors": [
+    {
+      "git_author": "",
+      "member": ""
+    }
+  ]
+}
