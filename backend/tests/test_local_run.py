@@ -355,7 +355,7 @@ def test_port_owned_by_a_stranger_is_not_cleared(tmp_path):
     plan = make_plan(root, state, server, roles=("backend",))
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", plan.backend_port))
-    sock.listen(1)
+    sock.listen(8)
     try:
         with pytest.raises(local_run.LocalRunError) as caught:
             local_run.start_services(plan)
@@ -372,6 +372,51 @@ def test_port_owned_by_a_stranger_is_not_cleared(tmp_path):
         client.close()
     finally:
         sock.close()
+
+
+def test_silent_listener_is_occupied_without_an_http_response():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.listen(1)
+    try:
+        assert local_run.port_accepting("127.0.0.1", port) is True
+        assert local_run._proc_tcp_has_listener(
+            f"0: 0100007F:{port:04X} 00000000:0000 0A 0 0 0 0 0 0\n",
+            port,
+        )
+        sock.settimeout(0.2)
+        queued, _addr = sock.accept()
+        queued.close()
+        client = socket.create_connection(("127.0.0.1", port), timeout=1)
+        client.close()
+    finally:
+        sock.close()
+    assert local_run.port_accepting("127.0.0.1", port) is False
+
+
+def test_refused_connect_still_reports_a_listening_socket(monkeypatch):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.listen(1)
+    held = socket.create_connection(("127.0.0.1", port), timeout=1)
+    monkeypatch.setattr(local_run, "_tcp_connected", lambda *_args, **_kwargs: False)
+    try:
+        assert local_run.port_accepting("127.0.0.1", port) is True
+        assert sock.getsockname()[1] == port
+    finally:
+        held.close()
+        sock.close()
+
+
+def test_refused_connect_on_a_free_port_is_not_occupied(monkeypatch):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    monkeypatch.setattr(local_run, "_tcp_connected", lambda *_args, **_kwargs: False)
+    assert local_run.port_accepting("127.0.0.1", port) is False
 
 
 def test_duplicate_start_keeps_the_original_process(tmp_path):
@@ -513,6 +558,8 @@ def test_second_command_does_not_take_the_state_lock(tmp_path):
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     assert completed.returncode == 3
     assert "LOCK_HELD" in completed.stdout
@@ -791,6 +838,8 @@ def test_real_stack_start_stop_restart(tmp_path):
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         assert aging.stdout.strip() == "503"
         local_run.stop_services(plan)
