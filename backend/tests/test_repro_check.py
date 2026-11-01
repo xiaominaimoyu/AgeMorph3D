@@ -274,17 +274,22 @@ def test_report_never_signs_off_l02_and_stays_inside_ignored_output(tmp_path):
 
 def test_utf8_child_output_is_decoded_and_missing_stdout_is_empty(tmp_path):
     assert repro._TEXT_CAPTURE == {"text": True, "encoding": "utf-8", "errors": "replace"}
+    forced = repro._offline_env({})
+    assert forced["PYTHONIOENCODING"] == "utf-8"
+    assert forced["PYTHONUTF8"] == "1"
     source = (ROOT / "tools" / "repro_check.py").read_text(encoding="utf-8")
     assert source.count("**_TEXT_CAPTURE") == 3
     blank = subprocess.CompletedProcess(args=["py"], returncode=1, stdout=None, stderr=None)
     assert repro._stdout_text(blank) == ""
     assert repro._read_json_stdout(blank) is None
     completed = repro.run_text(
-        [sys.executable, "-c", "print('许可尚未完成核验')"],
+        [sys.executable, "-c", "import sys; print(sys.stdout.encoding); print('许可尚未完成核验')"],
         tmp_path,
         20,
     )
-    assert completed.stdout.strip() == "许可尚未完成核验"
+    encoding, text = completed.stdout.splitlines()[:2]
+    assert encoding.lower().replace("-", "") == "utf8"
+    assert text == "许可尚未完成核验"
     code, payload = repro._launch(
         [
             sys.executable,
