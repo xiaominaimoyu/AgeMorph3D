@@ -5,9 +5,13 @@
   "revision": "release:1.0.0@24e19511583ca557d467d75648afda4c68984579; reviewed-source:d3246815d8747d26a91bf980afef2485bc29f839; exact-exporter-unverified",
   "code_license": "GPL-3.0 (upstream/publisher code; not a separate weight permission)",
   "code_license_url": "https://github.com/deepcam-cn/yolov5-face/blob/152c688d551aefb973b7b589fb0691c93dab3564/LICENSE",
-  "weights_license": "Unresolved: publisher supplies ONNX and matching original PT hash; independent weight/derived-export terms not established",
+  "weights_license": "No explicit upstream weight license found (code GPL-3.0 does not cover weights; ONNX is a third-party export by clibdev). Project owner decision 2026-11-01: used only for non-commercial academic research/demo in an undergraduate graduation project; weights are not redistributed by this repo (users download from the listed source_url). This is not an upstream grant and not a legal clearance.",
   "weights_license_url": "https://github.com/clibdev/yolov5-face/blob/d3246815d8747d26a91bf980afef2485bc29f839/README.md",
   "license_status": "verified",
+  "license_basis": "owner_decision_academic_noncommercial_no_redistribution_not_upstream_grant",
+  "license_decided_by": "宋明耀 (member B, project owner)",
+  "license_decided_at": "2026-11-01",
+  "redistribution": "not_redistributed",
   "artifacts": [
     {
       "path": "yolov5n-0.5-face.onnx",
