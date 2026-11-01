@@ -120,6 +120,26 @@ def workspace(tmp_path: Path) -> tuple[Path, Path]:
     return root, state
 
 
+def write_fake_interpreter(directory: Path) -> tuple[Path, Path]:
+    """A marker file plus a .py body. Windows cannot execute a shebang script."""
+    directory.mkdir(parents=True, exist_ok=True)
+    script = directory / "fake_interpreter.py"
+    script.write_text(FAKE_PYTHON, encoding="utf-8")
+    marker = directory / "python"
+    marker.write_bytes(b"")
+    return marker, script
+
+
+def run_marker_as_python(real_run, marker: Path, script: Path):
+    def _run(argv, *args, **kwargs):
+        argv = list(argv)
+        if argv and Path(argv[0]) == marker:
+            argv = [sys.executable, str(script), *argv[1:]]
+        return real_run(argv, *args, **kwargs)
+
+    return _run
+
+
 def write_server(root: Path) -> Path:
     path = root / "serve helper.py"
     path.write_text(SERVER, encoding="utf-8")
@@ -276,16 +296,14 @@ def test_identity_match_rejects_reuse_and_foreign_command_lines():
 
 def test_missing_interpreter_and_imports_do_not_spawn_or_install(tmp_path, monkeypatch):
     root, state = workspace(tmp_path)
-    fake = root / "tools dir" / "python"
-    fake.parent.mkdir()
-    fake.write_text("#!/usr/bin/env python3\n" + FAKE_PYTHON, encoding="utf-8")
-    fake.chmod(0o755)
+    fake, script = write_fake_interpreter(root / "tools dir")
     calls = []
     real_run = subprocess.run
+    forward = run_marker_as_python(real_run, fake, script)
 
     def record(argv, *args, **kwargs):
         calls.append((list(argv), kwargs.get("shell")))
-        return real_run(argv, *args, **kwargs)
+        return forward(argv, *args, **kwargs)
 
     monkeypatch.setattr(local_run.subprocess, "run", record)
     code = local_run.main(
@@ -310,12 +328,16 @@ def test_missing_interpreter_and_imports_do_not_spawn_or_install(tmp_path, monke
     )
 
 
-def test_check_cli_reports_missing_runtime_without_creating_a_service(tmp_path, capsys):
+def test_check_cli_reports_missing_runtime_without_creating_a_service(
+    tmp_path, capsys, monkeypatch
+):
     root, state = workspace(tmp_path)
-    fake = root / "venv path" / "python"
-    fake.parent.mkdir()
-    fake.write_text("#!/usr/bin/env python3\n" + FAKE_PYTHON, encoding="utf-8")
-    fake.chmod(0o755)
+    fake, script = write_fake_interpreter(root / "venv path")
+    monkeypatch.setattr(
+        local_run.subprocess,
+        "run",
+        run_marker_as_python(subprocess.run, fake, script),
+    )
     code = local_run.main(
         [
             "check",
@@ -675,6 +697,58 @@ def test_manifest_flags_are_rejected_outside_diagnose(tmp_path, capsys):
     assert local_run.load_state(state)["services"] == {}
 
 
+def test_command_line_block_is_freed_by_kernel32_not_shell32():
+    freed = []
+
+    class Free:
+        argtypes = None
+        restype = None
+
+        def __call__(self, value):
+            freed.append(value)
+
+    class Kernel:
+        LocalFree = Free()
+
+    class Shell:
+        def LocalFree(self, value):
+            raise AttributeError("shell32 has no LocalFree")
+
+    local_run.release_command_line_block(Kernel(), 42)
+    assert freed == [42]
+    shell = Shell()
+    with pytest.raises(AttributeError):
+        shell.LocalFree(42)
+
+
+def test_attribute_error_during_windows_identity_does_not_escape():
+    def boom():
+        raise AttributeError("LocalFree")
+
+    try:
+        boom()
+    except (OSError, UnicodeError, ValueError, AttributeError):
+        failed = True
+    else:
+        failed = False
+    assert failed
+    source = Path(local_run.__file__).read_text(encoding="utf-8")
+    assert "except (OSError, UnicodeError, ValueError, AttributeError)" in source
+    assert "shell32.LocalFree" not in source
+
+
+def test_ctrl_break_system_error_falls_back_without_raising(monkeypatch):
+    monkeypatch.setattr(local_run, "creation_still", lambda pid, creation: True)
+
+    def boom(pid, sig):
+        raise SystemError("WinError 6 no console")
+
+    monkeypatch.setattr(local_run.os, "kill", boom)
+    # CTRL_BREAK_EVENT uses the same kill path and raises SystemError without a console.
+    assert local_run._signal_creation(123, "creation", 1) is False
+    assert local_run._graceful(123, "creation") == "not_signaled"
+
+
 def test_spawn_rejects_install_commands_and_research_bypass():
     with pytest.raises(local_run.LocalRunError) as install:
         local_run.assert_spawn_allowed(["/usr/bin/pip", "install", "fastapi"])
@@ -771,9 +845,8 @@ def test_production_start_builds_passes_model_path_and_cleans_up(tmp_path, monke
         assert started["model_paths"]["detector"]["exists"] is True
         assert started["model_paths"]["launcher_grants_aging"] is False
         pid = started["status"]["services"]["backend"]["process"]["pid"]
-        environ = local_run.parse_environment_block(
-            Path(f"/proc/{pid}/environ").read_bytes(), encoding="utf-8"
-        )
+        environ = local_run.read_process_environment(pid)
+        assert environ is not None
         assert environ["AGEMORPH_DETECTOR_MANIFEST"] == str(manifest.resolve())
         assert manifest.read_bytes() == body
         page, page_body = local_run.http_probe("127.0.0.1", plan.frontend_port, "/index.html")
