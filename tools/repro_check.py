@@ -36,6 +36,8 @@ IGNORED_ROOTS = ("output", "logs")
 INSTALLER_STEMS = frozenset(
     {"apt", "apt-get", "choco", "npm", "npx", "pip", "pip3", "uv", "winget"}
 )
+# local_run.py writes UTF-8. Windows otherwise decodes captured stdout as GBK.
+_TEXT_CAPTURE = {"text": True, "encoding": "utf-8", "errors": "replace"}
 VERSION_CODE = "import sys; print(sys.version.split()[0])"
 DISTRIBUTIONS_CODE = """
 import importlib.metadata as metadata
@@ -400,17 +402,22 @@ def run_text(argv: Sequence[str], cwd: Path, timeout: float) -> subprocess.Compl
         cwd=str(cwd),
         shell=False,
         capture_output=True,
-        text=True,
         timeout=timeout,
         check=False,
+        **_TEXT_CAPTURE,
     )
+
+
+def _stdout_text(completed: subprocess.CompletedProcess[str]) -> str:
+    raw = completed.stdout
+    return raw if isinstance(raw, str) else ""
 
 
 def probe_python(executable: Path, root: Path) -> dict[str, object]:
     if not executable.is_file():
         return {"path": str(executable), "exists": False, "version": None}
     completed = run_text([str(executable), "-B", "-c", VERSION_CODE], root, 20)
-    version = completed.stdout.strip() if completed.returncode == 0 else None
+    version = _stdout_text(completed).strip() if completed.returncode == 0 else None
     return {
         "path": str(executable),
         "exists": True,
@@ -421,9 +428,9 @@ def probe_python(executable: Path, root: Path) -> dict[str, object]:
 
 def installed_distributions(executable: Path, root: Path) -> list[dict[str, str]]:
     completed = run_text([str(executable), "-B", "-c", DISTRIBUTIONS_CODE], root, 30)
-    if completed.returncode != 0:
+    if completed.returncode != 0 or not _stdout_text(completed):
         raise ReproCheckError("DIST_QUERY_FAILED", "未能读取虚拟环境中已安装的分发包。", 1)
-    loaded = json.loads(completed.stdout)
+    loaded = json.loads(_stdout_text(completed))
     if not isinstance(loaded, list):
         raise ReproCheckError("DIST_QUERY_FAILED", "已安装分发包清单不是列表。", 1)
     rows = []
@@ -471,7 +478,8 @@ def probe_node(executable: str, root: Path) -> dict[str, object]:
     if not command_exists(executable):
         return {"path": executable, "exists": False, "version": None}
     completed = run_text([executable, "--version"], root, 20)
-    version = completed.stdout.strip().splitlines()[0] if completed.returncode == 0 else None
+    text = _stdout_text(completed)
+    version = text.strip().splitlines()[0] if completed.returncode == 0 and text.strip() else None
     return {
         "path": executable,
         "exists": True,
@@ -489,7 +497,8 @@ def probe_uv(root: Path) -> dict[str, object]:
             "detail": "uv.lock 不记录 uv 自身版本。未在 PATH 上发现 uv。",
         }
     completed = run_text(["uv", "--version"], root, 20)
-    version = completed.stdout.strip().splitlines()[0] if completed.returncode == 0 else None
+    text = _stdout_text(completed)
+    version = text.strip().splitlines()[0] if completed.returncode == 0 and text.strip() else None
     return {
         "on_path": True,
         "version": version,
@@ -516,11 +525,12 @@ def git_snapshot(root: Path) -> dict[str, object]:
             "dirty": None,
             "status_count": None,
         }
-    lines = status.stdout.splitlines() if status and status.returncode == 0 else []
+    lines = _stdout_text(status).splitlines() if status and status.returncode == 0 else []
+    branch_text = _stdout_text(branch) if branch and branch.returncode == 0 else ""
     return {
         "available": True,
-        "commit": commit.stdout.strip(),
-        "branch": branch.stdout.strip() if branch and branch.returncode == 0 else None,
+        "commit": _stdout_text(commit).strip(),
+        "branch": branch_text.strip() or None,
         "dirty": bool(lines),
         "status_count": len(lines),
         "status_preview": lines[:MAX_REPORT_LIST],
@@ -952,8 +962,11 @@ def launcher_argv(
 
 
 def _read_json_stdout(completed: subprocess.CompletedProcess[str]) -> dict[str, object] | None:
+    raw = _stdout_text(completed)
+    if not raw.strip():
+        return None
     try:
-        loaded = json.loads(completed.stdout)
+        loaded = json.loads(raw)
     except json.JSONDecodeError:
         return None
     return loaded if isinstance(loaded, dict) else None
@@ -1285,10 +1298,10 @@ def _launch(argv: Sequence[str], timeout: float) -> tuple[int, dict[str, object]
         list(argv),
         shell=False,
         capture_output=True,
-        text=True,
         timeout=timeout,
         check=False,
         env=_offline_env(os.environ),
+        **_TEXT_CAPTURE,
     )
     return completed.returncode, _read_json_stdout(completed)
 
@@ -1428,9 +1441,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             shell=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
             start_new_session=True,
             env=_offline_env(os.environ),
+            **_TEXT_CAPTURE,
         )
         try:
             completed.communicate(timeout=timeout)

@@ -6,6 +6,7 @@ These tests do not install packages, start the real service, or mark L02 passed.
 import hashlib
 import importlib
 import json
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -18,7 +19,11 @@ repro = importlib.import_module("repro_check")
 
 REAL_UV = ROOT / "backend" / "uv.lock"
 REAL_NPM = ROOT / "frontend" / "package-lock.json"
-VENV_PYTHON = ROOT / "backend" / ".venv" / "bin" / "python"
+_VENV_CANDIDATES = (
+    ROOT / "backend" / ".venv" / "bin" / "python",
+    ROOT / "backend" / ".venv" / "Scripts" / "python.exe",
+)
+VENV_PYTHON = next((path for path in _VENV_CANDIDATES if path.is_file()), _VENV_CANDIDATES[0])
 
 
 def test_python_and_node_constraints_come_from_lock_syntax():
@@ -55,6 +60,8 @@ def test_markers_keep_windows_colorama_and_linux_uvloop():
 def test_real_lock_selects_platform_packages():
     lock = tomllib.loads(REAL_UV.read_text(encoding="utf-8"))
     linux = repro.marker_env(extra="")
+    linux["sys_platform"] = "linux"
+    linux["platform_python_implementation"] = "CPython"
     groups = repro.locked_python_groups(lock, linux)
     required = {}
     required.update(groups["base"])
@@ -263,6 +270,34 @@ def test_report_never_signs_off_l02_and_stays_inside_ignored_output(tmp_path):
             ]
         )
     assert caught.value.exit_code == 6
+
+
+def test_utf8_child_output_is_decoded_and_missing_stdout_is_empty(tmp_path):
+    assert repro._TEXT_CAPTURE == {"text": True, "encoding": "utf-8", "errors": "replace"}
+    source = (ROOT / "tools" / "repro_check.py").read_text(encoding="utf-8")
+    assert source.count("**_TEXT_CAPTURE") == 3
+    blank = subprocess.CompletedProcess(args=["py"], returncode=1, stdout=None, stderr=None)
+    assert repro._stdout_text(blank) == ""
+    assert repro._read_json_stdout(blank) is None
+    completed = repro.run_text(
+        [sys.executable, "-c", "print('许可尚未完成核验')"],
+        tmp_path,
+        20,
+    )
+    assert completed.stdout.strip() == "许可尚未完成核验"
+    code, payload = repro._launch(
+        [
+            sys.executable,
+            "-c",
+            "import json,sys; sys.stdout.buffer.write("
+            "json.dumps({'detail':'模型权重许可尚未完成核验。'}, "
+            "ensure_ascii=False).encode('utf-8'))",
+        ],
+        20,
+    )
+    assert code == 0
+    assert payload is not None
+    assert payload["detail"] == "模型权重许可尚未完成核验。"
 
 
 def test_proc_address_parser_treats_loopback_as_local():
