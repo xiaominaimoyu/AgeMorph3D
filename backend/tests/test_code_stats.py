@@ -3,7 +3,6 @@
 import importlib
 import json
 import os
-import stat
 import subprocess
 import sys
 import threading
@@ -202,11 +201,24 @@ def test_report_stays_in_ignored_directory_and_states_the_limit(tmp_path):
     assert caught.value.exit_code == 6
 
 
-def test_many_large_blobs_do_not_deadlock_cat_file(tmp_path, monkeypatch):
-    """A batch that fills both pipes deadlocks if stdin is written before stdout is read."""
+def test_git_command_honors_override_and_skips_cmd_shims(tmp_path, monkeypatch):
+    chosen = tmp_path / "my-git"
+    chosen.write_text("", encoding="utf-8")
+    monkeypatch.setenv("AGEMORPH_GIT", str(chosen))
+    assert stats.resolve_git_command() == [str(chosen)]
+    monkeypatch.delenv("AGEMORPH_GIT")
     bindir = tmp_path / "bin"
     bindir.mkdir()
-    script = bindir / "cat-file-batch.py"
+    (bindir / "git.cmd").write_text("@echo off\r\n", encoding="utf-8")
+    exe = bindir / "git.exe"
+    exe.write_bytes(b"")
+    found = stats._git_from_path(str(bindir), windows=True)
+    assert found == str(exe)
+
+
+def test_many_large_blobs_do_not_deadlock_cat_file(tmp_path):
+    """A batch that fills both pipes deadlocks if stdin is written before stdout is read."""
+    script = tmp_path / "cat-file-batch.py"
     script.write_text(
         "import sys\n"
         "stdin = sys.stdin.buffer\n"
@@ -223,27 +235,21 @@ def test_many_large_blobs_do_not_deadlock_cat_file(tmp_path, monkeypatch):
         "stdout.flush()\n",
         encoding="utf-8",
     )
-    git = bindir / "git"
-    git.write_text(
-        '#!/bin/sh\nexec python3 "$(dirname "$0")/cat-file-batch.py"\n',
-        encoding="utf-8",
-    )
-    git.chmod(git.stat().st_mode | stat.S_IEXEC)
-    (bindir / "git.cmd").write_text(
-        f'@echo off\r\n"{sys.executable}" "%~dp0cat-file-batch.py"\r\n',
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("PATH", str(bindir) + os.pathsep + os.environ.get("PATH", ""))
     blobs = [(f"{index:040x}", f"blob-{index}.txt") for index in range(30000)]
     found: list[dict[str, bytes]] = []
+    errors: list[BaseException] = []
 
     def invoke() -> None:
-        found.append(stats._cat_blobs(tmp_path, blobs))
+        try:
+            found.append(stats._cat_blobs(tmp_path, blobs, git=[sys.executable, str(script)]))
+        except BaseException as exc:
+            errors.append(exc)
 
     worker = threading.Thread(target=invoke, daemon=True)
     worker.start()
     worker.join(20)
     assert not worker.is_alive()
+    assert errors == []
     assert len(found) == 1
     assert len(found[0]) == 30000
     assert len(found[0]["blob-0.txt"]) == 2_000_000

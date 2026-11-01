@@ -8,8 +8,11 @@ line counts as original contribution or as a school acceptance.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import io
 import json
+import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -52,15 +55,56 @@ def classify_path(path: str) -> str:
     return "other"
 
 
-def git_read(root: Path, args: Sequence[str], *, text: bool = False) -> subprocess.CompletedProcess:
+def _git_from_path(path: str, *, windows: bool) -> str | None:
+    """Find a git executable. On Windows, skip .cmd/.bat; those mangle binary pipes."""
+    suffixes = [".exe", ".com", ""] if windows else [""]
+    for directory in path.split(os.pathsep):
+        if not directory:
+            continue
+        for suffix in suffixes:
+            candidate = Path(directory) / f"git{suffix}"
+            if not candidate.is_file():
+                continue
+            if candidate.name.lower().endswith((".cmd", ".bat")):
+                continue
+            return str(candidate)
+    return None
+
+
+def resolve_git_command() -> list[str]:
+    """Return the git argv prefix. AGEMORPH_GIT wins; otherwise search PATH once."""
+    override = os.environ.get("AGEMORPH_GIT", "").strip().strip('"')
+    if override:
+        return [override]
+    if os.name == "nt":
+        found = _git_from_path(os.environ.get("PATH", ""), windows=True)
+    else:
+        found = shutil.which("git")
+        if found and found.lower().endswith((".cmd", ".bat")):
+            found = None
+    if not found:
+        raise CodeStatsError(
+            "GIT_NOT_FOUND",
+            "未找到 git。可设置 AGEMORPH_GIT 指向 git 可执行文件。",
+            1,
+        )
+    return [found]
+
+
+def git_read(
+    root: Path,
+    args: Sequence[str],
+    *,
+    text: bool = False,
+    git: Sequence[str] | None = None,
+) -> subprocess.CompletedProcess:
     if not args or args[0] not in READ_ONLY_GIT:
         raise CodeStatsError("GIT_WRITE_FORBIDDEN", "代码统计只运行只读 git 命令。", 1)
-    return subprocess.run(
-        ["git", "-C", str(root), *args],
-        check=False,
-        capture_output=True,
-        text=text,
-    )
+    command = list(git) if git is not None else resolve_git_command()
+    options: dict[str, object] = {"check": False, "capture_output": True}
+    if text:
+        options.update(text=True, encoding="utf-8", errors="replace")
+    return subprocess.run([*command, "-C", str(root), *args], **options)
 
 
 def _require_repo(root: Path) -> str:
@@ -86,13 +130,16 @@ def _list_blobs(root: Path, revision: str) -> list[tuple[str, str]]:
     return blobs
 
 
-def _cat_blobs(root: Path, blobs: Sequence[tuple[str, str]]) -> dict[str, bytes]:
+def _cat_blobs(
+    root: Path, blobs: Sequence[tuple[str, str]], git: Sequence[str] | None = None
+) -> dict[str, bytes]:
     """Read blobs with one communicate() so a full stdout pipe cannot stall stdin."""
     if not blobs:
         return {}
+    command = list(git) if git is not None else resolve_git_command()
     payload = b"".join(f"{blob}\n".encode("ascii") for blob, _path in blobs)
     completed = subprocess.run(
-        ["git", "-C", str(root), "cat-file", "--batch"],
+        [*command, "-C", str(root), "cat-file", "--batch"],
         input=payload,
         capture_output=True,
         check=False,
@@ -445,7 +492,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_stdio() -> None:
+    """Keep Chinese errors readable when the console code page is GBK."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        with contextlib.suppress(AttributeError, OSError, ValueError):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _configure_stdio()
     args = build_parser().parse_args(list(argv) if argv is not None else None)
     root = (project_root() if args.root is None else args.root).expanduser().resolve()
     if not root.is_dir():
@@ -471,6 +529,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    _configure_stdio()
     try:
         raise SystemExit(main())
     except CodeStatsError as error:
