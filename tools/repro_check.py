@@ -392,6 +392,18 @@ def command_exists(command: str) -> bool:
     return "/" not in command and "\\" not in command and _which(command) is not None
 
 
+def _child_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Copy an environment and force Python children to use UTF-8 stdio.
+
+    A piped CPython on Windows otherwise writes GBK while this checker decodes UTF-8.
+    """
+    source = os.environ if base is None else base
+    env = {key: value for key, value in source.items() if "\0" not in key and "\0" not in value}
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    return env
+
+
 def run_text(argv: Sequence[str], cwd: Path, timeout: float) -> subprocess.CompletedProcess[str]:
     stem = Path(str(argv[0])).stem.lower()
     version_query = stem == "uv" and list(argv[1:]) == ["--version"]
@@ -404,6 +416,7 @@ def run_text(argv: Sequence[str], cwd: Path, timeout: float) -> subprocess.Compl
         capture_output=True,
         timeout=timeout,
         check=False,
+        env=_child_env(),
         **_TEXT_CAPTURE,
     )
 
@@ -1131,7 +1144,7 @@ def _bring_up_loopback() -> None:
 
 
 def _offline_env(base: Mapping[str, str]) -> dict[str, str]:
-    env = {key: value for key, value in base.items() if "\0" not in key and "\0" not in value}
+    env = _child_env(base)
     for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
         env.pop(key, None)
     env.update(
