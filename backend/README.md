@@ -17,7 +17,17 @@ $env:AGEMORPH_NODE = 'D:\JAVA run tools\node.exe'
 .\tools\local-run.ps1 stop
 ```
 
-`diagnose` 只转交下面的只读诊断。相对清单路径按项目根目录解析，不按 `backend\` 解析。当前研究清单预期退出码 1，阻塞应仍是 unresolved 登记。详细边界见[开发记录](../docs/本机统一运行入口开发记录.md)。原来分开开两个终端的命令仍然可用。
+`diagnose` 只转交下面的只读诊断。相对清单路径按项目根目录解析，不按 `backend\` 解析。当前研究清单预期退出码 1，阻塞应仍是 unresolved 登记。
+
+生产运行方式不使用 Vite 开发服务器。它用已安装依赖构建 `frontend/dist`，再在 `http://127.0.0.1:4173` 提供这些静态文件；API 仍是 `http://127.0.0.1:8000`。页面来源 4173 已在服务允许列表中，所以不必改 API。
+
+```powershell
+.\tools\local-run.ps1 start --production `
+  --detector-manifest 'data\models\yolov5n05-face\manifest.json' `
+  --reconstructor-manifest 'data\models\3ddfa-v2\manifest.json'
+```
+
+带上清单也不会把登记改成 verified，年龄接口仍返回 `MODEL_NOT_READY`。详细边界见[开发记录](../docs/本机统一运行入口开发记录.md)。原来分开开两个终端的命令仍然可用。开发入口 `.\tools\local-run.ps1 start` 仍启动 5173 上的 Vite。
 
 2026-10-29新增只读模型诊断。可在启动服务前核对登记、角色、每个文件的完整性；它不加载模型或授予ready。下面命令从项目根目录运行，或在`backend/`目录相应调整相对路径：
 
