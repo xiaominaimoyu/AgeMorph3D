@@ -317,6 +317,13 @@ def test_runtime_accepts_other_python_3_11_patch(tmp_path, monkeypatch):
     assert report["python_runtime"] == "3.11.18"
 
 
+def test_runtime_records_actual_interpreter_patch_not_a_literal(tmp_path, monkeypatch):
+    monkeypatch.setattr(data.sys, "version", "3.11.16 (main, Jan 1 2026, 00:00:00)")
+    report = run(make_case(tmp_path))
+    assert report["python_runtime"] == data.sys.version.split()[0]
+    assert report["python_runtime"] == "3.11.16"
+
+
 def test_legacy_patch_pin_is_not_the_frozen_contract(tmp_path):
     case = make_case(tmp_path)
     case["plan"]["fingerprint_contract"]["environment"]["python_version"] = "3.11.16"
