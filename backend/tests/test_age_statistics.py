@@ -3,6 +3,7 @@
 import json
 
 import pytest
+
 from agemorph3d.age_statistics import aggregate_identity_metrics, longitudinal_pairs
 
 

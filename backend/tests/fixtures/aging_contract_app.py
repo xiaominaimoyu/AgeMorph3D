@@ -16,6 +16,11 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import numpy as np
+from fastapi import FastAPI, Request
+from PIL import Image
+from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse, Response
+
 from agemorph3d.aging_sessions import (
     AgingCoordinator,
     AgingSessionCache,
@@ -29,10 +34,6 @@ from agemorph3d.errors import ApiError
 from agemorph3d.middleware import LocalRequestMiddleware
 from agemorph3d.schemas import AgingRequest
 from agemorph3d.static_mesh import _encode_glb, build_static_mesh
-from fastapi import FastAPI, Request
-from PIL import Image
-from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse, Response
 
 
 def _windows_parent_monitor():
@@ -362,6 +363,7 @@ def create_app() -> FastAPI:
     @app.get("/_contract/production-probe")
     async def production_probe():
         import httpx
+
         from agemorph3d.app import create_app as production_app
 
         production = production_app(Settings())

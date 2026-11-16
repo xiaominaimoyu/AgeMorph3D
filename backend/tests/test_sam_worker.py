@@ -10,8 +10,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-import agemorph3d.sam_worker as worker_module
 import pytest
+from PIL import Image
+
+import agemorph3d.sam_worker as worker_module
 from agemorph3d.aging_sessions import (
     AgingCoordinator,
     AgingSessionCache,
@@ -20,7 +22,6 @@ from agemorph3d.aging_sessions import (
 )
 from agemorph3d.errors import ApiError
 from agemorph3d.sam_worker import MAX_STDERR_BYTES, SamWorkerClient, SamWorkerError
-from PIL import Image
 
 
 @pytest.fixture

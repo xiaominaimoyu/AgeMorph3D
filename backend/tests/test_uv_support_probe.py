@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
 from agemorph3d.age_geometry import source_frame
 from agemorph3d.tddfa import TddfaResult, project_vertices
 

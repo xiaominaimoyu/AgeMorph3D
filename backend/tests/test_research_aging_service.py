@@ -6,6 +6,7 @@ import threading
 from dataclasses import replace
 
 import pytest
+
 from agemorph3d.aging_sessions import (
     AgingSessionCache,
     SessionCapacityError,

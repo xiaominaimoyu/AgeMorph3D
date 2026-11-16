@@ -10,9 +10,10 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from PIL import Image
+
 from agemorph3d.model_assets import ModelAssetError
 from agemorph3d.tddfa import TddfaResult
-from PIL import Image
 
 _PATH = Path(__file__).resolve().parents[2] / "tools/age_refit_probe.py"
 _SPEC = importlib.util.spec_from_file_location("age_refit_probe", _PATH)

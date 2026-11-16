@@ -4,6 +4,7 @@ import json
 from dataclasses import FrozenInstanceError
 
 import pytest
+
 from agemorph3d.g3_acceptance import (
     CHECK_IDS,
     COMMON_REQUIREMENTS,

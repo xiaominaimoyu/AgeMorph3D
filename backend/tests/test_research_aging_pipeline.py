@@ -13,6 +13,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from PIL import Image
+
 from agemorph3d import research_aging_pipeline as pipeline
 from agemorph3d.aging_sessions import AgingCoordinator, AgingSessionCache, SessionCapacityError
 from agemorph3d.asset_cache import AssetCache, AssetCacheClosed, AssetCapacityError
@@ -20,7 +22,6 @@ from agemorph3d.errors import ApiError
 from agemorph3d.sam_worker import SamGeneration, SamWorkerClient
 from agemorph3d.schemas import SourceAge
 from agemorph3d.tddfa import TddfaResult
-from PIL import Image
 
 UNKNOWN = {"value": None, "method": "unknown", "calibration_id": None}
 KNOWN = {"value": 42.5, "method": "user", "calibration_id": None}

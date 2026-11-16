@@ -10,8 +10,9 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from agemorph3d.tddfa import TddfaResult
 from PIL import Image
+
+from agemorph3d.tddfa import TddfaResult
 
 _PATH = Path(__file__).resolve().parents[2] / "tools/target_uv_probe.py"
 _SPEC = importlib.util.spec_from_file_location("target_uv_probe", _PATH)

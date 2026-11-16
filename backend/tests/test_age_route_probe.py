@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+
 from agemorph3d.age_geometry import source_frame
 from agemorph3d.tddfa import TddfaResult
 

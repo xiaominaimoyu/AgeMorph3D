@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event
 
 import pytest
+
 from agemorph3d.asset_cache import (
     AssetCache,
     AssetCacheClosed,

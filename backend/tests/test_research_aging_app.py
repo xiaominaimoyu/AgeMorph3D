@@ -12,6 +12,7 @@ from dataclasses import replace
 
 import httpx
 import pytest
+
 from agemorph3d.aging_sessions import SessionResult
 from agemorph3d.config import Settings
 from agemorph3d.errors import ApiError
@@ -563,9 +564,10 @@ async def test_real_service_does_not_publish_after_asgi_already_observed_disconn
     the public service waiter resumes, while _connected has not resumed to cancel
     that waiter yet. A transport fake that only observes cancelled tasks misses it.
     """
+    from test_research_aging_service import SyntheticBuilder, SyntheticProcessor
+
     from agemorph3d.aging_sessions import AgingSessionCache
     from agemorph3d.research_aging_service import ResearchAgingService
-    from test_research_aging_service import SyntheticBuilder, SyntheticProcessor
 
     events = []
 

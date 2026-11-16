@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from agemorph3d import age_statistics
 from agemorph3d import evaluation_metrics as metrics
 

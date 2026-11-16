@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from agemorph3d import model_diagnostics as diagnostics
 
 
