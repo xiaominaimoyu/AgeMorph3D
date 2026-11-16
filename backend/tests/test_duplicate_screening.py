@@ -308,6 +308,20 @@ def test_runtime_environment_drift_rejects(tmp_path, monkeypatch):
         run(case)
 
 
+def test_runtime_accepts_other_python_3_11_patch(tmp_path, monkeypatch):
+    monkeypatch.setattr(data.sys, "version", "3.11.18 (main, Jan 1 2026, 00:00:00)")
+    report = run(make_case(tmp_path))
+    assert report["status"] == "passed"
+    assert report["fingerprint_contract"]["environment"]["python_version"] == "3.11.*"
+
+
+def test_legacy_patch_pin_is_not_the_frozen_contract(tmp_path):
+    case = make_case(tmp_path)
+    case["plan"]["fingerprint_contract"]["environment"]["python_version"] = "3.11.16"
+    with pytest.raises(ValueError, match="FINGERPRINT_CONTRACT_MISMATCH"):
+        run(case)
+
+
 def test_repinned_algorithm_must_match_running_code(tmp_path):
     case = make_case(tmp_path)
     path = tmp_path / data.ALGORITHM_SOURCES[0]

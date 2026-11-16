@@ -272,8 +272,7 @@ def screen(root, plan_name, plan_sha256, output):
         "FINGERPRINT_CONTRACT_MISMATCH",
     )
     require(
-        {"python_version": sys.version.split()[0], "pillow_version": PILLOW_VERSION}
-        == retrieval.ENVIRONMENT,
+        retrieval.environment_matches(sys.version.split()[0], PILLOW_VERSION),
         "FINGERPRINT_ENVIRONMENT_MISMATCH",
     )
     sources = plan["algorithm_sources"]

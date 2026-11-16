@@ -29,7 +29,35 @@ SOURCES = (
 )
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_PIXELS = 16000000
-ENVIRONMENT = {"python_version": "3.11.16", "pillow_version": "13.0.0"}
+# Python follows the lock-file family (==3.11.*). Image hashes depend on
+# Pillow's decoder and resampler, so Pillow stays at the locked 13.0.0.
+ENVIRONMENT = {"python_version": "3.11.*", "pillow_version": "13.0.0"}
+
+
+def python_version_matches(version: str, constraint: str) -> bool:
+    """Return whether a concrete interpreter version satisfies a frozen constraint.
+
+    A constraint ending in '.*' accepts that major.minor family, including the
+    bare prefix (for example '3.11.*' matches '3.11' and '3.11.18'). Any other
+    constraint requires an exact string match.
+    """
+    if not version:
+        return False
+    if constraint.endswith(".*"):
+        prefix = constraint[:-2]
+        return version == prefix or version.startswith(prefix + ".")
+    return version == constraint
+
+
+def environment_matches(python_ver: str | None = None, pillow_ver: str | None = None) -> bool:
+    """True when the running or provided versions satisfy ENVIRONMENT."""
+    python_ver = sys.version.split()[0] if python_ver is None else python_ver
+    pillow_ver = pillow_version if pillow_ver is None else pillow_ver
+    return (
+        python_version_matches(python_ver, ENVIRONMENT["python_version"])
+        and pillow_ver == ENVIRONMENT["pillow_version"]
+    )
+
 FALSE_FLAGS = (
     "images_or_thumbnails_written",
     "candidate_review_complete",
@@ -361,7 +389,7 @@ def build_report(root: Path, plan_path: Path):
         or any(type(value) is not str for value in plan["environment"].values())
     ):
         raise ValueError("Study plan protocol or frozen environment differs.")
-    if {"python_version": sys.version.split()[0], "pillow_version": pillow_version} != ENVIRONMENT:
+    if not environment_matches():
         raise ValueError("Running Python/Pillow environment differs from the frozen environment.")
     inputs = metadata._Inputs(root)
     inputs.read(

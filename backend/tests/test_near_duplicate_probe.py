@@ -430,3 +430,29 @@ def test_output_outside_research_is_rejected(case):
         == 1
     )
     assert not (case["root"] / "docs/near").exists()
+
+
+@pytest.mark.parametrize("version", ["3.11", "3.11.0", "3.11.16", "3.11.18"])
+def test_python_constraint_accepts_any_3_11_patch(version):
+    assert probe.python_version_matches(version, "3.11.*")
+    assert probe.environment_matches(version, "13.0.0")
+
+
+@pytest.mark.parametrize("version", ["", "3.10.16", "3.12.0", "3.12.3"])
+def test_python_constraint_rejects_other_families(version):
+    assert not probe.python_version_matches(version, "3.11.*")
+    assert not probe.environment_matches(version, "13.0.0")
+
+
+def test_pillow_version_remains_exactly_pinned():
+    assert probe.ENVIRONMENT["pillow_version"] == "13.0.0"
+    assert not probe.environment_matches("3.11.18", "12.0.0")
+    assert not probe.environment_matches("3.11.18", "13.0.1")
+
+
+def test_runtime_accepts_current_3_11_interpreter_and_records_family(case, monkeypatch):
+    monkeypatch.setattr(probe.sys, "version", "3.11.18 (main, Jan 1 2026, 00:00:00)")
+    report = run(case)
+    assert report["environment"]["python_version"] == "3.11.*"
+    assert report["environment"]["pillow_version"] == "13.0.0"
+    assert report["screening_status"] == "complete"
