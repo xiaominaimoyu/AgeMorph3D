@@ -454,5 +454,6 @@ def test_runtime_accepts_current_3_11_interpreter_and_records_family(case, monke
     monkeypatch.setattr(probe.sys, "version", "3.11.18 (main, Jan 1 2026, 00:00:00)")
     report = run(case)
     assert report["environment"]["python_version"] == "3.11.*"
+    assert report["environment"]["python_runtime"] == "3.11.18"
     assert report["environment"]["pillow_version"] == "13.0.0"
     assert report["screening_status"] == "complete"

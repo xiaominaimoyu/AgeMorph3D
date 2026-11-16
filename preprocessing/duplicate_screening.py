@@ -361,6 +361,7 @@ def screen(root, plan_name, plan_sha256, output):
             "max_prepared_images": preparation.MAX_IMAGES,
             "max_report_bytes": MAX_JSON,
         },
+        "python_runtime": sys.version.split()[0],
         "codecs": {name: codecs.version(name) for name in ("jpg", "zlib", "webp")},
         "records": rows,
         "pair_ledger": ledger,

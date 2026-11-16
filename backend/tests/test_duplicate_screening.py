@@ -313,6 +313,8 @@ def test_runtime_accepts_other_python_3_11_patch(tmp_path, monkeypatch):
     report = run(make_case(tmp_path))
     assert report["status"] == "passed"
     assert report["fingerprint_contract"]["environment"]["python_version"] == "3.11.*"
+    assert "python_runtime" not in report["fingerprint_contract"]["environment"]
+    assert report["python_runtime"] == "3.11.18"
 
 
 def test_legacy_patch_pin_is_not_the_frozen_contract(tmp_path):

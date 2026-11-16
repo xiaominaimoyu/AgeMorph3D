@@ -58,6 +58,7 @@ def environment_matches(python_ver: str | None = None, pillow_ver: str | None = 
         and pillow_ver == ENVIRONMENT["pillow_version"]
     )
 
+
 FALSE_FLAGS = (
     "images_or_thumbnails_written",
     "candidate_review_complete",
@@ -518,6 +519,7 @@ def build_report(root: Path, plan_path: Path):
         "models_loaded": False,
         "environment": {
             **ENVIRONMENT,
+            "python_runtime": sys.version.split()[0],
             "codecs": {name: features.version(name) for name in ("jpg", "zlib", "webp")},
         },
         "inputs": [inputs.pins[path] for path in sorted(inputs.pins)],
