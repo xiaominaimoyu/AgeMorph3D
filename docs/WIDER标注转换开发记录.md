@@ -1,6 +1,6 @@
 # FG-1 WIDER FACE 标注转换（bbx_gt → YOLO）
 
-2026-11-16 完成 FG-1 合成工程子项：自写解析 `wider_face_<split>_bbx_gt.txt`，经 P02 框边界契约转为 YOLO 标签，并写出 K5 清单与审计。新增 86 项合成测试；完整后端 3006 → 3092 项通过（3 项既有跳过、1 条既有 Starlette 警告），Ruff/格式通过。**未取得、未读取任何真实 WIDER 数据；框端点约定、属性取值与真实文件布局仍待拿到官方文件后核对。**
+2026-11-16 完成 FG-1 合成工程子项：自写解析 `wider_face_<split>_bbx_gt.txt`，经 P02 框边界契约转为 YOLO 标签，并写出 K5 清单与审计。新增 97 项合成测试；完整后端 3006 → 3103 项通过（1 条既有 Starlette 警告）。3 项跳过取决于环境：`test_local_run.py:810` 需设 `AGEMORPH_LOCAL_RUN_LIVE=1`，`test_local_run.py:947` 与 `test_repro_check.py:315` 在没有项目 venv/Vite 时跳过。Ruff check/format 只针对新增的两个文件通过；35c0cd6 全库用 ruff 0.17.1 仍有 17 处既有 I001。**未取得、未读取任何真实 WIDER 数据；框端点约定、属性取值与真实文件布局仍待拿到官方文件后核对。**
 
 代码：[wider_annotations.py](../preprocessing/wider_annotations.py)；测试：[test_wider_annotations.py](../backend/tests/test_wider_annotations.py)。依据数据集方案 v3 §5 第 3 条：WIDER 只下载原始 zip，自己解析 bbx_gt.txt 转 YOLO，不用 Bingsu 的转换版。
 
@@ -15,7 +15,7 @@ cd backend
 & '.venv/Scripts/python.exe' -m pytest tests/test_wider_annotations.py -q
 ```
 
-退出码：0 全部转换且输入稳定；1 有图片级失败或输入变化（报告仍写出）；2 参数/文件整体被拒（不写输出）。输出只能是新的 `output/research/` 目录，拒绝覆盖。
+退出码：0 全部转换且输入稳定；1 有图片级失败或输入变化（报告仍写出）；2 参数/文件整体被拒，不留输出：建目录前的检查（含 sample_id 冲突）直接拒绝；建目录后才发现的 `K5_MANIFEST_TOO_LARGE`、`REPORT_TOO_LARGE` 或意外异常，会先删掉本次新建的输出目录及本次新建的空父目录，再拒绝，已存在的目录和其他内容不动。输出只能是新的 `output/research/` 目录，拒绝覆盖。
 
 ## 2. 解析契约（整文件严格）
 
@@ -34,7 +34,7 @@ cd backend
 
 框按 P02 `xywh_edges` 解释为像素边界 `[x1, x1+w)`，调用 `annotation_transform.box`，与 P02 同用画幅限制（每边 ≤ 8192，面积 ≤ 16,777,216）。YOLO 行为 `0 cx cy w h`，按图像宽高归一化，保留 6 位小数。写出的文本会重新解析、还原到像素并再归一化；任一坐标误差超过 0.5 px 则该图失败（`ROUNDTRIP_ERROR_EXCEEDED`）。
 
-图片只读头部取尺寸并逐字节哈希，不解码像素；只接受 JPEG/PNG，EXIF 方向不为 1 时该图失败（标注按存储像素给出，旋转会静默错位）。结束时重核 GT 和全部已登记图片的指纹，有变化则 `inputs_stable=false`。
+图片只读头部取尺寸并逐字节哈希，不解码像素；`Image.open` 限定 `formats=["JPEG","PNG"]`，其他格式（即使后缀是 .jpg）不会被探测，记为 `IMAGE_UNREADABLE`；EXIF 方向不为 1 时该图失败（标注按存储像素给出，旋转会静默错位）。结束时重核 GT 和全部已登记图片的指纹，有变化则 `inputs_stable=false`。
 
 ## 4. K5 与划分
 
@@ -46,7 +46,17 @@ cd backend
 
 ## 6. 局限
 
-- `x1+w` 为右边界（而非 `x1+w-1`）是常见约定，尚未在官方文件和图片上目视核对，报告中 `box_convention_verified_on_real_data=false`。
+- 右边界取 `x1+w`（像素边界，与 P02 `xywh_edges` 一致）。官方 readme 未规定端点；wondervictor/WiderFace-Evaluation 先算 x+w，再在面积和 IoU 里 +1。报告保持 `box_convention_verified_on_real_data=false`。
 - WIDER 官方 AP 评测应使用官方 eval 工具和 `wider_face_val.mat`（含 easy/medium/hard 与忽略框），不能用本工具的 val YOLO 标签代替。
 - K5 清单超过 `archive_preparation` 等 32 条工程小样工具的预算，正式批量接入需等数据入口评审后另行适配。
 - 报告逐脸记录全部决策，训练集约 16 万脸时报告体积较大（上限 512 MiB）。
+
+## 7. RN-3（取得真实数据后）的后续核对
+
+1. 统计“格式错误整文件拒绝”在官方 train/val 文件上是否命中、命中几处；若命中，记录行号与原因后再决定是否放宽，不自动跳过。
+2. 统计 EXIF 方向 ≠ 1 导致的逐图失败数量。
+3. 对小脸目视抽查叠加，确认 `x1+w` 右边界约定，再考虑把 `box_convention_verified_on_real_data` 改为 true。
+
+## 8. 提交与署名
+
+本批三个本地提交暂以 `Forge (AI agent)` 署名，未推送。推送或开 PR 前由用户决定署名；Sentinel 建议保留 AI 来源（保留 AI 作者，或用户署名并加 Co-authored-by），避免 `tools/code_stats.py` 把它计为个人贡献（与 L03 冲突）。RULES 第 14 行要求先确认精确文件清单再做 Git 操作：这几个本地提交的文件清单**事先没有经用户逐一确认**，清单见 `/workspace/AgeMorph3D_tasks/FG-1_说明.md`，请用户补确认。

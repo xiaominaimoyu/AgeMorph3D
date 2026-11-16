@@ -22,7 +22,7 @@
 
 P02[坐标准备](docs/框与关键点坐标转换开发记录.md)已在`preprocessing/annotation_transform.py`实现：绑定D06报告/K5/标注计划 → EXIF+整数裁剪缩放 → 点中心/框边界各自变换及逆 → 新忽略目录的PNG、SVG/HTML与完整请求报告。51新增/完整2677后端、独立CLI和Chrome/Edge各6页通过；不增加NumPy/模型依赖，已有FFHQ/SAM和生产路径未改。
 
-FG-1[WIDER标注转换](docs/WIDER标注转换开发记录.md)在`preprocessing/wider_annotations.py`实现：绑定bbx_gt哈希 → 严格逐块解析 → invalid丢弃/blur阈值/越界裁剪经P02框边界契约 → 6位小数YOLO标签及0.5px往返守卫 → K5清单（use=unassigned）、审计与逐脸报告。只读图片头和哈希，不分配划分；86项合成测试，未接触真实数据。
+FG-1[WIDER标注转换](docs/WIDER标注转换开发记录.md)在`preprocessing/wider_annotations.py`实现：绑定bbx_gt哈希 → 严格逐块解析 → invalid丢弃/blur阈值/越界裁剪经P02框边界契约 → 6位小数YOLO标签及0.5px往返守卫 → K5清单（use=unassigned）、审计与逐脸报告。只读图片头和哈希，不分配划分，整体拒绝时清除本次新建的输出目录；97项合成测试，未接触真实数据。
 
 D06[归档接续](docs/归档解压与逐图核验开发记录.md)已在`preprocessing/archive_preparation.py`实现：固定取得收据/归档/K5 → 全成员路径/类型/体积预检 → 新忽略目录的原始文件/清单 → 显式图像解码/EXIF矩阵与独立PNG → 保留接触史的K5副本和独立报告。83新增及完整2626后端通过，已有取得/K5核心和生产服务未改。
 

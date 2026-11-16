@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import sys
 import warnings
 from datetime import UTC, datetime
@@ -235,7 +236,8 @@ def _image_info(path):
     count, digest = acquisition._hash_file(path, MAX_IMAGE_BYTES)
     with warnings.catch_warnings():
         warnings.simplefilter("error", Image.DecompressionBombWarning)
-        with Image.open(path) as image:  # header only; pixels are not decoded
+        # Header only; pixels are not decoded. Other formats are never probed.
+        with Image.open(path, formats=["JPEG", "PNG"]) as image:
             fmt, size = image.format, [*image.size]
             orientation = image.getexif().get(0x0112)
     return {"bytes": count, "sha256": digest.hexdigest()}, fmt, size, orientation
@@ -297,17 +299,57 @@ def convert(root, gt_name, gt_sha256, images_dir, split, output, *, max_blur=2):
     except UnicodeError as error:
         raise Error("GT_NOT_UTF8") from error
     entries = parse_bbx_gt(text)
+    sample_ids = [_sample_id(split, entry["image"]) for entry in entries]
+    require(len(set(sample_ids)) == len(sample_ids), "SAMPLE_ID_COLLISION")
     target = safe(root, output)
     require(
         output.startswith("output/research/") and not target.exists(),
         "OUTPUT_MUST_BE_NEW_IGNORED_DIRECTORY",
     )
+    created = target
+    while not created.parent.exists():
+        created = created.parent
     target.mkdir(parents=True, exist_ok=False)
-    rows, records, sample_ids = [], [], set()
-    for entry in entries:
-        sample_id = _sample_id(split, entry["image"])
-        require(sample_id not in sample_ids, "SAMPLE_ID_COLLISION")
-        sample_ids.add(sample_id)
+    try:
+        return _run(
+            root,
+            gt_name,
+            gt_sha256,
+            gt_path,
+            body,
+            images_dir,
+            split,
+            output,
+            entries,
+            sample_ids,
+            max_blur,
+        )
+    except BaseException:
+        # A rejection leaves nothing behind: remove only what this run created.
+        shutil.rmtree(target, ignore_errors=True)
+        path = target.parent
+        while path != created.parent and path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
+            path = path.parent
+        raise
+
+
+def _run(
+    root,
+    gt_name,
+    gt_sha256,
+    gt_path,
+    body,
+    images_dir,
+    split,
+    output,
+    entries,
+    sample_ids,
+    max_blur,
+):
+    """Convert after the output directory exists; any raise is cleaned up by convert()."""
+    rows, records = [], []
+    for entry, sample_id in zip(entries, sample_ids, strict=True):
         image_name = images_dir + "/" + entry["image"]
         row = {
             "sample_id": sample_id,

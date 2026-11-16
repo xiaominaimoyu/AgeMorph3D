@@ -535,3 +535,67 @@ def test_cli_runs_as_module(tmp_path):
     )
     assert completed.returncode == 0, completed.stderr
     assert json.loads(completed.stdout)["summary"]["faces_kept"] == 4
+
+
+# --- rejection leaves no output (Sentinel MINOR-1/2) ---------------------------
+
+
+def _reject_sample_ids(monkeypatch):
+    monkeypatch.setattr(wider, "_sample_id", lambda split, image: "wider-train:same")
+    return "SAMPLE_ID_COLLISION"
+
+
+def _reject_manifest_size(monkeypatch):
+    monkeypatch.setattr(metadata, "MAX_JSON_BYTES", 100)
+    return "K5_MANIFEST_TOO_LARGE"
+
+
+def _reject_report_size(monkeypatch):
+    monkeypatch.setattr(wider, "MAX_REPORT_BYTES", 100)
+    return "REPORT_TOO_LARGE"
+
+
+@pytest.mark.parametrize(
+    "arrange", [_reject_sample_ids, _reject_manifest_size, _reject_report_size]
+)
+@pytest.mark.parametrize("research_exists", [False, True])
+def test_late_rejection_leaves_no_output_directory(tmp_path, monkeypatch, arrange, research_exists):
+    digest = build(tmp_path)
+    keep = tmp_path / "output/research/other/keep.txt"
+    if research_exists:
+        keep.parent.mkdir(parents=True)
+        keep.write_text("not ours")
+    code = arrange(monkeypatch)
+    with pytest.raises(wider.Error, match=code):
+        run(tmp_path, digest)
+    assert not (tmp_path / OUTPUT).exists()
+    if research_exists:
+        assert keep.read_text() == "not ours"
+    else:
+        assert not (tmp_path / "output").exists()
+    assert wider.main(cli(tmp_path, "--gt-sha256", digest)) == 2
+    assert not (tmp_path / OUTPUT).exists()
+
+
+def test_unexpected_error_after_mkdir_is_cleaned_up(tmp_path, monkeypatch):
+    digest = build(tmp_path)
+
+    def boom(*args, **kwargs):
+        raise TypeError("unexpected")
+
+    monkeypatch.setattr(wider, "convert_faces", boom)
+    with pytest.raises(TypeError):
+        run(tmp_path, digest)
+    assert not (tmp_path / "output").exists()
+
+
+@pytest.mark.parametrize("fmt", ["GIF", "BMP", "TIFF", "WEBP"])
+def test_non_jpeg_png_content_is_not_decoded_even_with_image_suffix(tmp_path, fmt):
+    digest = build(tmp_path)
+    path = tmp_path / IMAGES / "0--Parade/0_Parade_Parade_0_2.jpg"
+    Image.new("RGB", (64, 48)).save(path, format=fmt)
+    with pytest.raises(OSError):
+        wider._image_info(path)
+    report = run(tmp_path, digest)
+    assert [r["error_code"] for r in report["records"]] == [None, "IMAGE_UNREADABLE", None]
+    assert report["records"][1]["image_size"] is None
