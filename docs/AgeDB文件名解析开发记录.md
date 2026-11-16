@@ -6,21 +6,25 @@
 
 ## 1. 运行（只在用户本机）
 
+CLI **默认拒绝运行**，必须显式传入 `--local-only-ack` 才会执行。未传时退出码 2、向 stderr 说明原因，不写任何文件。传入后启动时向 stderr 打印醒目警告「含文件名的输出仅限用户本机」。
+
 ```powershell
 & 'backend/.venv/Scripts/python.exe' -m preprocessing.agedb_filenames --help
 & 'backend/.venv/Scripts/python.exe' -m preprocessing.agedb_filenames `
+  --local-only-ack `
   --images-dir data/datasets/agedb --output-dir output/research/agedb-stats-v1
 ```
 
-脚本只读文件夹，不接收也不需要解压密码（用户自己解压）。退出码：0 全部文件名合法、图片头可读且输入在运行中未变；1 有被拒文件名、读不了的图片或输入变化（输出照常写出，需要人工看 `rejected.json`）；2 整体拒绝（参数/路径非法、输出目录已存在、没有任何合法文件、超出预算等），不留任何输出：所有读取、哈希和 JSON 组装都在建目录之前完成，写文件中途出错会删掉本次新建的输出目录及本次新建的空父目录。
+脚本只读文件夹，不接收也不需要解压密码（用户自己解压）。退出码：0 全部文件名合法、图片头可读且输入在运行中未变；1 有被拒文件名、读不了的图片或输入变化（输出照常写出，需要人工看 `rejected.json`）；2 整体拒绝（未传 `--local-only-ack`、参数/路径非法、输出目录已存在、没有任何合法文件、超出预算等），不留任何输出：所有读取、哈希和 JSON 组装都在建目录之前完成，写文件中途出错会删掉本次新建的输出目录及本次新建的空父目录。
 
 输出（新的 `output/research/` 目录，已被 .gitignore 忽略）：
 
 | 文件 | 内容 | 能否离开本机 |
 |---|---|---|
 | `stats.json` | 只有汇总数字、拒绝原因计数、清点哈希、运行环境（Python 实际补丁号、Pillow 版本）和标志位；不含文件名、人名、图片编号或身份编号 | 设计上只含汇总，但正式回传仍走 FG-8 的 `summary.json` 白名单，回传前用户自己看一眼 |
-| `rejected.json` | 每个被拒条目的相对路径和原因 | 不能（含文件名） |
-| `manifest.json` / `audit.json` | K5 清单与 `audit_manifest` 结果 | 不能（含文件名） |
+| `rejected.json` | 每个被拒条目的相对路径和原因；顶层带 `local_only: true` | 不能（含文件名） |
+| `audit.json` | `audit_manifest` 结果，属外层报告，顶层带 `local_only: true` | 不能（含文件名/样本编号） |
+| `manifest.json` | K5 清单，**保持 K5 字段结构不变**，不加 `local_only` | 不能（含文件名） |
 
 ## 2. 解析契约
 

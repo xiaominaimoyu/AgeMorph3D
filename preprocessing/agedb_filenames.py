@@ -1,6 +1,8 @@
 """AgeDB official filename parsing, local-folder statistics and a K5 metadata ledger.
 
 Run from the project root: python -m preprocessing.agedb_filenames --help
+The CLI refuses to run unless ``--local-only-ack`` is passed. On start it warns
+that filename-containing outputs stay on the user's machine only.
 Dataset plan v3 §4 item 4 ("§4.4"): recount the §2-A figures from the official
 ``<id>_<name>_<age>_<gender>.jpg`` names. Meant to run only on the user's own machine
 over the locally extracted official folder. Images are header-read and hashed, never
@@ -8,7 +10,9 @@ decoded, uploaded or assigned to a split. No network, model inference or trainin
 
 Outputs (one new ``output/research/`` directory, written only after every check passed):
 ``stats.json`` aggregates only (no file names, person names or image IDs);
-``rejected.json``, ``manifest.json`` and ``audit.json`` contain file names and stay local.
+``rejected.json`` and ``audit.json`` contain file names, are marked ``local_only``
+and stay local; ``manifest.json`` is the K5 ledger (also contains file names, stays
+local) and keeps the unchanged K5 field set — no ``local_only`` key is added there.
 """
 
 from __future__ import annotations
@@ -371,6 +375,8 @@ def build(root, images_dir):
         }
     )
     audit = metadata.audit_manifest(manifest)
+    # Outer report marker only. Do not add fields to the K5 manifest (strict schema).
+    audit["local_only"] = True
     manifest_body = metadata._encode(manifest)
     # Keep the K5 packet loadable by the dataset_manifest CLI budget.
     require(len(manifest_body) <= metadata.MAX_JSON_BYTES, "K5_MANIFEST_TOO_LARGE")
@@ -469,12 +475,40 @@ def export(root, images_dir, output):
     return {**stats, "output_dir": output}
 
 
+LOCAL_ONLY_WARNING = "含文件名的输出仅限用户本机"
+LOCAL_ONLY_ACK_REQUIRED = "LOCAL_ONLY_ACK_REQUIRED"
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=(
+            "未传入 --local-only-ack 时拒绝运行且不写任何文件。"
+            "含文件名的输出（rejected.json、audit.json、manifest.json）仅限用户本机。"
+        ),
+    )
     parser.add_argument("--root", default=".")
     parser.add_argument("--images-dir", required=True, help="e.g. data/datasets/agedb")
     parser.add_argument("--output-dir", required=True, help="new output/research/... directory")
+    parser.add_argument(
+        "--local-only-ack",
+        action="store_true",
+        help=(
+            "必须显式传入才会执行。确认含文件名的输出仅限用户本机、不得外传。"
+            "未传此参数时拒绝运行且不写任何文件。"
+        ),
+    )
     args = parser.parse_args(argv)
+    if not args.local_only_ack:
+        print(
+            "拒绝执行：未传入 --local-only-ack。"
+            "本工具会写出含文件名的本机专用报告，默认禁止运行。"
+            "请仅在用户本机确认后显式传入 --local-only-ack。",
+            file=sys.stderr,
+        )
+        print(json.dumps({"status": "rejected", "error_code": LOCAL_ONLY_ACK_REQUIRED, **FLAGS}))
+        return 2
+    print(f"==========\n{LOCAL_ONLY_WARNING}\n==========", file=sys.stderr)
     try:
         stats = export(args.root, args.images_dir, args.output_dir)
     except (ValueError, OSError, KeyError, TypeError) as error:

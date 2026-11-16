@@ -66,8 +66,11 @@ def load(root, leaf, output=OUTPUT):
     return json.loads((root / output / leaf).read_text(encoding="utf-8"))
 
 
-def cli(root, output=OUTPUT):
-    return ["--root", str(root), "--images-dir", IMAGES, "--output-dir", output]
+def cli(root, output=OUTPUT, *, ack=True):
+    args = ["--root", str(root), "--images-dir", IMAGES, "--output-dir", output]
+    if ack:
+        args.append("--local-only-ack")
+    return args
 
 
 # --- filename parsing ------------------------------------------------------------
@@ -639,7 +642,58 @@ def test_cli_runs_as_module(tmp_path):
         check=False,
     )
     assert completed.returncode == 0, completed.stderr
+    assert agedb.LOCAL_ONLY_WARNING in completed.stderr
     assert json.loads(completed.stdout)["summary"]["identities"] == 3
+
+
+def test_cli_refuses_without_local_only_ack_and_writes_nothing(tmp_path, capsys):
+    build(tmp_path)
+    assert agedb.main(cli(tmp_path, ack=False)) == 2
+    captured = capsys.readouterr()
+    assert "--local-only-ack" in captured.err
+    assert "拒绝执行" in captured.err
+    printed = json.loads(captured.out)
+    assert printed == {
+        "status": "rejected",
+        "error_code": agedb.LOCAL_ONLY_ACK_REQUIRED,
+        **agedb.FLAGS,
+    }
+    assert not (tmp_path / "output").exists()
+
+
+def test_cli_prints_local_only_warning_when_ack_given(tmp_path, capsys):
+    build(tmp_path)
+    assert agedb.main(cli(tmp_path)) == 0
+    captured = capsys.readouterr()
+    assert agedb.LOCAL_ONLY_WARNING in captured.err
+    assert json.loads(captured.out)["status"] == "passed"
+
+
+def test_cli_help_lists_required_ack_and_does_not_run(capsys):
+    with pytest.raises(SystemExit) as exc:
+        agedb.main(["--help"])
+    assert exc.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--local-only-ack" in help_text
+    assert "未传入" in help_text
+    assert "不写任何文件" in help_text
+
+
+def test_outer_reports_mark_local_only_k5_manifest_unchanged(tmp_path):
+    build(tmp_path)
+    run(tmp_path)
+    rejected = load(tmp_path, "rejected.json")
+    audit = load(tmp_path, "audit.json")
+    manifest = load(tmp_path, "manifest.json")
+    assert rejected["local_only"] is True
+    assert audit["local_only"] is True
+    assert "local_only" not in manifest
+    validated = metadata.validate_manifest(manifest)
+    assert "local_only" not in validated
+    assert validated["schema_id"] == metadata.SCHEMA
+    assert validated["manifest_id"] == "agedb-official-filenames-v1"
+    # stats.json is aggregate-only (no filenames); it is not a filename-bearing outer report
+    assert "local_only" not in load(tmp_path, "stats.json")
 
 
 def test_source_has_no_network_pickle_eval_or_split_assignment():
