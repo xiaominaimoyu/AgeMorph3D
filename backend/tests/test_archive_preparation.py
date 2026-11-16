@@ -1085,6 +1085,22 @@ def test_every_tar_member_passes_data_filter_in_scan_and_extract(tmp_path, monke
     assert {destination for _, destination in seen} == {tmp_path / OUTPUT / "files"}
 
 
+@pytest.mark.parametrize("kind", ["tar", "tar_gz"])
+def test_missing_tar_data_filter_refuses_with_explicit_code(tmp_path, monkeypatch, kind):
+    """Python < 3.11.4 has no ``tarfile.data_filter``: refuse, never silently skip it."""
+    case = make_case(tmp_path, kind)
+    monkeypatch.delattr(tarfile, "data_filter")
+    with pytest.raises(data.Error, match="TAR_DATA_FILTER_UNAVAILABLE"):
+        data.tar_data_filter(tarfile.TarInfo("ok.txt"), tmp_path / "dest")
+    assert_rejected_cleanly(case, "TAR_DATA_FILTER_UNAVAILABLE")
+
+
+def test_zip_does_not_need_tar_data_filter(tmp_path, monkeypatch):
+    case = make_case(tmp_path)
+    monkeypatch.delattr(tarfile, "data_filter")
+    assert run(case)["status"] == "passed"
+
+
 def test_zip_member_failure_leaves_no_staging_part(tmp_path):
     case = make_case(tmp_path)
 

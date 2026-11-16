@@ -149,8 +149,11 @@ def tar_data_filter(info, destination):
     the repository's own type, name and size checks during both scan and extraction.
     """
     require(destination is not None, "TAR_FILTER_DESTINATION_REQUIRED")
+    # tarfile.data_filter exists from Python 3.11.4; an older 3.11 must refuse, not skip it.
+    data_filter = getattr(tarfile, "data_filter", None)
+    require(callable(data_filter), "TAR_DATA_FILTER_UNAVAILABLE")
     try:
-        return tarfile.data_filter(info, os.fspath(destination))
+        return data_filter(info, os.fspath(destination))
     except tarfile.FilterError as error:
         raise Error("TAR_DATA_FILTER_REJECTED") from error
 

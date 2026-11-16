@@ -18,12 +18,54 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 loading = importlib.import_module("preprocessing.safe_loading")
 CHECKPOINT = "data/models/fictional-weights.pt"
-# Known pre-existing findings (SAM checkpoint loads pinned by SHA-256 before unpickling).
-# Changing them is a separate decision; any new finding, or a change in these counts, fails.
-KNOWN_FINDINGS = {
-    ("tools/sam_probe.py", "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY"): 2,
-    ("tools/sam_worker.py", "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY"): 1,
-}
+# Known pre-existing findings, matched by (file, code, normalized snippet) so that swapping
+# one unsafe call for another in the same file still fails. These are NOT verified safe:
+# * sam_probe.py: two path loads with weights_only=False / no flag, no SHA-256 check before
+#   loading (the hash is only written to the report afterwards);
+# * sam_worker.py: hashes the path, then loads the path again (TOCTOU window);
+# * sam_native_ops/install.py: a bytes patch that rewrites SAM models/psp.py to
+#   weights_only=False (pSp then loads the checkpoint a second time) plus its manifest text;
+# * prepare_tddfa.py: a restricted pickle.Unpickler subclass with a class allowlist, run only
+#   after a SHA-256 match.
+# Changing any of them is the user's decision; any new or altered finding fails the test.
+KNOWN_FINDINGS = sorted(
+    [
+        (
+            "backend/src/agemorph3d/prepare_tddfa.py",
+            "PICKLE_UNPICKLER",
+            "class _NumpyAssetUnpickler(pickle.Unpickler)",
+        ),
+        (
+            "tools/sam_native_ops/install.py",
+            "SENSITIVE_FLAG_IN_STRING",
+            'b"ckpt = torch.load(self.opts.checkpoint_path, '
+            "map_location='cpu', weights_only=False)\"",
+        ),
+        (
+            "tools/sam_native_ops/install.py",
+            "SENSITIVE_FLAG_IN_STRING",
+            "'torch>=2.6 defaults weights_only=True and SAM checkpoints store opts; "
+            "load the local checkpoint with weights_only=False.'",
+        ),
+        (
+            "tools/sam_probe.py",
+            "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY",
+            "torch.load(checkpoint_path, map_location='cpu', weights_only=False)",
+        ),
+        (
+            "tools/sam_probe.py",
+            "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY",
+            "torch.load(checkpoint_path, map_location='cpu')",
+        ),
+        (
+            "tools/sam_worker.py",
+            "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY",
+            "torch.load(checkpoint, map_location='cpu', weights_only=False)",
+        ),
+    ]
+)
+# This file holds the detector's own fixtures as strings; it is the only exempt path.
+AUDIT_EXCLUDE = {"backend/tests/test_safe_loading.py"}
 
 
 class FakeTorch:
@@ -174,34 +216,85 @@ def test_loader_reads_bytes_once_so_a_swap_after_hashing_is_not_loaded(tmp_path)
 
 # --- static audit -------------------------------------------------------------------
 
+T = "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY"
+N = "NUMPY_ALLOW_PICKLE"
+X = "EXTRACT_WITHOUT_DATA_FILTER"
+P = "PICKLE_LOAD"
+S = "SENSITIVE_FLAG_IN_STRING"
+D = "SENSITIVE_FLAG_IN_DICT"
+G = "DYNAMIC_SENSITIVE_LOOKUP"
+J = "TORCH_JIT_OR_HUB_LOAD"
+U = "UNPACK_ARCHIVE_WITHOUT_DATA_FILTER"
+
 
 @pytest.mark.parametrize(
     "source,codes",
     [
-        ("torch.load(p)", ["TORCH_LOAD_WITHOUT_WEIGHTS_ONLY"]),
-        ("torch.load(p, weights_only=False)", ["TORCH_LOAD_WITHOUT_WEIGHTS_ONLY"]),
-        ("torch.load(p, weights_only=flag)", ["TORCH_LOAD_WITHOUT_WEIGHTS_ONLY"]),
-        ("torch.load(p, weights_only=1)", ["TORCH_LOAD_WITHOUT_WEIGHTS_ONLY"]),
-        ("self.torch.load(p)", ["TORCH_LOAD_WITHOUT_WEIGHTS_ONLY"]),
+        ("torch.load(p)", [T]),
+        ("torch.load(p, weights_only=False)", [T]),
+        ("torch.load(p, weights_only=flag)", [T]),
+        ("torch.load(p, weights_only=1)", [T]),
+        ("self.torch.load(p)", [T]),
         ("torch.load(p, map_location='cpu', weights_only=True)", []),
         ("json.load(p)", []),
         ("M.from_pretrained(n, trust_remote_code=True)", ["TRUST_REMOTE_CODE"]),
         ("f(trust_remote_code=allow)", ["TRUST_REMOTE_CODE"]),
         ("f(**{}, trust_remote_code=False)", []),
-        ("np.load(p, allow_pickle=True)", ["NUMPY_ALLOW_PICKLE"]),
-        ("numpy.load(p, allow_pickle=x)", ["NUMPY_ALLOW_PICKLE"]),
+        ("np.load(p, allow_pickle=True)", [N]),
+        ("numpy.load(p, allow_pickle=x)", [N]),
         ("np.load(p, allow_pickle=False)", []),
         ("np.load(p)", []),
-        ("archive.extractall(dest)", ["EXTRACTALL_WITHOUT_DATA_FILTER"]),
-        ("archive.extractall(dest, filter='fully_trusted')", ["EXTRACTALL_WITHOUT_DATA_FILTER"]),
+        ("archive.extractall(dest)", [X]),
+        ("archive.extractall(dest, filter='fully_trusted')", [X]),
         ("archive.extractall(dest, filter='data')", []),
+        # Sentinel FG-4 review bypasses, one per line.
+        ("from torch import load\nload(p)", [T]),
+        ("from torch import load as fetch\nfetch(p, weights_only=True)", []),
+        ("from torch import load as fetch\nfetch(p)", [T]),
+        ("import torch as t\nt.load(p)", [T]),
+        ("import torch as t\nt.load(p, weights_only=True)", []),
+        ("import torch\ngetattr(torch, 'load')(p)", [G]),
+        ("import torch as t\nfn = getattr(t, name)", [G]),
+        ("import numpy as n\ngetattr(n, 'load')(p, allow_pickle=True)", [G]),
+        ("import pickle\ngetattr(pickle, 'loads')(b)", [G]),
+        ("import tarfile\ngetattr(tarfile, 'data_filter', None)", []),
+        ("import numpy as n\nn.load(p, allow_pickle=True)", [N]),
+        ("from numpy import load\nload(p, allow_pickle=True)", [N]),
+        ("from numpy import load as L\nL(p, allow_pickle=False)", []),
+        ("np.load(p, **{'allow_pickle': True})", [N, D]),
+        ("np.load(p, **options)", [N]),
+        ("torch.load(p, weights_only=True, **options)", [T]),
+        ("M.from_pretrained(n, **{'trust_remote_code': True})", [D]),
+        ("kwargs = {'weights_only': False}", [D]),
+        ("kwargs = {'weights_only': True, 'allow_pickle': False}", []),
+        ("import shutil\nshutil.unpack_archive(a, d)", [U]),
+        ("from shutil import unpack_archive\nunpack_archive(a, d, filter='tar')", [U]),
+        ("import shutil\nshutil.unpack_archive(a, d, filter='data')", []),
+        ("archive.extract(member, dest)", [X]),
+        ("tarfile.TarFile.extract(archive, member, dest)", [X]),
+        ("archive.extract(member, dest, filter='data')", []),
+        ("import pickle\npickle.load(f)", [P]),
+        ("import pickle as pk\npk.loads(b)", [P]),
+        ("from pickle import loads\nloads(b)", [P]),
+        ("import pickle\npickle.Unpickler(f).load()", [P]),
+        ("import pickle\nclass R(pickle.Unpickler):\n    pass", ["PICKLE_UNPICKLER"]),
+        ("import joblib\njoblib.load(p)", [P]),
+        ("import torch\ntorch.jit.load(p)", [J]),
+        ("from torch import jit\njit.load(p)", [J]),
+        ("import torch\ntorch.hub.load(repo, name)", [J]),
+        ("from torch import *", ["STAR_IMPORT_FROM_SENSITIVE_MODULE"]),
+        ('PATCH = b"torch.load(p, weights_only=False)"', [S]),
+        ("PATCH = b'model(trust_remote_code=True)'", [S]),
+        ("x = 'np.load(p, allow_pickle = True)'", [S]),
+        ("x = 'weights_only=True'", []),
+        ('"""Docstring that mentions weights_only=False is prose."""', []),
     ],
 )
 def test_audit_source_detects_each_rule(source, codes):
-    assert [code for _, _, code in loading.audit_source(source)] == codes
+    assert sorted(code for _, _, code, _ in loading.audit_source(source)) == sorted(codes)
 
 
-def test_audit_reports_file_and_line():
+def test_audit_reports_file_line_and_snippet():
     source = textwrap.dedent(
         """
         import torch
@@ -210,7 +303,9 @@ def test_audit_reports_file_and_line():
             return torch.load(p)
         """
     )
-    assert loading.audit_source(source, "x.py") == [("x.py", 5, "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY")]
+    assert loading.audit_source(source, "x.py") == [
+        ("x.py", 5, "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY", "torch.load(p)")
+    ]
 
 
 def test_audit_tree_skips_environment_data_and_output_folders(tmp_path):
@@ -218,14 +313,25 @@ def test_audit_tree_skips_environment_data_and_output_folders(tmp_path):
         path = tmp_path / folder / "m.py"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("torch.load(p)\n", encoding="utf-8")
-    assert loading.audit_tree(tmp_path) == [("src/m.py", 1, "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY")]
+    expected = [("src/m.py", 1, "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY", "torch.load(p)")]
+    assert loading.audit_tree(tmp_path) == expected
+    assert loading.audit_tree(tmp_path, exclude={"src/m.py"}) == []
 
 
 def test_repository_has_no_new_unsafe_loads():
-    counts = {}
-    for name, _, code in loading.audit_tree(ROOT):
-        counts[(name, code)] = counts.get((name, code), 0) + 1
-    assert counts == KNOWN_FINDINGS
+    found = sorted(
+        (name, code, snippet)
+        for name, _, code, snippet in loading.audit_tree(ROOT, exclude=AUDIT_EXCLUDE)
+    )
+    assert found == KNOWN_FINDINGS
+
+
+def test_baseline_matches_snippets_not_just_counts(tmp_path):
+    """Swapping a known call for a different unsafe one keeps the count but must fail."""
+    (tmp_path / "m.py").write_text("torch.load(q, weights_only=False)\n", encoding="utf-8")
+    found = [(n, c, s) for n, _, c, s in loading.audit_tree(tmp_path)]
+    assert found == [("m.py", T, "torch.load(q, weights_only=False)")]
+    assert found != [("m.py", T, "torch.load(p, weights_only=False)")]
 
 
 def test_sanctioned_modules_pass_the_audit_themselves():
