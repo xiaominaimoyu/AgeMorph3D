@@ -660,3 +660,447 @@ def test_cli_success_record_failure_and_input_rejection(tmp_path):
     valid = cli(checksum, OUTPUT)
     assert valid.returncode == 0 and json.loads(valid.stdout)["status"] == "passed"
     assert not valid.stderr and not invalid.stderr
+
+
+# --- FG-4: dataset plan v3 §5 item 4 safe-loading negatives -----------------------
+# Every malicious archive must be refused before the output directory exists, leaving the
+# whole workspace byte-identical and nothing written next to or above it.
+
+ESCAPES = ("escape.png", "escape.txt", "evil.txt", "outside", "passwd")
+
+
+def snapshot(root):
+    state = {}
+    for path in sorted(root.rglob("*")):
+        key = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            state[key] = ("link", str(path.readlink()))
+        elif path.is_file():
+            state[key] = ("file", path.read_bytes())
+        else:
+            state[key] = ("dir", None)
+    return state
+
+
+def assert_rejected_cleanly(case, code):
+    root = case["root"]
+    path, checksum = refresh(case)
+    before = snapshot(root)
+    with pytest.raises(data.Error, match=code):
+        data.prepare(root, path.relative_to(root).as_posix(), checksum, OUTPUT)
+    assert snapshot(root) == before
+    assert not (root / OUTPUT).exists() and not (root / "output/research/prepared-v1").exists()
+    for name in ESCAPES:
+        assert not (root.parent / name).exists() and not (root / name).exists()
+
+
+def rewrite(case, write):
+    path = case["archive"]
+    path.chmod(stat.S_IREAD | stat.S_IWRITE)
+    write(path)
+    path.chmod(stat.S_IREAD)
+
+
+def zip_with(case, entries, compression=zipfile.ZIP_DEFLATED):
+    def write(path):
+        with zipfile.ZipFile(path, "w", compression) as container:
+            container.writestr("ok.png", image_bytes())
+            for entry, body in entries:
+                container.writestr(entry, body)
+
+    rewrite(case, write)
+
+
+def tar_with(case, infos, kind="tar", fmt=tarfile.USTAR_FORMAT):
+    def write(path):
+        mode = "w:gz" if kind == "tar_gz" else "w"
+        with tarfile.open(path, mode, format=fmt) as container:
+            body = image_bytes()
+            ok = tarfile.TarInfo("ok.png")
+            ok.size = len(body)
+            container.addfile(ok, io.BytesIO(body))
+            for info, body in infos:
+                container.addfile(info, io.BytesIO(body) if body is not None else None)
+
+    rewrite(case, write)
+
+
+def one_image_case(root, kind="zip"):
+    case = make_case(root, kind, members=[("ok.png", image_bytes())])
+    return case
+
+
+ZIP_SLIP_NAMES = [
+    "../evil.txt",
+    "../../../../evil.txt",
+    "a/../../evil.txt",
+    "/evil.txt",
+    "//server/share/evil.txt",
+    "C:/evil.txt",
+    "C:evil.txt",
+    "c:\\evil.txt",
+    "..\\evil.txt",
+    "a\\..\\..\\evil.txt",
+    "\\\\server\\share\\evil.txt",
+    "a/./evil.txt",
+    "a//evil.txt",
+    "evil.txt:stream",
+    "CON.txt",
+    "aux",
+    "a /evil.txt",
+    "a./evil.txt",
+    "evil\x01.txt",
+]
+
+
+@pytest.mark.parametrize("name", ZIP_SLIP_NAMES)
+def test_zip_slip_variants_rejected_before_any_write(tmp_path, name):
+    case = one_image_case(tmp_path)
+    info = zipfile.ZipInfo(name)
+    zip_with(case, [(info, b"escape")])
+    assert_rejected_cleanly(case, "INVALID_PATH|ZIP_NAME_OR_ENCRYPTION_UNSUPPORTED")
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [stat.S_IFLNK | 0o777, stat.S_IFCHR | 0o600, stat.S_IFBLK | 0o600, stat.S_IFIFO | 0o600]
+    + [stat.S_IFSOCK | 0o600],
+)
+@pytest.mark.parametrize("target", ["../../outside", "/etc/passwd", "ok.png"])
+def test_zip_links_devices_and_sockets_rejected(tmp_path, mode, target):
+    case = one_image_case(tmp_path)
+    info = zipfile.ZipInfo("link")
+    info.create_system = 3
+    info.external_attr = mode << 16
+    zip_with(case, [(info, target.encode())])
+    assert_rejected_cleanly(case, "SPECIAL_MEMBER")
+
+
+def test_zip_directory_with_payload_and_encryption_flag_rejected(tmp_path):
+    case = one_image_case(tmp_path)
+    zip_with(case, [(zipfile.ZipInfo("dir/"), b"hidden")])
+    assert_rejected_cleanly(case, "MEMBER_SIZE_INVALID")
+    case = one_image_case(tmp_path / "enc")
+
+    def write(path):  # zipfile cannot write encrypted entries; set the flag bit directly
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as container:
+            container.writestr("ok.png", image_bytes())
+            container.writestr("secret.txt", b"x")
+        body = bytearray(path.read_bytes())
+        central = _central_offsets(body)[1]
+        local = struct.unpack_from("<L", body, central + 42)[0]
+        body[local + 6] |= 1
+        body[central + 8] |= 1
+        path.write_bytes(body)
+
+    rewrite(case, write)
+    assert_rejected_cleanly(case, "ZIP_NAME_OR_ENCRYPTION_UNSUPPORTED")
+
+
+@pytest.mark.parametrize("kind", ["zip", "tar"])
+@pytest.mark.parametrize(
+    "names",
+    [
+        ["dup.txt", "dup.txt"],
+        ["Dup.txt", "dUP.TXT"],
+        ["caf\u00e9.txt", "cafe\u0301.txt"],
+        ["ok.png", "OK.PNG"],
+    ],
+)
+def test_duplicate_names_including_case_and_unicode_forms_rejected(tmp_path, kind, names):
+    case = one_image_case(tmp_path, kind)
+    if kind == "zip":
+        with warnings_ignored():
+            zip_with(case, [(n, b"x") for n in names])
+    else:
+        infos = []
+        for n in names:
+            info = tarfile.TarInfo(n)
+            info.size = 1
+            infos.append((info, b"x"))
+        tar_with(case, infos, fmt=tarfile.GNU_FORMAT)
+    assert_rejected_cleanly(case, "DUPLICATE_MEMBER_PATH")
+
+
+def warnings_ignored():
+    import warnings
+
+    manager = warnings.catch_warnings()
+    manager.__enter__()
+    warnings.simplefilter("ignore")
+
+    class _Exit:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            manager.__exit__(*exc)
+
+    return _Exit()
+
+
+def _central_offsets(body):
+    found, start = [], 0
+    while (index := body.find(b"PK\x01\x02", start)) >= 0:
+        found.append(index)
+        start = index + 4
+    return found
+
+
+def test_zip_overlapping_entries_rejected(tmp_path):
+    case = one_image_case(tmp_path)
+
+    def write(path):
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as container:
+            container.writestr("ok.png", image_bytes())
+            container.writestr("a.txt", b"same")
+            container.writestr("b.txt", b"same")
+        body = bytearray(path.read_bytes())
+        central = _central_offsets(body)
+        a_offset = struct.unpack_from("<L", body, central[1] + 42)[0]
+        struct.pack_into("<L", body, central[2] + 42, a_offset)  # b.txt reuses a.txt bytes
+        path.write_bytes(body)
+
+    rewrite(case, write)
+    assert_rejected_cleanly(case, "ZIP_ENTRY_OVERLAP|ZIP_LOCAL_HEADER_MISMATCH")
+
+
+def test_zip_local_header_name_differing_from_directory_rejected(tmp_path):
+    case = one_image_case(tmp_path)
+
+    def write(path):
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as container:
+            container.writestr("ok.png", image_bytes())
+            container.writestr("safe.txt", b"x")
+        body = bytearray(path.read_bytes())
+        local = body.find(b"safe.txt")
+        body[local : local + 8] = b"../e.txt"
+        path.write_bytes(body)
+
+    rewrite(case, write)
+    assert_rejected_cleanly(case, "ZIP_LOCAL_HEADER_MISMATCH")
+
+
+def test_zip_entry_reaching_into_central_directory_rejected(tmp_path):
+    case = one_image_case(tmp_path)
+
+    def write(path):
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as container:
+            container.writestr("ok.png", image_bytes())
+            container.writestr("a.txt", b"abcd")
+        body = bytearray(path.read_bytes())
+        central = _central_offsets(body)
+        struct.pack_into("<L", body, central[1] + 20, 4096)  # compressed size overruns
+        path.write_bytes(body)
+
+    rewrite(case, write)
+    assert_rejected_cleanly(case, "ZIP_ENTRY_OVERLAP")
+
+
+def test_zip_compression_bomb_rejected_by_ratio(tmp_path):
+    case = one_image_case(tmp_path)
+    case["plan"]["limits"].update(member_bytes=8 * 1024**2, total_bytes=16 * 1024**2)
+    zip_with(case, [("zeros.bin", b"\0" * (4 * 1024**2))])
+    assert_rejected_cleanly(case, "ZIP_COMPRESSION_RATIO_LIMIT")
+
+
+def test_zip_declared_size_bomb_rejected(tmp_path):
+    case = one_image_case(tmp_path)
+
+    def write(path):
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as container:
+            container.writestr("ok.png", image_bytes())
+            container.writestr("big.bin", b"x" * 2048)
+        body = bytearray(path.read_bytes())
+        central = _central_offsets(body)
+        struct.pack_into("<L", body, central[1] + 24, 0x7FFFFFFF)  # declared uncompressed
+        path.write_bytes(body)
+
+    rewrite(case, write)
+    assert_rejected_cleanly(case, "ZIP_COMPRESSION_RATIO_LIMIT|MEMBER_SIZE_LIMIT")
+
+
+def test_zip_member_count_bomb_rejected(tmp_path):
+    case = one_image_case(tmp_path)
+    zip_with(case, [(f"f{i}.txt", b"") for i in range(40)])
+    assert_rejected_cleanly(case, "ZIP_DIRECTORY_LIMIT|MEMBER_COUNT_LIMIT")
+
+
+def test_zip_with_data_descriptors_and_distinct_unicode_names_still_passes(tmp_path):
+    case = one_image_case(tmp_path)
+
+    class Unseekable(io.RawIOBase):
+        def __init__(self, target):
+            self.target = target
+
+        def writable(self):
+            return True
+
+        def write(self, chunk):
+            return self.target.write(chunk)
+
+    def write(path):
+        with path.open("wb") as raw:
+            with zipfile.ZipFile(Unseekable(raw), "w", zipfile.ZIP_DEFLATED) as container:
+                container.writestr("ok.png", image_bytes())
+                container.writestr("caf\u00e9.txt", b"one")
+                container.writestr("cafe.txt", b"two")
+
+    rewrite(case, write)
+    with zipfile.ZipFile(case["archive"]) as container:
+        assert all(info.flag_bits & 0x08 for info in container.infolist())
+    result = run(case)
+    assert result["status"] == "passed" and result["summary"]["archive_members"] == 3
+
+
+TAR_SLIP_NAMES = [
+    "../evil.txt",
+    "../../../../evil.txt",
+    "a/../../evil.txt",
+    "/evil.txt",
+    "/etc/passwd",
+    "C:/evil.txt",
+    "..\\evil.txt",
+    "a/./evil.txt",
+    "evil.txt:stream",
+    "NUL",
+]
+
+
+@pytest.mark.parametrize("kind", ["tar", "tar_gz"])
+@pytest.mark.parametrize("name", TAR_SLIP_NAMES)
+def test_tar_slip_variants_rejected_before_any_write(tmp_path, kind, name):
+    case = one_image_case(tmp_path, kind)
+    info = tarfile.TarInfo(name)
+    info.size = 6
+    tar_with(case, [(info, b"escape")], kind)
+    assert_rejected_cleanly(case, "INVALID_PATH|TAR_DATA_FILTER_REJECTED")
+
+
+@pytest.mark.parametrize(
+    "kind,link",
+    [
+        (tarfile.SYMTYPE, "../../outside"),
+        (tarfile.SYMTYPE, "/etc/passwd"),
+        (tarfile.LNKTYPE, "/etc/passwd"),
+        (tarfile.LNKTYPE, "../outside"),
+        (tarfile.LNKTYPE, "ok.png"),
+        (tarfile.CHRTYPE, ""),
+        (tarfile.BLKTYPE, ""),
+        (tarfile.FIFOTYPE, ""),
+        (tarfile.CONTTYPE, ""),
+    ],
+)
+def test_tar_links_and_device_members_rejected(tmp_path, kind, link):
+    case = one_image_case(tmp_path, "tar")
+    info = tarfile.TarInfo("escape.txt")
+    info.type, info.linkname = kind, link
+    tar_with(case, [(info, None)])
+    assert_rejected_cleanly(case, "SPECIAL_OR_EXTENDED_TAR_MEMBER|TAR_DATA_FILTER_REJECTED")
+
+
+def test_tar_gnu_longname_and_pax_path_override_rejected(tmp_path):
+    case = one_image_case(tmp_path, "tar")
+    info = tarfile.TarInfo("d" * 120 + "/../../../evil.txt")
+    info.size = 1
+    tar_with(case, [(info, b"x")], fmt=tarfile.GNU_FORMAT)
+    assert_rejected_cleanly(case, "SPECIAL_OR_EXTENDED_TAR_MEMBER")
+    case = one_image_case(tmp_path / "pax", "tar")
+    info = tarfile.TarInfo("innocent.txt")
+    info.size, info.pax_headers = 1, {"path": "../../evil.txt"}
+    tar_with(case, [(info, b"x")], fmt=tarfile.PAX_FORMAT)
+    assert_rejected_cleanly(case, "SPECIAL_OR_EXTENDED_TAR_MEMBER")
+
+
+@pytest.mark.parametrize("field", ["member_bytes", "total_bytes"])
+def test_gzip_bomb_rejected_before_output(tmp_path, field):
+    case = one_image_case(tmp_path, "tar_gz")
+    info = tarfile.TarInfo("zeros.bin")
+    info.size = 3 * 1024**2
+    tar_with(case, [(info, b"\0" * info.size)], "tar_gz")
+    assert case["archive"].stat().st_size < 64 * 1024
+    assert_rejected_cleanly(case, "MEMBER_SIZE_LIMIT|TOTAL_UNPACKED_LIMIT|TAR_STREAM_LIMIT")
+
+
+def test_gzip_stream_bomb_hidden_from_headers_rejected(tmp_path):
+    case = one_image_case(tmp_path, "tar_gz")
+    case["plan"]["limits"]["total_bytes"] = 64 * 1024
+    body = image_bytes()
+    ok = tarfile.TarInfo("ok.png")
+    ok.size = len(body)
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w", format=tarfile.USTAR_FORMAT) as container:
+        container.addfile(ok, io.BytesIO(body))
+    payload = stream.getvalue() + b"\0" * (8 * 1024**2)  # zero "padding" inflates the stream
+
+    def write(path):
+        import gzip
+
+        path.write_bytes(gzip.compress(payload))
+
+    rewrite(case, write)
+    assert_rejected_cleanly(case, "TAR_STREAM_LIMIT")
+
+
+@pytest.mark.parametrize(
+    "name,kind,link,code",
+    [
+        ("/abs.txt", tarfile.REGTYPE, "", None),  # filter strips "/": repository rejects name
+        ("../up.txt", tarfile.REGTYPE, "", "OutsideDestinationError"),
+        ("link", tarfile.SYMTYPE, "../../outside", "LinkOutsideDestinationError"),
+        ("link", tarfile.SYMTYPE, "/etc/passwd", "AbsoluteLinkError"),
+        ("hard", tarfile.LNKTYPE, "/etc/passwd", "AbsoluteLinkError"),
+        ("dev", tarfile.CHRTYPE, "", "SpecialFileError"),
+        ("fifo", tarfile.FIFOTYPE, "", "SpecialFileError"),
+    ],
+)
+def test_tar_data_filter_gate_matches_stdlib_policy(tmp_path, name, kind, link, code):
+    info = tarfile.TarInfo(name)
+    info.type, info.linkname = kind, link
+    destination = tmp_path / "dest"
+    if code is None:
+        filtered = data.tar_data_filter(info, destination)
+        assert filtered.name == "abs.txt"  # end-to-end "/evil.txt" is refused by name rules
+        return
+    with pytest.raises(data.Error, match="TAR_DATA_FILTER_REJECTED") as caught:
+        data.tar_data_filter(info, destination)
+    assert type(caught.value.__cause__).__name__ == code
+    with pytest.raises(data.Error, match="TAR_FILTER_DESTINATION_REQUIRED"):
+        data.tar_data_filter(tarfile.TarInfo("ok.txt"), None)
+
+
+@pytest.mark.parametrize("kind", ["tar", "tar_gz"])
+def test_every_tar_member_passes_data_filter_in_scan_and_extract(tmp_path, monkeypatch, kind):
+    case = make_case(tmp_path, kind)
+    seen, original = [], tarfile.data_filter
+
+    def spy(member, destination):
+        seen.append((member.name, Path(destination)))
+        return original(member, destination)
+
+    monkeypatch.setattr(tarfile, "data_filter", spy)
+    assert run(case)["status"] == "passed"
+    names = [name for name, _ in case["members"]]
+    assert [name for name, _ in seen] == names + names
+    assert {destination for _, destination in seen} == {tmp_path / OUTPUT / "files"}
+
+
+def test_zip_member_failure_leaves_no_staging_part(tmp_path):
+    case = make_case(tmp_path)
+
+    def write(path):
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as container:
+            for name, body in case["members"]:
+                container.writestr(name, body)
+        body = bytearray(path.read_bytes())
+        with zipfile.ZipFile(path) as container:
+            info = container.infolist()[0]
+            start = info.header_offset + 30 + len(info.filename.encode()) + len(info.extra)
+        body[start] ^= 1
+        path.write_bytes(body)
+
+    rewrite(case, write)
+    result = run(case)
+    assert result["inventory"][0]["error_code"] == "MEMBER_READ_FAILED"
+    assert list((tmp_path / OUTPUT / "stage").iterdir()) == []
+    assert not (tmp_path / OUTPUT / "files/images/a.png").exists()

@@ -17,6 +17,7 @@ import stat
 import struct
 import sys
 import tarfile
+import unicodedata
 import warnings
 import zipfile
 import zlib
@@ -46,6 +47,11 @@ LIMITS = {
     "reserve_bytes": 64 * 1024**3,
 }
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
+# Dataset plan v3 §5 item 4 safe-loading rules (FG-4): a member larger than the floor may not
+# expand more than this factor; images and labels stay far below it.
+ZIP_MAX_RATIO = 200
+ZIP_RATIO_FLOOR_BYTES = 1024**2
+_ZIP_LOCAL = struct.Struct("<4s5H3L2H")
 Error = acquisition.AcquisitionError
 require = acquisition._require
 safe = acquisition._safe
@@ -136,7 +142,49 @@ def _container(path, kind, limits):
                     yield container
 
 
-def _member(info, kind):
+def tar_data_filter(info, destination):
+    """Apply the stdlib ``filter="data"`` policy to one member; any refusal is final.
+
+    Members are never passed to ``extract``/``extractall``; this gate runs in addition to
+    the repository's own type, name and size checks during both scan and extraction.
+    """
+    require(destination is not None, "TAR_FILTER_DESTINATION_REQUIRED")
+    try:
+        return tarfile.data_filter(info, os.fspath(destination))
+    except tarfile.FilterError as error:
+        raise Error("TAR_DATA_FILTER_REJECTED") from error
+
+
+def _zip_layout(path, infos, directory_offset):
+    """Local headers must match the central directory and entry data may not overlap.
+
+    Rejects overlapping-entry bombs and names hidden behind a different central name
+    before any byte is extracted.
+    """
+    end = 0
+    with path.open("rb") as stream:
+        for info in sorted(infos, key=lambda item: item.header_offset):
+            require(info.header_offset >= end, "ZIP_ENTRY_OVERLAP")
+            stream.seek(info.header_offset)
+            header = stream.read(_ZIP_LOCAL.size)
+            require(len(header) == _ZIP_LOCAL.size, "ZIP_LOCAL_HEADER_INVALID")
+            signature, _, flags, method, *_, name_length, extra_length = _ZIP_LOCAL.unpack(header)
+            raw = stream.read(name_length)
+            encoding = "utf-8" if flags & 0x800 else "cp437"
+            require(
+                signature == b"PK\x03\x04"
+                and len(raw) == name_length
+                and raw.decode(encoding, "replace") == info.orig_filename
+                and method == info.compress_type
+                and (flags & 1) == (info.flag_bits & 1),
+                "ZIP_LOCAL_HEADER_MISMATCH",
+            )
+            end = info.header_offset + _ZIP_LOCAL.size + name_length + extra_length
+            end += info.compress_size + (12 if flags & 0x08 else 0)
+            require(end <= directory_offset, "ZIP_ENTRY_OVERLAP")
+
+
+def _member(info, kind, destination=None):
     if kind == "zip":
         mode = info.external_attr >> 16
         require(
@@ -151,6 +199,10 @@ def _member(info, kind):
         require(stat.S_IFMT(mode) in {0, stat.S_IFREG, stat.S_IFDIR}, "SPECIAL_MEMBER")
         name, size, directory = info.filename, info.file_size, info.is_dir()
         require(stat.S_IFMT(mode) != stat.S_IFDIR or directory, "DIRECTORY_TYPE_MISMATCH")
+        require(
+            size <= ZIP_RATIO_FLOOR_BYTES or size <= ZIP_MAX_RATIO * max(info.compress_size, 1),
+            "ZIP_COMPRESSION_RATIO_LIMIT",
+        )
     else:
         require(
             info.type in {tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE}
@@ -159,6 +211,7 @@ def _member(info, kind):
             and info.offset_data - info.offset == 512,
             "SPECIAL_OR_EXTENDED_TAR_MEMBER",
         )
+        tar_data_filter(info, destination)
         name, size, directory = info.name, info.size, info.isdir()
     if directory and name.endswith("/"):
         name = name[:-1]
@@ -176,14 +229,17 @@ def _tar_tail(container):
         require(not chunk.strip(b"\0"), "TRAILING_TAR_DATA")
 
 
-def _scan(path, kind, limits):
+def _scan(path, kind, limits, destination=None):
     inventory, names, total = [], {}, 0
     with _container(path, kind, limits) as container:
+        if kind == "zip":
+            _zip_layout(path, container.infolist(), container.start_dir)
         for info in _members(container, kind):
-            row = _member(info, kind)
+            row = _member(info, kind, destination)
             require(len(inventory) < limits["members"], "MEMBER_COUNT_LIMIT")
             require(row["bytes"] <= limits["member_bytes"], "MEMBER_SIZE_LIMIT")
-            key = row["member"].casefold()
+            # NFC + casefold: names one filesystem would merge are duplicates everywhere.
+            key = unicodedata.normalize("NFC", row["member"]).casefold()
             require(key not in names, "DUPLICATE_MEMBER_PATH")
             for old, old_kind in names.items():
                 require(
@@ -205,7 +261,7 @@ def _extract(root, archive, kind, limits, output, inventory):
     try:
         with _container(archive, kind, limits) as container:
             for index, info in enumerate(_members(container, kind)):
-                row = _member(info, kind)
+                row = _member(info, kind, safe(root, output + "/files"))
                 require(
                     index < len(inventory) and row == inventory[index], "ARCHIVE_MEMBERS_CHANGED"
                 )
@@ -225,6 +281,7 @@ def _extract(root, archive, kind, limits, output, inventory):
                     )
                     target.parent.mkdir(parents=True, exist_ok=True)
                     part.parent.mkdir(parents=True, exist_ok=True)
+                    owned = None
                     try:
                         source = (
                             container.open(info) if kind == "zip" else container.extractfile(info)
@@ -232,6 +289,7 @@ def _extract(root, archive, kind, limits, output, inventory):
                         require(source is not None, "MISSING_MEMBER_STREAM")
                         count, hashed = 0, hashlib.sha256()
                         with source, part.open("xb") as stream:
+                            owned = part
                             while chunk := source.read(min(CHUNK, row["bytes"] - count + 1)):
                                 require(count + len(chunk) <= row["bytes"], "MEMBER_BODY_LIMIT")
                                 stream.write(chunk)
@@ -254,6 +312,8 @@ def _extract(root, archive, kind, limits, output, inventory):
                         zlib.error,
                         struct.error,
                     ) as error:
+                        if owned is not None:  # no partial staging file survives a failure
+                            owned.unlink(missing_ok=True)
                         row["error_code"] = (
                             str(error) if isinstance(error, Error) else "MEMBER_READ_FAILED"
                         )
@@ -457,7 +517,7 @@ def prepare(root, plan_name, plan_sha256, output):
         output.startswith("output/research/") and not destination.exists(),
         "OUTPUT_MUST_BE_NEW_IGNORED_DIRECTORY",
     )
-    inventory = _scan(archive, kind, limits)
+    inventory = _scan(archive, kind, limits, safe(root, output + "/files"))
     for member in inventory:
         safe(root, output + "/files/" + member["member"])
     by_member = {r["member"]: r for r in inventory if r["kind"] == "file"}
