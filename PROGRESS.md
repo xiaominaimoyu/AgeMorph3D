@@ -1,5 +1,7 @@
 # 当前进度与交接
 
+2026-11-16 FG-1[WIDER FACE标注转换](docs/WIDER标注转换开发记录.md)合成工程子项：`preprocessing/wider_annotations.py`自写解析bbx_gt并转YOLO，复用P02框边界契约和K5清单，K5用途保持unassigned、不改划分逻辑。86项新增合成测试，完整后端3006→3092通过（Python 3.11.16/Pillow 13.0.0），实测最大往返误差0.006144px。未取得真实数据，分支未推送。
+
 2026-10-31 L03/L04 准备：`tools/code_stats.py` 与 [B系统论文章节提纲](docs/B系统论文章节提纲.md)。统计测试 7 项通过。对当前提交跑过一次，三名 git 作者都未映射到 A/B，`passes_requirement` 为 false。提纲没有正文。G1–G3、`MODEL_NOT_READY` 和 `static_fallback` 未改。
 
 2026-10-31 L02 准备：[干净环境与离线复现准备](docs/干净环境与离线复现准备.md)和 `tools/repro_check.py`。Linux 上 13 项检查测试通过；无清单烟雾健康为 missing、能力 false，生产端口 4173，停止后端口释放。研究清单在场时健康为许可 error，四个权重缺失且不编造哈希。`l02_executed` 保持 false。另一成员尚未执行。
