@@ -1,5 +1,7 @@
 # 当前进度与交接
 
+2026-11-16 FG-4[数据安全加载规则](docs/数据安全加载规则开发记录.md)合成工程子项：`archive_preparation.py`补TAR `filter="data"`、ZIP本地头/重叠/压缩比和NFC重名检查（建输出目录前拒绝），失败成员不留`.part`；新增`safe_loading.py`（pin后weights_only=True加载、不回退）与仓库静态检查。130项新增合成测试，完整后端3006→3136通过（Python 3.11.16/Pillow 13.0.0；3项跳过取决于环境；Ruff/格式只针对改动文件，35c0cd6全库仍有17处I001）。`tools/sam_worker.py`、`tools/sam_probe.py`共3处`weights_only=False`未改，待决定；`feature_join`源码哈希因本次改动变化。未接触真实数据，分支未推送。
+
 2026-10-31 L03/L04 准备：`tools/code_stats.py` 与 [B系统论文章节提纲](docs/B系统论文章节提纲.md)。统计测试 7 项通过。对当前提交跑过一次，三名 git 作者都未映射到 A/B，`passes_requirement` 为 false。提纲没有正文。G1–G3、`MODEL_NOT_READY` 和 `static_fallback` 未改。
 
 2026-10-31 L02 准备：[干净环境与离线复现准备](docs/干净环境与离线复现准备.md)和 `tools/repro_check.py`。Linux 上 13 项检查测试通过；无清单烟雾健康为 missing、能力 false，生产端口 4173，停止后端口释放。研究清单在场时健康为许可 error，四个权重缺失且不编造哈希。`l02_executed` 保持 false。另一成员尚未执行。

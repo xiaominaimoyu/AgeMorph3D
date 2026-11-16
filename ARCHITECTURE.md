@@ -24,6 +24,8 @@ P02[坐标准备](docs/框与关键点坐标转换开发记录.md)已在`preproc
 
 D06[归档接续](docs/归档解压与逐图核验开发记录.md)已在`preprocessing/archive_preparation.py`实现：固定取得收据/归档/K5 → 全成员路径/类型/体积预检 → 新忽略目录的原始文件/清单 → 显式图像解码/EXIF矩阵与独立PNG → 保留接触史的K5副本和独立报告。83新增及完整2626后端通过，已有取得/K5核心和生产服务未改。
 
+FG-4[数据安全加载规则](docs/数据安全加载规则开发记录.md)接入`preprocessing/archive_preparation.py`：TAR成员逐个经标准库`tarfile.data_filter`、ZIP本地头/中央目录一致与条目不重叠、压缩比上限、NFC+大小写重名，均在建输出目录前拒绝；失败成员不留`.part`。新增`preprocessing/safe_loading.py`：pin+哈希后`torch.load(weights_only=True)`、不回退，及仓库AST静态检查（SAM两文件3处存量待决定）。130项合成测试，未接触真实数据或权重。
+
 D06[取得工具](docs/资源取得与校验工具开发记录.md)在`preprocessing/resource_acquisition.py`独立实现标准库CLI：冻结JSON计划/用途与入口记录 → 有界HTTP和工作目录中的partial/state → 完整字节/SHA-256校验 → 不覆盖的只读原始文件；每次尝试在忽略目录保留收据。不接服务生命周期、正式划分或训练；本批81项新增与合成loopback独立CLI核验通过，未取真实数据。
 
 真实额头观测候选使用独立离线CLI和版本化37行review；四图标注与已有保守allowed/occluded合成，其他33行原样继承。注册复用现有target_uv_probe及各目标自己的完整拟合，源canonical/UV不变。当前viewer与旧捕获源码不同，本批已在相同当前源码下重新捕获两版，并让年龄评价复用各自新的检测结果，不借用旧框。[实际复核](docs/真实额头候选注册与质量复核.md)完成752帧与74次浏览器往返，重点32帧仍NO_FACE，质量出口继续关闭。
