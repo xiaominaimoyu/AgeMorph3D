@@ -1,5 +1,7 @@
 # 当前进度与交接
 
+2026-11-16 近重复/准备清单筛查环境约束（本地分支 `fix/env-and-imports`，未推送）：冻结检查由精确 3.11.16 改为任意 3.11 补丁，Pillow 仍精确 13.0.0；两份报告增补 `python_runtime`。旧冻结计划若记录 Python 3.11.16 现会被拒绝，须按 `3.11.*` 重写；因 `near_duplicate_probe.py` 在 `SOURCES`/`ALGORITHM_SOURCES` 哈希清单中，改该文件也会使旧计划无法重放。约定说明见[准备清单重复候选筛查开发记录](docs/准备清单重复候选筛查开发记录.md)。此前 L01/K2 条目里“Ruff 通过”的更正仍只作建议，未改写原行。
+
 2026-10-31 L03/L04 准备：`tools/code_stats.py` 与 [B系统论文章节提纲](docs/B系统论文章节提纲.md)。统计测试 7 项通过。对当前提交跑过一次，三名 git 作者都未映射到 A/B，`passes_requirement` 为 false。提纲没有正文。G1–G3、`MODEL_NOT_READY` 和 `static_fallback` 未改。
 
 2026-10-31 L02 准备：[干净环境与离线复现准备](docs/干净环境与离线复现准备.md)和 `tools/repro_check.py`。Linux 上 13 项检查测试通过；无清单烟雾健康为 missing、能力 false，生产端口 4173，停止后端口释放。研究清单在场时健康为许可 error，四个权重缺失且不编造哈希。`l02_executed` 保持 false。另一成员尚未执行。
