@@ -1,6 +1,6 @@
 # FG-2 AgeDB 官方文件名解析与本机统计
 
-2026-11-16 完成 FG-2 合成工程子项：按数据集方案 v3 §4 第 4 步（“§4.4”），解析官方文件名 `<id>_<name>_<age>_<gender>.jpg`，在用户本机对已解压的官方文件夹重新统计 v3 §2-A 的各项数字，并写出 K5 清单与审计。新增 113 项合成测试；完整后端 3006 → 3119 项通过（Python 3.11.16 / Pillow 13.0.0，1 条既有 Starlette 警告）。3 项跳过取决于环境：`test_local_run.py:810` 需设 `AGEMORPH_LOCAL_RUN_LIVE=1`，`test_local_run.py:947` 与 `test_repro_check.py:315` 在没有项目 venv/Vite 时跳过。Ruff 0.17.1 check/format 只针对新增的两个文件通过；35c0cd6 全库仍有 17 处既有 I001。**没有取得、读取或下载任何 AgeDB 官方包、镜像或转存；测试只用临时目录里生成的合成文件名和小图。**
+2026-11-16 完成 FG-2 合成工程子项：按数据集方案 v3 §4 第 4 步（“§4.4”），解析官方文件名 `<id>_<name>_<age>_<gender>.jpg`，在用户本机对已解压的官方文件夹重新统计 v3 §2-A 的各项数字，并写出 K5 清单与审计。新增 117 项合成测试；完整后端 3006 → 3123 项通过（Python 3.11.16 / Pillow 13.0.0，1 条既有 Starlette 警告）。3 项跳过取决于环境：`test_local_run.py:810` 需设 `AGEMORPH_LOCAL_RUN_LIVE=1`，`test_local_run.py:947` 与 `test_repro_check.py:315` 在没有项目 venv/Vite 时跳过。Ruff 0.17.1 check/format 只针对新增的两个文件通过；35c0cd6 全库仍有 17 处既有 I001。**没有取得、读取或下载任何 AgeDB 官方包、镜像或转存；测试只用临时目录里生成的合成文件名和小图。**
 
 代码：[agedb_filenames.py](../preprocessing/agedb_filenames.py)；测试：[test_agedb_filenames.py](../backend/tests/test_agedb_filenames.py)。
 

@@ -1,6 +1,6 @@
 # 当前进度与交接
 
-2026-11-16 FG-2[AgeDB官方文件名解析](docs/AgeDB文件名解析开发记录.md)合成工程子项：`preprocessing/agedb_filenames.py`供用户本机统计官方文件夹，输出只含汇总的stats.json、本机专用rejected.json和K5清单，K5用途保持unassigned、不改划分逻辑。113项新增合成测试，完整后端3006→3119通过（Python 3.11.16/Pillow 13.0.0；3项跳过取决于环境：未设AGEMORPH_LOCAL_RUN_LIVE及无项目venv/Vite时跳过；Ruff/格式只针对新增文件，35c0cd6全库仍有17处I001）。未取得真实数据，分支未推送。复审后补充：CLI 须显式传入 --local-only-ack 才运行；audit.json 增加 local_only，K5 manifest 结构未改。
+2026-11-16 FG-2[AgeDB官方文件名解析](docs/AgeDB文件名解析开发记录.md)合成工程子项：`preprocessing/agedb_filenames.py`供用户本机统计官方文件夹，输出只含汇总的stats.json、本机专用rejected.json和K5清单，K5用途保持unassigned、不改划分逻辑。117项新增合成测试，完整后端3006→3123通过（Python 3.11.16/Pillow 13.0.0；3项跳过取决于环境：未设AGEMORPH_LOCAL_RUN_LIVE及无项目venv/Vite时跳过；Ruff/格式只针对新增文件，35c0cd6全库仍有17处I001）。未取得真实数据，分支未推送。复审后补充：CLI 须显式传入 --local-only-ack 才运行；audit.json 增加 local_only，K5 manifest 结构未改。
 
 2026-10-31 L03/L04 准备：`tools/code_stats.py` 与 [B系统论文章节提纲](docs/B系统论文章节提纲.md)。统计测试 7 项通过。对当前提交跑过一次，三名 git 作者都未映射到 A/B，`passes_requirement` 为 false。提纲没有正文。G1–G3、`MODEL_NOT_READY` 和 `static_fallback` 未改。
 
