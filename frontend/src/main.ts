@@ -1,12 +1,10 @@
 import "./style.css";
-import { layout } from "./layout";
-import { icon } from "./icons";
 import { FaceViewer } from "./viewer";
 import { CameraController, FrameStream, LocalApi } from "./services";
 import type { Capabilities, FaceState, Health, Reconstruction } from "./contracts";
 import { mirroredPose, type FrameSize } from "./realtime";
 
-document.querySelector<HTMLDivElement>("#app")!.innerHTML = layout;
+// The markup lives in index.html; this module binds behavior to its element ids.
 const el = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
 const button = (id: string): HTMLButtonElement => el<HTMLButtonElement>(id);
@@ -92,9 +90,7 @@ function validSourceAge(): boolean {
 function showSourceAgeValidity(): void {
   const valid = validSourceAge();
   input("source-age").setAttribute("aria-invalid", String(!valid));
-  el("source-age-hint").textContent = valid
-    ? "填写 20–70 岁；仅记录你提供的年龄，不代表模型估计。修改后需重新重建。"
-    : "请输入 20–70 岁的有效年龄，或留空表示未知。";
+  el("source-age-hint").textContent = valid ? "" : "请输入 20–70 岁，或留空表示未知";
 }
 
 function updateAgeDisplay(): void {
@@ -103,26 +99,19 @@ function updateAgeDisplay(): void {
   input("age-slider").step = meshId && reconstruction?.source_age.value != null && !Number.isInteger(reconstruction.source_age.value) ? "any" : "1";
   input("age-slider").value = String(age);
   input("age-slider").setAttribute("aria-valuetext", displayAge == null ? "源年龄未知" : `${displayAge} 岁`);
-  el<HTMLOutputElement>("age-output").value = displayAge == null ? "—" : String(displayAge);
-  el("info-age").textContent = displayAge == null ? "未知" : String(displayAge);
-  el("info-age-label").textContent = staticOnly ? "源年龄" : !canMorph() && canTexture() ? "纹理目标年龄" : "目标年龄";
+  el<HTMLOutputElement>("age-output").value = displayAge == null ? "未知" : String(displayAge);
+  el("age-unit").hidden = displayAge == null;
   el("compare-age").textContent = String(age);
   el("compare-source-age").textContent = meshId
     ? reconstruction?.source_age.value == null ? "未知" : String(reconstruction.source_age.value)
     : "30";
   el("age-description").textContent = !meshId || canMorph()
-    ? "拖动刻度，观察形态的连续变化"
+    ? ""
     : canTexture()
       ? reconstruction?.asset_mode === "static"
         ? "仅生成年龄纹理，三维形状保持原始重建"
         : "仅生成年龄纹理，三维形状保持当前状态"
-      : reconstruction?.asset_mode === "static"
-        ? "原始重建，年龄变换不可用"
-        : "年龄变换当前不可用，保留当前形状";
-  button("age-reset").innerHTML = `${icon("refresh", 13)} ${meshId ? "恢复源年龄" : "恢复至 30 岁"}`;
-  el("export-hint").textContent = meshId
-    ? reconstruction?.asset_mode === "static" ? "导出原始静态重建与来源信息" : "导出包含当前年龄与重建来源信息"
-    : "导出包含当前年龄与演示来源标记";
+      : "年龄变换不可用";
 }
 
 function showHealth(status: Health): void {
@@ -136,14 +125,15 @@ function showHealth(status: Health): void {
     ).join("\n") || "模型状态：未提供，请检查后端状态。");
 }
 
-function showServiceSourceStatus(): void {
-  el("source-status").textContent = !health?.capabilities
-    ? "重建能力未知，请检查连接设置中的 API 版本（需要 1.1 或 1.2）。"
-    : !health.capabilities.reconstruction
-      ? "本地服务已连接，三维重建能力不可用。请在连接设置中查看模型状态。"
-      : source
-        ? "照片已就绪，确认使用授权后开始重建。"
-        : "本地服务已连接，请上传照片或拍摄人像。";
+/** Idle source status: only what blocks reconstruction and is not already visible. */
+function showSourceStatus(): void {
+  el("source-status").textContent = !api
+    ? source ? "未连接本地服务" : ""
+    : !health?.capabilities
+      ? "重建能力未知，需要 API 1.1 或 1.2"
+      : !supports("reconstruction")
+        ? "三维重建能力不可用"
+        : "";
 }
 
 function stopHealthRefresh(): void {
@@ -173,7 +163,7 @@ function refreshLoadingHealth(client: LocalApi, version: number): void {
         if (version !== connectionVersion || controller.signal.aborted) return;
         health = status;
         showHealth(status);
-        if (!meshId && !busy) showServiceSourceStatus();
+        if (!meshId && !busy) showSourceStatus();
         refreshActions();
         if (loading()) schedule();
         else stopHealthRefresh();
@@ -182,7 +172,7 @@ function refreshLoadingHealth(client: LocalApi, version: number): void {
         stopHealthRefresh();
         health = undefined;
         el("health-status").textContent = `服务状态刷新失败：${message(error)} 请重新检查连接。`;
-        if (!meshId && !busy) showServiceSourceStatus();
+        if (!meshId && !busy) showSourceStatus();
         refreshActions();
       }).finally(() => {
         if (healthOperation === controller) healthOperation = undefined;
@@ -198,10 +188,13 @@ function refreshActions(): void {
     !source || !supports("reconstruction") || !input("photo-consent").checked || !validSourceAge() || busy || !viewer;
   input("source-age").disabled = !source || busy;
   button("reconstruct").setAttribute("aria-busy", String(busy));
-  button("reconstruct").querySelector("span")!.textContent = busy
-    ? "正在生成三维模型…"
-    : "开始三维重建";
+  button("reconstruct").textContent = busy ? "正在重建…" : "开始三维重建";
   button("cancel-reconstruct").hidden = !busy;
+  // Show a control only once its prerequisite exists, instead of explaining why it is off.
+  el("source-age-field").hidden = !source;
+  button("stream-toggle").hidden = !api;
+  el("texture-group").hidden = !meshId;
+  button("load-demo").hidden = !meshId || busy;
   button("apply-texture").disabled =
     !canTexture() || textureBusy || busy || !viewer;
   button("apply-texture").setAttribute("aria-busy", String(textureBusy));
@@ -224,18 +217,12 @@ function refreshActions(): void {
     el("comparison-labels").hidden = true;
   }
   updateAgeDisplay();
-  el("flow-reconstruct").classList.toggle("active", busy || Boolean(meshId));
-  el("flow-explore").classList.toggle("active", Boolean(viewer) && !busy);
   if (api && !supports("age_texture"))
-    el("texture-hint").textContent = health?.capabilities
-      ? "当前服务的年龄纹理能力不可用，请在连接设置中查看模型状态。"
-      : "年龄纹理能力未知，请检查 API 版本（需要 1.1 或 1.2）。";
+    el("texture-hint").textContent = health?.capabilities ? "年龄纹理能力不可用" : "年龄纹理能力未知";
   else if (meshId && !reconstruction?.capabilities.age_texture)
-    el("texture-hint").textContent = "当前重建结果的年龄纹理能力不可用。";
+    el("texture-hint").textContent = "此重建不支持年龄纹理";
   if (api && !supports("realtime"))
-    el("stream-status").textContent = health?.capabilities
-      ? "当前服务的实时检测能力不可用，请在连接设置中查看模型状态。"
-      : "实时检测能力未知，请检查 API 版本（需要 1.1 或 1.2）。";
+    el("stream-status").textContent = health?.capabilities ? "实时检测能力不可用" : "实时检测能力未知";
 }
 
 function markDemo(): void {
@@ -245,10 +232,10 @@ function markDemo(): void {
   viewer?.setAge(30);
   el("model-badge").textContent = "演示模型";
   el("model-badge").classList.remove("real");
-  el("model-name").textContent = "STANDARD HEAD / PROCEDURAL";
-  el("info-source").textContent = "程序化示例";
+  el("info-source").textContent = "";
+  el("info-source").removeAttribute("title");
   el("viewer").dataset.source = "demo";
-  el("texture-hint").textContent = "重建完成后，可调用本地纹理模型。";
+  el("texture-hint").textContent = "";
 }
 function cancelTask(): void {
   taskVersion++;
@@ -274,21 +261,16 @@ function createViewer(): void {
   try {
     viewer = new FaceViewer(el("viewer"), {
       onStats(stats) {
-        el("fps-readout").textContent = String(stats.fps);
-        el("vertex-readout").textContent =
-          stats.vertices.toLocaleString("en-US");
-        el("triangle-readout").textContent =
-          stats.triangles.toLocaleString("en-US");
-        el("render-state").textContent = "实时渲染";
+        // Machine-readable render state for tests and agents; not shown on screen.
+        el("viewer").dataset.vertices = String(stats.vertices);
+        el("viewer").dataset.triangles = String(stats.triangles);
       },
       onError(error) {
         el("viewer-error").textContent = error;
         el("viewer-fallback").hidden = false;
-        el("render-state").textContent = "视口需要恢复";
       },
       onRestore() {
         el("viewer-fallback").hidden = true;
-        el("render-state").textContent = "实时渲染";
       },
     });
     viewer.setAge(age);
@@ -300,12 +282,10 @@ function createViewer(): void {
       el<HTMLSelectElement>("lighting").value as "studio" | "soft" | "dramatic",
     );
     markDemo();
-    el("render-state").textContent = "实时渲染";
   } catch (error) {
     el("viewer-error").textContent =
       `WebGL 2 初始化失败。${message(error)} 请检查浏览器硬件加速，或使用 Chrome / Edge 重试。`;
     el("viewer-fallback").hidden = false;
-    el("render-state").textContent = "WebGL 不可用";
   }
   refreshActions();
 }
@@ -321,7 +301,7 @@ function changeAge(value: number): void {
     textureBusy = false;
     textureAge = undefined;
     void viewer?.setTexture(null);
-    el("texture-hint").textContent = "年龄已改变，可重新生成当前年龄纹理。";
+    el("texture-hint").textContent = "";
     refreshActions();
   }
 }
@@ -338,10 +318,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((item) =>
     viewer?.setMode(currentMode);
     document
       .querySelectorAll<HTMLButtonElement>("[data-mode]")
-      .forEach((other) => {
-        other.classList.toggle("selected", other === item);
-        other.setAttribute("aria-pressed", String(other === item));
-      });
+      .forEach((other) => other.setAttribute("aria-pressed", String(other === item)));
   }),
 );
 document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach((item) =>
@@ -349,15 +326,9 @@ document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach((item) =>
     viewer?.setView(item.dataset.view as "front" | "side" | "three-quarter");
     document
       .querySelectorAll<HTMLButtonElement>("[data-view]")
-      .forEach((other) => {
-        other.classList.toggle("selected", other === item);
-        other.setAttribute("aria-pressed", String(other === item));
-      });
+      .forEach((other) => other.setAttribute("aria-pressed", String(other === item)));
   }),
 );
-on("view-reset", "click", () => {
-  document.querySelector<HTMLButtonElement>('[data-view="front"]')!.click();
-});
 on("lighting", "change", () =>
   viewer?.setLighting(
     el<HTMLSelectElement>("lighting").value as "studio" | "soft" | "dramatic",
@@ -388,10 +359,7 @@ on("load-demo", "click", () => {
   stopStream();
   resetDemo();
   changeAge(30);
-  el("source-status").textContent = source
-    ? "照片仍在准备区；当前视口为标准演示模型。"
-    : "已载入标准人脸。拖动年龄刻度开始探索。";
-  notify("已载入程序化示例，年龄已恢复至 30 岁。");
+  showSourceStatus();
 });
 
 function clearPhoto(): void {
@@ -407,9 +375,9 @@ function clearPhoto(): void {
   input("source-age").value = "";
   showSourceAgeValidity();
   resetDemo();
-  el("source-status").textContent = "选择人像照片，或使用摄像头拍摄。";
+  showSourceStatus();
 }
-async function acceptPhoto(blob: Blob, name: string): Promise<void> {
+async function acceptPhoto(blob: Blob): Promise<void> {
   const version = ++sourceVersion;
   if (
     !["image/jpeg", "image/png", "image/webp"].includes(blob.type) ||
@@ -438,21 +406,9 @@ async function acceptPhoto(blob: Blob, name: string): Promise<void> {
     input("source-age").value = "";
     showSourceAgeValidity();
     el<HTMLImageElement>("source-image").src = sourceUrl;
-    el("photo-name").textContent = name;
-    el("photo-name").title = name;
-    el("photo-size").textContent =
-      blob.size >= 1024 * 1024
-        ? `${(blob.size / 1024 / 1024).toFixed(1)} MB`
-        : `${Math.max(1, Math.round(blob.size / 1024))} KB`;
     el("photo-preview").hidden = false;
     button("upload-trigger").hidden = true;
-    el("source-status").textContent = !api
-      ? "照片已准备。连接本地服务后可重建；当前视口仍为演示模型。"
-      : !health?.capabilities
-        ? "重建能力未知，请检查连接设置中的 API 版本（需要 1.1 或 1.2）。"
-        : !supports("reconstruction")
-          ? "当前服务的三维重建能力不可用，请在连接设置中查看模型状态。"
-          : "照片已就绪，确认使用授权后即可开始重建。";
+    showSourceStatus();
     refreshActions();
   } catch (error) {
     if (version === sourceVersion)
@@ -467,7 +423,7 @@ async function acceptPhoto(blob: Blob, name: string): Promise<void> {
 on("upload-trigger", "click", () => input("photo-input").click());
 on("photo-input", "change", () => {
   const file = input("photo-input").files?.[0];
-  if (file) void acceptPhoto(file, file.name);
+  if (file) void acceptPhoto(file);
   input("photo-input").value = "";
 });
 on("photo-remove", "click", clearPhoto);
@@ -488,7 +444,7 @@ on("photo-area", "drop", (event) => {
     notify("请一次选择一张人像照片。", true);
     return;
   }
-  void acceptPhoto(files[0], files[0].name);
+  void acceptPhoto(files[0]);
 });
 on("photo-consent", "change", () => {
   if (!input("photo-consent").checked) stopStream();
@@ -502,8 +458,6 @@ on("source-age", "input", () => {
 function switchSource(useCamera: boolean): void {
   el("photo-area").hidden = useCamera;
   el("camera-area").hidden = !useCamera;
-  button("photo-tab").classList.toggle("selected", !useCamera);
-  button("camera-tab").classList.toggle("selected", useCamera);
   setPressed("photo-tab", !useCamera);
   setPressed("camera-tab", useCamera);
   if (!useCamera) stopCamera();
@@ -511,8 +465,8 @@ function switchSource(useCamera: boolean): void {
 function stopStream(): void {
   stream?.stop();
   stream = undefined;
-  button("stream-toggle").innerHTML = `${icon("link", 14)} 连接实时检测`;
-  el("stream-status").textContent = "实时检测需要本地后端服务。";
+  button("stream-toggle").textContent = "连接实时检测";
+  el("stream-status").textContent = "";
   clearDetection();
 }
 function stopCamera(): void {
@@ -553,12 +507,8 @@ on("camera-capture", "click", () => {
   void camera
     .capture()
     .then(async (blob) => {
-      await acceptPhoto(
-        blob,
-        `拍摄人像-${new Date().toLocaleTimeString("zh-CN", { hour12: false })}.jpg`,
-      );
+      await acceptPhoto(blob);
       switchSource(false);
-      notify("拍照完成，摄像头已关闭。");
     })
     .catch((error: unknown) => notify(message(error), true));
 });
@@ -605,7 +555,7 @@ on("stream-toggle", "click", () => {
       notify(error, true);
     },
   });
-  button("stream-toggle").innerHTML = `${icon("stop", 14)} 停止实时检测`;
+  button("stream-toggle").textContent = "停止实时检测";
   stream.start();
 });
 
@@ -621,13 +571,13 @@ on("reconstruct", "click", () => {
   operation = new AbortController();
   const signal = operation.signal;
   busy = true;
-  el("source-status").textContent = "正在由本地服务重建，请稍候…";
+  el("source-status").textContent = "";
   refreshActions();
   void (async () => {
     try {
       const result = await client.reconstruct(file, signal, sourceAge);
       if (version !== taskVersion || signal.aborted) return;
-      el("source-status").textContent = "参数已返回，正在加载三维资产…";
+      el("source-status").textContent = "正在加载三维模型…";
       await viewer!.loadModel(client.assetUrl(result.mesh_id), result);
       if (version !== taskVersion || signal.aborted) return;
       meshId = result.mesh_id;
@@ -635,11 +585,10 @@ on("reconstruct", "click", () => {
       if (result.source_age.value !== null) age = result.source_age.value;
       el("model-badge").textContent = "本地重建";
       el("model-badge").classList.add("real");
-      el("model-name").textContent = `LOCAL MODEL / ${meshId}`;
       el("info-source").textContent = meshId;
       el("info-source").title = meshId;
       el("viewer").dataset.source = "reconstruction";
-      el("texture-hint").textContent = "可为当前目标年龄请求纹理。";
+      el("texture-hint").textContent = "";
       updateAgeDisplay();
       if (canMorph()) viewer!.setAge(age);
       let textureWarning: string | undefined;
@@ -653,13 +602,9 @@ on("reconstruct", "click", () => {
       if (version !== taskVersion) return;
       el("source-status").textContent =
         result.asset_mode === "static"
-          ? canTexture()
-            ? "原始重建，仅年龄纹理可用；三维形状保持原始重建。可以旋转查看与导出。"
-            : "原始重建，年龄变换不可用。可以旋转查看与导出。"
-          : canMorph()
-            ? "三维重建已完成，可以调节年龄、对比与导出。"
-            : "三维重建已完成，当前服务未启用年龄形变。可以旋转查看与导出。";
-      notify(textureWarning ?? "已载入本地重建结果。", textureWarning !== undefined);
+          ? canTexture() ? "原始重建，仅年龄纹理可用" : "原始重建，年龄变换不可用"
+          : canMorph() ? "" : "年龄形变不可用";
+      if (textureWarning) notify(textureWarning, true);
     } catch (error) {
       if (version !== taskVersion || isCancelled(error)) return;
       el("source-status").textContent = message(error);
@@ -675,8 +620,7 @@ on("reconstruct", "click", () => {
 });
 on("cancel-reconstruct", "click", () => {
   resetDemo();
-  el("source-status").textContent = "重建已取消，可调整输入后重试。";
-  notify("已取消当前重建任务。");
+  el("source-status").textContent = "重建已取消";
 });
 on("apply-texture", "click", () => {
   if (!meshId || !api || !canTexture() || !viewer || textureBusy || busy) return;
@@ -711,9 +655,7 @@ on("apply-texture", "click", () => {
       )
         return;
       textureAge = requestedAge;
-      el("texture-hint").textContent =
-        `已应用 ${requestedAge} 岁纹理。切换年龄将恢复基础纹理。`;
-      notify(`已应用 ${requestedAge} 岁纹理。`);
+      el("texture-hint").textContent = `已应用 ${requestedAge} 岁纹理`;
     } catch (error) {
       if (controller.signal.aborted) return;
       el("texture-hint").textContent = message(error);
@@ -748,13 +690,6 @@ async function exportFile(format: "glb" | "png"): Promise<void> {
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    notify(
-      format === "glb"
-        ? reconstruction?.asset_mode === "static"
-          ? "静态重建模型已导出，包含来源信息。"
-          : "三维模型已导出，包含年龄形变和来源信息。"
-        : "当前视口已保存为 PNG 效果图。",
-    );
   } catch (error) {
     notify(message(error), true);
   } finally {
@@ -774,22 +709,19 @@ on("toast-close", "click", () => {
   window.clearTimeout(toastTimer);
 });
 
-for (const name of ["settings", "guide", "about"]) {
-  const dialog = el<HTMLDialogElement>(`${name}-dialog`);
-  on(`${name}-open`, "click", () => dialog.showModal());
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      const r = dialog.getBoundingClientRect();
-      if (
-        event.clientX < r.left ||
-        event.clientX > r.right ||
-        event.clientY < r.top ||
-        event.clientY > r.bottom
-      )
-        dialog.close();
-    }
-  });
-}
+const settingsDialog = el<HTMLDialogElement>("settings-dialog");
+on("settings-open", "click", () => settingsDialog.showModal());
+settingsDialog.addEventListener("click", (event) => {
+  if (event.target !== settingsDialog) return;
+  const r = settingsDialog.getBoundingClientRect();
+  if (
+    event.clientX < r.left ||
+    event.clientX > r.right ||
+    event.clientY < r.top ||
+    event.clientY > r.bottom
+  )
+    settingsDialog.close();
+});
 on("connect-api", "click", () => {
   const version = ++connectionVersion;
   stopHealthRefresh();
@@ -814,14 +746,13 @@ on("connect-api", "click", () => {
       el("connection-label").textContent = "本地服务已连接";
       el("connection-dot").classList.add("connected");
       showHealth(status);
-      showServiceSourceStatus();
+      showSourceStatus();
       refreshLoadingHealth(client, version);
-      notify(status.capabilities ? "本地服务已连接，功能可用性以模型状态为准。" : "本地服务已连接，能力未知，请检查 API 版本。", !status.capabilities);
     } catch (error) {
       if (version === connectionVersion) {
         el("connection-label").textContent = "本地演示模式";
         el("health-status").textContent = message(error);
-        el("source-status").textContent = "本地服务连接失败，请检查连接设置后重试。";
+        showSourceStatus();
         notify(message(error), true);
       }
     } finally {
@@ -844,9 +775,8 @@ on("disconnect", "click", () => {
   el("connection-label").textContent = "本地演示模式";
   el("connection-dot").classList.remove("connected");
   el("health-status").textContent = "当前使用程序化演示模型。";
-  el("source-status").textContent = "已切换为演示模式。照片保留在准备区。";
-  el<HTMLDialogElement>("settings-dialog").close();
-  notify("已断开本地服务，恢复演示模式。");
+  showSourceStatus();
+  settingsDialog.close();
 });
 
 window.addEventListener("pagehide", () => {

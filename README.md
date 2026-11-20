@@ -117,7 +117,7 @@ tools/       原有项目工具资料
 
 训练和数据处理目录在对应阶段建立。模型、数据集、日志、构建产物及真实凭证不进入源码仓库；原有 `.gitignore` 保留。后端本批范围、验证和剩余事项见 [后端开发记录](docs/后端开发记录.md)。
 
-前端入口为 `frontend/src/main.ts`，界面与样式分别为 `layout.ts`、`style.css`；三维视口与示例网格为 `viewer.ts`、`demo-head.ts`；年龄插值为 `age.ts`；本机 HTTP、摄像头和 WebSocket 封装为 `services.ts`，数据类型为 `contracts.ts`。`frontend/tests/` 包含可复现的单元和浏览器测试。
+前端入口为 `frontend/src/main.ts`，界面标记与样式分别为 `frontend/index.html`、`style.css`；三维视口与示例网格为 `viewer.ts`、`demo-head.ts`；年龄插值为 `age.ts`；本机 HTTP、摄像头和 WebSocket 封装为 `services.ts`，数据类型为 `contracts.ts`。`frontend/tests/` 包含可复现的单元和浏览器测试。
 
 三维交互与导出基于 [Three.js OrbitControls](https://threejs.org/docs/pages/OrbitControls.html) 和 [GLTFExporter](https://threejs.org/docs/pages/GLTFExporter.html)；构建方式参见 [Vite 官方说明](https://vite.dev/guide/)。
 

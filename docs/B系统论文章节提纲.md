@@ -115,7 +115,7 @@ A 的算法、训练和评价章节不在本提纲里。共同的绪论、总体
 
 证据：
 
-- `frontend/src/main.ts`、`layout.ts`、`viewer.ts`、`demo-head.ts`、`age.ts`、`services.ts`、`realtime.ts`、`style.css`。
+- `frontend/index.html`，`frontend/src/main.ts`、`viewer.ts`、`demo-head.ts`、`age.ts`、`services.ts`、`realtime.ts`、`style.css`。
 - [实施路线与前端交付](实施路线与前端交付.md)。
 - [README](../README.md) 的前端使用方式。
 - [B23 真实静态链路](B23真实静态链路开发记录.md) 里的浏览器往返，范围按该记录，不外推。

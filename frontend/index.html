@@ -12,8 +12,166 @@
     <title>岁月镜 · AgeMorph3D 三维工作台</title>
   </head>
   <body>
-    <a class="skip-link" href="#workspace">跳转至三维工作台</a>
-    <div id="app"></div>
+    <!-- Element ids are the contract for src/main.ts and tests/studio.spec.ts. -->
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6" /></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><path d="M3 3h18v18H3ZM3 9h18M3 15h18M9 3v18M15 3v18" /></symbol>
+      <symbol id="i-rotate" viewBox="0 0 24 24"><path d="m18 3 3 4-3 4M21 7H9a6 6 0 0 0 0 12h8" /></symbol>
+    </svg>
+
+    <header class="topbar">
+      <h1 class="brand">岁月镜</h1>
+      <button id="settings-open" class="pill">
+        <span id="connection-dot" class="dot"></span><span id="connection-label">本地演示模式</span>
+      </button>
+    </header>
+
+    <main class="workspace">
+      <section class="sidebar source" aria-label="人像来源">
+        <div class="segmented" role="group" aria-label="来源方式">
+          <button id="photo-tab" aria-pressed="true">照片</button>
+          <button id="camera-tab" aria-pressed="false">摄像头</button>
+        </div>
+
+        <div id="photo-area">
+          <button id="upload-trigger" class="dropzone">
+            <svg class="icon" aria-hidden="true"><use href="#i-upload" /></svg>选择或拖入照片
+          </button>
+          <input id="photo-input" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+          <div id="photo-preview" class="frame" hidden>
+            <img id="source-image" alt="待重建的人像照片" />
+            <button id="photo-remove" class="icon-button" aria-label="移除照片">
+              <svg class="icon" aria-hidden="true"><use href="#i-close" /></svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="camera-area" class="stack" hidden>
+          <div class="frame">
+            <video id="camera-video" autoplay muted playsinline aria-label="摄像头镜像预览"></video>
+            <canvas id="camera-overlay" aria-label="人脸检测框与关键点镜像叠加"></canvas>
+            <span id="camera-placeholder">摄像头未开启</span>
+          </div>
+          <div class="row">
+            <button id="camera-toggle" class="button">开启摄像头</button>
+            <button id="camera-capture" class="button" disabled>拍照</button>
+          </div>
+          <button id="stream-toggle" class="button" disabled hidden>连接实时检测</button>
+          <p id="stream-status" class="status"></p>
+        </div>
+
+        <div id="source-age-field" class="field" hidden>
+          <label for="source-age">拍摄时年龄</label>
+          <input id="source-age" type="number" min="20" max="70" step="any" inputmode="decimal" placeholder="未知" aria-describedby="source-age-hint" disabled />
+          <p id="source-age-hint" class="status"></p>
+        </div>
+        <label class="check"><input id="photo-consent" type="checkbox" />我已获得该人像的使用授权</label>
+        <button id="reconstruct" class="button primary" disabled>开始三维重建</button>
+        <button id="cancel-reconstruct" class="button quiet" hidden>取消</button>
+        <p id="source-status" class="status" role="status"></p>
+        <button id="load-demo" class="button quiet foot" hidden>载入演示模型</button>
+      </section>
+
+      <section class="stage" aria-label="三维视口">
+        <div class="viewport">
+          <div id="viewer"></div>
+          <div class="overlay top">
+            <span id="model-badge" class="badge">演示模型</span>
+            <span id="info-source" class="mono"></span>
+            <button id="grid-toggle" class="icon-button push" aria-label="显示网格" aria-pressed="true" title="显示网格">
+              <svg class="icon" aria-hidden="true"><use href="#i-grid" /></svg>
+            </button>
+            <button id="rotate-toggle" class="icon-button" aria-label="自动旋转" aria-pressed="false" title="自动旋转">
+              <svg class="icon" aria-hidden="true"><use href="#i-rotate" /></svg>
+            </button>
+          </div>
+          <div id="comparison-labels" class="comparison" hidden>
+            <span>基准 · <b id="compare-source-age">30</b> 岁</span>
+            <span>目标 · <b id="compare-age">30</b> 岁</span>
+          </div>
+          <div class="overlay bottom">
+            <div class="segmented" role="group" aria-label="视角">
+              <button data-view="front" aria-pressed="true">正面</button>
+              <button data-view="three-quarter" aria-pressed="false">斜侧</button>
+              <button data-view="side" aria-pressed="false">侧面</button>
+            </div>
+            <button id="compare-toggle" class="button push" aria-pressed="false">对比</button>
+          </div>
+          <div id="viewer-fallback" class="fallback" hidden>
+            <p id="viewer-error">请开启浏览器硬件加速后重试。</p>
+            <button id="viewer-retry" class="button">重新加载视口</button>
+          </div>
+        </div>
+
+        <div class="age">
+          <p class="readout"><output id="age-output" for="age-slider">30</output><span id="age-unit">岁</span></p>
+          <div class="scale">
+            <input id="age-slider" type="range" min="20" max="70" step="1" value="30" aria-label="目标年龄" aria-valuetext="30 岁" />
+            <div class="ticks">
+              <button data-age="20" aria-label="设为 20 岁">20</button>
+              <button data-age="30" aria-label="设为 30 岁">30</button>
+              <button data-age="40" aria-label="设为 40 岁">40</button>
+              <button data-age="50" aria-label="设为 50 岁">50</button>
+              <button data-age="60" aria-label="设为 60 岁">60</button>
+              <button data-age="70" aria-label="设为 70 岁">70</button>
+            </div>
+          </div>
+          <button id="age-reset" class="button quiet">重置</button>
+          <p id="age-description" class="status"></p>
+        </div>
+      </section>
+
+      <section class="sidebar inspector" aria-label="显示与导出">
+        <div class="segmented" role="group" aria-label="渲染模式">
+          <button data-mode="solid" aria-pressed="true">实体</button>
+          <button data-mode="wireframe" aria-pressed="false">线框</button>
+          <button data-mode="points" aria-pressed="false">点云</button>
+        </div>
+        <div class="field">
+          <label for="lighting">光照</label>
+          <select id="lighting">
+            <option value="studio">摄影棚</option>
+            <option value="soft">柔光</option>
+            <option value="dramatic">轮廓光</option>
+          </select>
+        </div>
+        <div id="texture-group" class="stack" hidden>
+          <button id="apply-texture" class="button" disabled>生成年龄纹理</button>
+          <p id="texture-hint" class="status"></p>
+        </div>
+        <div class="stack foot">
+          <button id="export-glb" class="button">导出 GLB</button>
+          <button id="export-png" class="button">导出 PNG</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden>
+      <span id="toast-text"></span>
+      <button id="toast-close" class="icon-button" aria-label="关闭提示">
+        <svg class="icon" aria-hidden="true"><use href="#i-close" /></svg>
+      </button>
+    </div>
+
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" class="dialog-head">
+        <h2 id="settings-title">连接本地服务</h2>
+        <button class="icon-button" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-close" /></svg>
+        </button>
+      </form>
+      <div class="field">
+        <label for="api-url">服务地址</label>
+        <input id="api-url" class="mono" type="url" value="http://127.0.0.1:8000" spellcheck="false" />
+      </div>
+      <div id="health-status" class="health" role="status">当前使用程序化演示模型。</div>
+      <div class="dialog-actions">
+        <button id="disconnect" class="button">使用演示模式</button>
+        <button id="connect-api" class="button primary">检查并连接</button>
+      </div>
+    </dialog>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

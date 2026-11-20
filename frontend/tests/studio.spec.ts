@@ -74,7 +74,7 @@ test.afterEach(async ({ page }) => {
 async function openStudio(page: Page): Promise<void> {
   await page.goto("/");
   await expect(page.locator("#viewer canvas")).toBeVisible();
-  await expect(page.locator("#vertex-readout")).not.toHaveText("—");
+  await expect(page.locator("#viewer")).toHaveAttribute("data-vertices", /^[1-9]\d*$/);
   await expect(page.locator("#viewer-fallback")).toBeHidden();
 }
 
@@ -179,8 +179,7 @@ test("静态契约模拟资产保留未知源年龄，禁用年龄动作且导�
   }, staticGlb());
   await expect(page.locator("#model-badge")).toHaveText("本地重建");
   await expect(page.locator("#source-status")).toContainText("原始重建，年龄变换不可用");
-  await expect(page.locator("#age-output")).toHaveText("—");
-  await expect(page.locator("#info-age")).toHaveText("未知");
+  await expect(page.locator("#age-output")).toHaveText("未知");
   for (const selector of ["#age-slider", "#age-reset", "[data-age=\"60\"]", "#compare-toggle", "#apply-texture"])
     await expect(page.locator(selector)).toBeDisabled();
   await page.evaluate(() => {
@@ -191,7 +190,7 @@ test("静态契约模拟资产保留未知源年龄，禁用年龄动作且导�
     const slider = document.getElementById("age-slider") as HTMLInputElement;
     slider.disabled = false; slider.value = "60"; slider.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  await expect(page.locator("#info-age")).toHaveText("未知");
+  await expect(page.locator("#age-output")).toHaveText("未知");
   await expect(page.locator("#comparison-labels")).toBeHidden();
   const pending = page.waitForEvent("download");
   await page.locator("#export-glb").click();
@@ -261,7 +260,7 @@ test("拍摄时年龄由用户显式填写，校验后随重建提交；换图�
   await expect(page.locator("#source-age")).toHaveValue("");
   await page.locator("#photo-consent").check();
   await page.locator("#reconstruct").click();
-  await expect(page.locator("#age-output")).toHaveText("—");
+  await expect(page.locator("#age-output")).toHaveText("未知");
   expect(ages).toEqual(["42.5", undefined]);
   await page.locator("#source-age").fill("50");
   await page.locator("#photo-remove").click();
@@ -286,7 +285,7 @@ test("嵌入照片纹理的静态资产无需年龄能力，导出保留 UV 和�
   }, staticGlb(false, "valid", png));
   await expect(page.locator("#model-badge")).toHaveText("本地重建");
   await expect(page.locator("#apply-texture")).toBeDisabled();
-  await expect(page.locator("#age-output")).toHaveText("—");
+  await expect(page.locator("#age-output")).toHaveText("未知");
   const bytes = await downloadBytes(page, "#export-glb");
   const exported = parseGlb(bytes);
   expect(exported.images).toHaveLength(1);
@@ -354,7 +353,7 @@ test("年龄资产以真实声明的源年龄重置和对照，不沿用演示�
     source_age: { value: 42.5, method: "estimated", calibration_id: "calibration_fixture" },
   }, fixture);
   await expect(page.locator("#model-badge")).toHaveText("本地重建");
-  await expect(page.locator("#info-age")).toHaveText("42.5");
+  await expect(page.locator("#age-output")).toHaveText("42.5");
   await expect(page.locator("#age-slider")).toHaveValue("42.5");
   await page.locator('[data-age="60"]').click();
   await page.locator("#compare-toggle").click();
@@ -411,7 +410,6 @@ test("离线演示启动，无外部请求，年龄滑块支持键盘并保持�
   await slider.focus();
   await slider.press("End");
   await expect(page.locator("#age-output")).toHaveText("70");
-  await expect(page.locator("#info-age")).toHaveText("70");
   await expect(slider).toHaveAttribute("aria-valuetext", "70 岁");
   await slider.press("Home");
   await expect(page.locator("#age-output")).toHaveText("20");
@@ -459,11 +457,6 @@ test("材质、视角、光照与年龄对照可切换，画布确实更新", as
   );
   await page.locator("#compare-toggle").click();
   await expect(page.locator("#comparison-labels")).toBeHidden();
-  await page.locator("#view-reset").click();
-  await expect(page.locator('[data-view="front"]')).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
 });
 
 test("390px 窄屏无横向溢出，核心操作与弹窗可达", async ({ page }, testInfo) => {
@@ -489,19 +482,36 @@ test("390px 窄屏无横向溢出，核心操作与弹窗可达", async ({ page 
   });
 });
 
+test("笔记本单屏工作台：视口、年龄滑块与主要操作无需滚动", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openStudio(page);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(720);
+  for (const selector of ["#viewer canvas", "#age-slider", "#reconstruct", "#export-glb", "#settings-open"]) {
+    const box = (await page.locator(selector).boundingBox())!;
+    expect(box.y, selector).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height, selector).toBeLessThanOrEqual(720);
+  }
+});
+
+test("可见控件都有可访问名称，便于读屏与智能体操作", async ({ page }) => {
+  await openStudio(page);
+  const unnamed = /^\s*- (button|checkbox|combobox|slider|spinbutton|textbox)\b(?! ")/m;
+  expect(await page.locator("body").ariaSnapshot()).not.toMatch(unnamed);
+  await uploadTinyPng(page);
+  expect(await page.locator("body").ariaSnapshot()).not.toMatch(unnamed);
+  await page.locator("#camera-tab").click();
+  expect(await page.locator("body").ariaSnapshot()).not.toMatch(unnamed);
+  await page.locator("#settings-open").click();
+  expect(await page.locator("#settings-dialog").ariaSnapshot()).not.toMatch(unnamed);
+});
+
 test("弹窗关闭后归还焦点，远程服务地址在发起请求前被拒绝", async ({ page }) => {
   await openStudio(page);
-  for (const [button, dialog] of [
-    ["guide-open", "guide-dialog"],
-    ["about-open", "about-dialog"],
-    ["settings-open", "settings-dialog"],
-  ]) {
-    await page.locator(`#${button}`).click();
-    await expect(page.locator(`#${dialog}`)).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.locator(`#${dialog}`)).toBeHidden();
-    await expect(page.locator(`#${button}`)).toBeFocused();
-  }
+  await page.locator("#settings-open").click();
+  await expect(page.locator("#settings-dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#settings-dialog")).toBeHidden();
+  await expect(page.locator("#settings-open")).toBeFocused();
   const remoteRequests: string[] = [];
   page.on("request", (request) => {
     if (request.url().includes("example.com"))
@@ -1058,7 +1068,7 @@ test("loading健康刷新结束时保留已载入的静态个人模型", async (
   await expect(page.locator("#health-status")).toContainText("Fixture loading completed.");
   await expect(page.locator("#viewer")).toHaveAttribute("data-source", "reconstruction");
   await expect(page.locator("#info-source")).toHaveText("static_during_loading");
-  await expect(page.locator("#info-age")).toHaveText("未知");
+  await expect(page.locator("#age-output")).toHaveText("未知");
   await expect(page.locator("#source-status")).toContainText("原始重建，年龄变换不可用");
 });
 

@@ -1,5 +1,7 @@
 # 当前进度与交接
 
+2026-11-20 主工作台改版（研究页、查看器、后端未改）：标记从 `layout.ts` 模板串移到 `frontend/index.html`，删除 `layout.ts`、`icons.ts`、`responsive.css`；`style.css` 由 1933 行降到约 680 行，硬编码颜色 149 处降到 7 处令牌定义。桌面改为不滚动单屏（来源｜视口+年龄条｜显示与导出），去掉标语、流程条、使用指南与关于弹窗、英文副标签、FPS/面数显示和静态提示；状态只在需要时出现，toast 只报错误。“重置视角”与“正面”重复已删；未知源龄读数由“—”改为“未知”；面数改由 `#viewer` 的 `data-vertices`/`data-triangles` 提供。e2e 只迁移被删元素的断言，并新增单屏与可访问名称两项；Chrome/Edge 共 76 项、单测 340 项、类型检查与生产构建通过。规则见 [DESIGN.md](DESIGN.md)“主工作台”。
+
 2026-10-31 L03/L04 准备：`tools/code_stats.py` 与 [B系统论文章节提纲](docs/B系统论文章节提纲.md)。统计测试 7 项通过。对当前提交跑过一次，三名 git 作者都未映射到 A/B，`passes_requirement` 为 false。提纲没有正文。G1–G3、`MODEL_NOT_READY` 和 `static_fallback` 未改。
 
 2026-10-31 L02 准备：[干净环境与离线复现准备](docs/干净环境与离线复现准备.md)和 `tools/repro_check.py`。Linux 上 13 项检查测试通过；无清单烟雾健康为 missing、能力 false，生产端口 4173，停止后端口释放。研究清单在场时健康为许可 error，四个权重缺失且不编造哈希。`l02_executed` 保持 false。另一成员尚未执行。
