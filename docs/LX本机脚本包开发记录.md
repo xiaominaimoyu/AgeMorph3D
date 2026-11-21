@@ -26,7 +26,7 @@ CLI **默认拒绝运行**，必须显式传入 `--local-only-ack`。未传时�
   --output-dir output/research/lx-agedb-v1
 ```
 
-ps1 选 Python 的顺序：`backend\.venv\Scripts\python.exe`；然后 `py -3.11`，但要先探测确实装了 3.11；最后是 PATH 上第一个真正的 `python`（`Get-Command -All` 逐个看，跳过 WindowsApps 占位程序，而不是直接拒绝）。找不到 3.11 时退出码 2，并打印 `LAUNCHER_PYTHON_311_REQUIRED`；Python 起不来、或返回 0/1/2 以外的退出码时，也退出 2，并打印 `LAUNCHER_START_FAILED`。它用 `Push-Location`/`Pop-Location` 运行，结束后恢复调用者的当前目录和 `PYTHONDONTWRITEBYTECODE`，不写字节码。**ps1 只做了静态检查，没有在 Windows 实机运行过。** 注意：Python 进程若在 CLI 之外崩溃并以 1 退出，ps1 无法和 needs_review 区分。
+ps1 选 Python 的顺序：`backend\.venv\Scripts\python.exe`；然后 `py -3.11`；最后是 PATH 上的 `python`（`Get-Command -All` 逐个看，跳过 WindowsApps 占位程序，而不是直接拒绝）。三条路径共用同一个探测函数 `Test-Python311`：解释器必须能启动并报告 3.11，否则跳过、继续看下一个候选。找不到 3.11 时退出码 2，并打印 `LAUNCHER_PYTHON_311_REQUIRED`；Python 起不来、或返回 0/1/2 以外的退出码时，也退出 2，并打印 `LAUNCHER_START_FAILED`。它用 `Push-Location`/`Pop-Location` 运行，结束后恢复调用者的当前目录和 `PYTHONDONTWRITEBYTECODE`，不写字节码。**ps1 只做了静态检查，没有在 Windows 实机运行过。** 注意：Python 进程若在 CLI 之外崩溃并以 1 退出，ps1 无法和 needs_review 区分。
 
 - **官方包**：自己把 AgeDB.zip 放到 `--archive` 路径，脚本不下载。条款快照可选，只记录大小和 SHA-256。
 - **解压密码**：不要传给脚本，也不要写进参数、环境变量或聊天。
@@ -92,7 +92,9 @@ summary.json 里有一组固定披露字段，取值写死在代码里。被改�
 - **FG-4**（`feat/safe-loading`，未合并）：LX-1 的安全解压与 FG-4 **部分等价**，规则是在这里重新实现的，没有共用代码。
   - 已覆盖：
     - 非 zip 输入、前置数据（自解压壳）、拼接 zip、多卷或 ZIP64 布局；
-    - 布局必须严格连续：第一个本地头在偏移 0，条目之间无空隙，中央目录紧跟最后一个条目，结束记录紧跟中央目录并结束文件（只允许声明长度的注释，注释里不得再有结束记录签名），文件末 64 KB 内只能有一个结束记录。CPython `zipfile` 会通过平移偏移量静默容忍前置或拼接数据，这里改为拒绝。代价是：带空隙的少见合法 zip 也会被拒（偏向拒绝）；
+    - 布局必须严格连续：第一个本地头在偏移 0，条目之间无空隙，中央目录紧跟最后一个条目，结束记录紧跟中央目录并结束文件（只允许声明长度的注释，注释里不得再有结束记录签名）。结束记录的定位方式：从末 64 KB 往前找，只认“声明的注释长度恰好到文件尾”的那个签名；这样的候选多于一个即 `ZIP_END_AMBIGUOUS`。成员数据里出现的结束记录签名（例如最后一个成员是以 stored 方式存放的内嵌 zip，或数据里恰好含这 4 个字节）不算歧义、不会被拒；拼接、前置、尾随数据仍由“中央目录紧接结束记录”“条目无空隙”“注释恰好到文件尾”三条拒绝。CPython `zipfile` 会通过平移偏移量静默容忍前置或拼接数据，这里改为拒绝。
+    - **代价（偏向拒绝）**：带空隙或前置数据的少见合法 zip（自解压包、`zip -A` 修过偏移的包）、末尾按块补零的包（如 bsdtar 管道输出）、强制 ZIP64 的包，以及注释里含结束记录签名的包，都会被拒。上一版曾因“末 64 KB 内只能有一个结束签名”误拒最后成员为内嵌 stored zip 的合法包，本版已修正（SN-6 第二轮复审 MINOR-1）；
+    - **未经真实归档验证**：严格布局只在合成包上测过（Python、Info-ZIP、7z、Go、bsdtar 生成，ZipCrypto 与 AES 加密包可通过），**从未在真实归档上跑过**。官方 AgeDB 包是否符合严格布局未经验证；用户应先在本机只跑 LX-1 预检（`--stages lx1`），被拒时报告错误码，是否放宽由用户决定；
     - 中央目录过大，条目重叠，本地头与中央目录不一致；
     - 加密成员，符号链接或设备成员，不支持的压缩方法；
     - 单成员、总量和压缩比上限；
@@ -102,7 +104,7 @@ summary.json 里有一组固定披露字段，取值写死在代码里。被改�
   - 本底的 `archive_preparation.prepare()` 有 32 张图上限和取得回执要求，不能处理官方包。
 - **fix/env-and-imports**（未合并）：本底的 `duplicate_screening.fingerprint_contract()` 仍钉死 Python 3.11.16。用户本机若是其他补丁版本，调用 P03 会因环境合同失败，原因会记入 `p03_p04_block_reason`。
 - **P01—P04 的 32 条上限**：现有工具都按 32 条小样设计，P03 还需要 P01 的规范化 PNG 和取得回执。官方 AgeDB 有 16,488 张，不能走这条链。只有调用方提供合格的 P01 报告和清单、且记录不超过 32 条时，才会调用 `screen` 和 `precheck`。身份分组的 `origin` 只在两条同时满足时记为 `official`：记录的 `dataset_id` 都是 `agedb-official`，且**同一次运行**的 LX-1 确认解压目录与归档一致（`extracted_archive_consistent=true`）；否则记 `unknown`。summary 和账本里有 `identity_group_origin`。分组来自官方文件名里的姓名字段（固定规则，没有人工复核，所以从不用 `human`）。
-- **`group_id` 不是匿名化**：`group_id` 是姓名未加盐 SHA-256 的前 16 位十六进制，按公开的 568 人名单可以反查。它只是稳定键，只出现在 `local/` 下的本机报告里，不进 summary。是否加盐由用户决定。
+- **`group_id` 不是匿名化**：`group_id = "subject-" + sha256(subject_id)[:16]`，其中 `subject_id = "agedb-subject:" + sha256(姓名)[:24]`（FG-2 `agedb_filenames.subject_id`），即对姓名做了两次未加盐哈希，按公开的 568 人名单逐个计算仍可反查。它只是稳定键，只出现在 `local/` 下的本机报告里，不进 summary。是否加盐由用户决定。
 
 ## 6. 提交与署名
 
