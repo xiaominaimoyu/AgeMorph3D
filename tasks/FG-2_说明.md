@@ -1,5 +1,7 @@
 # FG-2 说明：AgeDB 官方文件名解析与本机统计 CLI
 
+> **署名改写（2026-11-21 约 16:20 UTC+8，FG-PUSH-PREP，用户本人确认、经 Atlas 转达）：**本地分支上作者或提交者为 Forge (AI agent) 的提交已改写为作者和提交者都是 MingYao Song <2441377859@qq.com>，并加 `Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid>`；作者时间、提交时间、提交说明正文和树内容都没变。下文提交哈希已换成新哈希，括号里是原哈希；表格里“作者”栏写的 Forge (AI agent) 是改写前的状态。备份引用 `refs/backup/pre-rewrite/<分支名>`，完整对照见 `署名改写记录.md`。
+
 - 执行：Forge（AI agent），2026-11-16（UTC+1）
 - 仓库：`/workspace/AgeMorph3D_fg2`（git worktree，基于 `35c0cd6`），本地分支 `feat/agedb-parser`
 - push 地址已设为 `DISABLED_NO_PUSH`（`git config --worktree`，只影响本 worktree；主副本未改）。**未 push、未开 PR、未碰 GitHub。**
@@ -63,7 +65,7 @@
 | 项 | 结果 |
 |---|---|
 | 35c0cd6 完整后端（改动前） | 3006 通过 / 3 跳过 / 0 失败 |
-| feat/agedb-parser 完整后端（377acae 后） | **3123 通过** / 3 跳过 / 0 失败（新增 117 项；23a480d 时为 3119/113） |
+| feat/agedb-parser 完整后端（3ff80d6（原 377acae） 后） | **3123 通过** / 3 跳过 / 0 失败（新增 117 项；0376625（原 23a480d） 时为 3119/113） |
 | `tests/test_agedb_filenames.py` | 117 通过 |
 | ruff 0.17.1 check / format | **只针对新增的两个文件**通过；35c0cd6 全库仍有 17 处既有 I001（由小修复分支处理），本分支未新增 |
 
@@ -83,8 +85,8 @@
 
 | 提交 | 时间（UTC+1） | 作者 | 文件（精确清单） |
 |---|---|---|---|
-| `d67a4b9e2b3093e353263f201c3eb32fa036ea10` | 作者时间 2026-11-16 06:04:41 | Forge (AI agent) <forge-agent@agemorph3d.invalid> | `preprocessing/agedb_filenames.py`（新增）、`backend/tests/test_agedb_filenames.py`（新增） |
-| `23a480d263f20211c7bffc49a1f1311bf9ce4ce7` | 2026-11-16 06:04:41 | 同上 | `docs/AgeDB文件名解析开发记录.md`（新增）、`ARCHITECTURE.md`、`TASKS.md`、`PROGRESS.md`（各 +1 条） |
+| `55ccc39bcbe94f8fd536d33b2f20f2c3c4c4df0e（原 d67a4b9e2b3093e353263f201c3eb32fa036ea10）` | 作者时间 2026-11-16 06:04:41 | Forge (AI agent) <forge-agent@agemorph3d.invalid> | `preprocessing/agedb_filenames.py`（新增）、`backend/tests/test_agedb_filenames.py`（新增） |
+| `037662540c878ab182cb204406353ec7101296d2（原 23a480d263f20211c7bffc49a1f1311bf9ce4ce7）` | 2026-11-16 06:04:41 | 同上 | `docs/AgeDB文件名解析开发记录.md`（新增）、`ARCHITECTURE.md`、`TASKS.md`、`PROGRESS.md`（各 +1 条） |
 
 - 逐个文件 `git add -- <路径>` 暂存，没有用 `git add -A`；提交前 `git check-ignore` 确认这 6 个文件都不在忽略规则内；没有暂存任何被忽略文件（`backend/src/agemorph3d_backend.egg-info/` 是 venv 安装产生的忽略目录，未提交）。
 - 提交前做了敏感检查：新增文件里没有密码、令牌、真实人名或 `/workspace/hf` 路径；测试里的人名都是虚构的。
@@ -94,7 +96,7 @@
 
 ## 补充（2026-11-16 06:1x，Europe/Berlin）：测试夹具人名替换
 
-按 Atlas / Sentinel 要求，`backend/tests/test_agedb_filenames.py` 中可能被读作真实人名的夹具名已换成明显虚构的名字：`Jean_Paul_Example`→`Test_Subject_01`、`MariaFake`→`PersonM`、`O'Brien-Fake`→`Person'O-Test`、`Zoë Fake`→`Personë Test`、`Zoe\u0301`/`Zo\u00e9`→`Persone\u0301`/`Person\u00e9`（Unicode 组合/预组合测试语义不变）。修正以 fixup 并入本地提交（从未推送），原 `9aae64b`/`2986bec` 已重写为 `d67a4b9`/`23a480d`，新历史中逐提交检查无上述人名。113 项测试通过，ruff check/format 通过。`/tmp/pytest-of-box/` 下旧测试生成的文件按要求未删除，由用户决定。旧提交对象仍在本地 reflog 中，待 Git 垃圾回收或用户决定后清理。
+按 Atlas / Sentinel 要求，`backend/tests/test_agedb_filenames.py` 中可能被读作真实人名的夹具名已换成明显虚构的名字：`Jean_Paul_Example`→`Test_Subject_01`、`MariaFake`→`PersonM`、`O'Brien-Fake`→`Person'O-Test`、`Zoë Fake`→`Personë Test`、`Zoe\u0301`/`Zo\u00e9`→`Persone\u0301`/`Person\u00e9`（Unicode 组合/预组合测试语义不变）。修正以 fixup 并入本地提交（从未推送），原 `9aae64b`/`2986bec` 已重写为 `55ccc39（原 d67a4b9）`/`0376625（原 23a480d）`，新历史中逐提交检查无上述人名。113 项测试通过，ruff check/format 通过。`/tmp/pytest-of-box/` 下旧测试生成的文件按要求未删除，由用户决定。旧提交对象仍在本地 reflog 中，待 Git 垃圾回收或用户决定后清理。
 
 ## 补充（2026-11-16 06:22，Europe/Berlin）：Sentinel 复审后的两项跟进
 
@@ -105,9 +107,9 @@
 
 | 提交 | 时间（Europe/Berlin） | 作者 | 文件（精确清单） |
 |---|---|---|---|
-| `377acaee8a42e578ebd0827bd2bddf8a41eedf32` | 作者时间 2026-11-16 06:22:25 | Forge (AI agent) <forge-agent@agemorph3d.invalid> | `preprocessing/agedb_filenames.py`、`backend/tests/test_agedb_filenames.py`、`docs/AgeDB文件名解析开发记录.md`、`TASKS.md`、`PROGRESS.md`（均修改；TASKS/PROGRESS 各在原 FG-2 条目上补一句，未另插文首新段） |
+| `3ff80d6d4ab465f08f1c48528754412211ef1cd1（原 377acaee8a42e578ebd0827bd2bddf8a41eedf32）` | 作者时间 2026-11-16 06:22:25 | Forge (AI agent) <forge-agent@agemorph3d.invalid> | `preprocessing/agedb_filenames.py`、`backend/tests/test_agedb_filenames.py`、`docs/AgeDB文件名解析开发记录.md`、`TASKS.md`、`PROGRESS.md`（均修改；TASKS/PROGRESS 各在原 FG-2 条目上补一句，未另插文首新段） |
 
-- 叠在 `23a480d` 之上的一条新本地提交，没有改写既有历史；`git add -- <路径>` 逐个暂存，未使用 `-A`。
+- 叠在 `0376625（原 23a480d）` 之上的一条新本地提交，没有改写既有历史；`git add -- <路径>` 逐个暂存，未使用 `-A`。
 - 提交前读了 `.gitignore`（这 5 个文件均不被忽略）；敏感检查：无密码、令牌、真实人名或 `/workspace/hf` 路径。
 - 测试：`tests/test_agedb_filenames.py` **117 通过**（原 113，新增 4 项：无 flag 拒绝且不写文件、有 flag 打印警告、`--help` 列出必填参数、外层报告/K5 结构）；完整后端 **3123 通过 / 3 跳过 / 0 失败**（Python 3.11.16 / Pillow 13.0.0，`QT_QPA_PLATFORM=offscreen`；跳过项与先前相同）。ruff 0.17.1 对上述两个 Python 文件 `check` 与 `format --check` 均通过（在 `backend/` 下按仓库 `line-length = 100` 运行）。
 - **未 push、未开 PR、未碰 GitHub**；`remote.origin.pushurl=DISABLED_NO_PUSH`。未删除或改动 `/tmp/pytest-of-box/`，未执行 `git gc` / `reflog expire`。未读取真实 AgeDB 或 `/workspace/hf`。

@@ -1,7 +1,9 @@
 # FG-4 说明：数据安全加载规则代码化
 
+> **署名改写（2026-11-21 约 16:20 UTC+8，FG-PUSH-PREP，用户本人确认、经 Atlas 转达）：**本地分支上作者或提交者为 Forge (AI agent) 的提交已改写为作者和提交者都是 MingYao Song <2441377859@qq.com>，并加 `Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid>`；作者时间、提交时间、提交说明正文和树内容都没变。下文提交哈希已换成新哈希，括号里是原哈希；表格里“作者”栏写的 Forge (AI agent) 是改写前的状态。备份引用 `refs/backup/pre-rewrite/<分支名>`，完整对照见 `署名改写记录.md`。
+
 - 执行：Forge（AI agent），2026-11-16 初版与复审返工；2026-11-21 完成 Sentinel PASS 后的 5 条 MINOR（N1–N5）。本文时间一律为 UTC+8（项目文档约定）
-- 状态：初版经 Sentinel 复审 FAIL（CRITICAL 0 / MAJOR 2 / MINOR 5），已按第 8 节返工；Sentinel 对 `3c3b34c`+`23cfd7b` 复审 PASS，另有 5 条 MINOR（N1–N5）已按第 9 节在 `23cfd7b` 之上新增一个提交修复，无需再复审；没有改写既有提交
+- 状态：初版经 Sentinel 复审 FAIL（CRITICAL 0 / MAJOR 2 / MINOR 5），已按第 8 节返工；Sentinel 对 `21c9d93（原 3c3b34c）`+`17a5d21（原 23cfd7b）` 复审 PASS，另有 5 条 MINOR（N1–N5）已按第 9 节在 `17a5d21（原 23cfd7b）` 之上新增一个提交修复，无需再复审；没有改写既有提交
 - 仓库：`/workspace/AgeMorph3D_fg4`（git worktree，基于 `35c0cd6`），本地分支 `feat/safe-loading`
 - push 地址已用 `git config --worktree` 设为 `DISABLED_NO_PUSH`（只影响本 worktree；主副本仍推向 GitHub，未改）。**未 push、未开 PR、未碰 GitHub。**
 - 边界：没有读取 `/workspace/hf` 或任何真实数据/权重，没有下载；没有使用 `trust_remote_code`；测试只用临时目录里构造的压缩包和虚构文件名。主副本和 forge/fixes/fg2 三个 worktree 都没动。
@@ -68,8 +70,8 @@ SAM 存量的准确情况（初版写“两处在加载前已核对 SHA-256”�
 |---|---|
 | 35c0cd6 完整后端（改动前） | 3006 通过 / 3 跳过 / 0 失败 |
 | feat/safe-loading 完整后端（初版提交后） | 3136 通过 / 3 跳过 / 0 失败（新增 130 项） |
-| feat/safe-loading 完整后端（返工提交后，`23cfd7b`） | 3180 通过 / 3 跳过 / 0 失败（相对 35c0cd6 新增 174 项） |
-| feat/safe-loading 完整后端（MINOR 提交后） | **3194 通过** / 3 跳过 / 0 失败（相对 35c0cd6 新增 188 项；相对 `23cfd7b` 再增 14 项） |
+| feat/safe-loading 完整后端（返工提交后，`17a5d21（原 23cfd7b）`） | 3180 通过 / 3 跳过 / 0 失败（相对 35c0cd6 新增 174 项） |
+| feat/safe-loading 完整后端（MINOR 提交后） | **3194 通过** / 3 跳过 / 0 失败（相对 35c0cd6 新增 188 项；相对 `17a5d21（原 23cfd7b）` 再增 14 项） |
 | `test_archive_preparation.py` | 179 通过（原 83 项全部仍通过） |
 | `test_safe_loading.py` | 92 通过（返工后 78，MINOR 后再增加 14 项） |
 | 初版新测试在旧 `archive_preparation.py` 上 | 16 项失败，但含义不同：其中 **9 项只是因为旧代码里没有 `tar_data_filter` 函数**（直接调用该函数的测试报 AttributeError，不说明旧代码会放行这些成员）；**7 项反映新行为**（Unicode 重名、重叠条目、本地头不一致、伸进中央目录、压缩比、每个 TAR 成员两阶段经过 data_filter、`.part` 清理）。TAR 链接/设备/绝对路径等在旧代码里已被仓库自身规则拒绝，`data_filter` 对它们是**纵深防御** |
@@ -95,19 +97,19 @@ SAM 存量的准确情况（初版写“两处在加载前已核对 SHA-256”�
 1. **SAM 的 4 处**（`tools/sam_probe.py:96/98` 加载前无校验；`tools/sam_worker.py:119` 先哈希后按路径重读、有 TOCTOU；`tools/sam_native_ops/install.py:34-39/156` 把 `psp.py` 改成 `weights_only=False`，`pSp` 二次加载）：保持现状，还是在有 torch 和权重的机器上改成“读一次字节→核对 SHA-256→从内存 `weights_only=True` 加载”（必要时用 `torch.serialization.add_safe_globals` 放行 `argparse.Namespace`），同时处理 `pSp` 的二次加载，并重跑 SAM 验证。
 2. **失败成员 `.part` 清理**改变了 D06 原记录的“保留 stage”，是否接受。
 3. **提交文件清单**：RULES.md 第 14 行要求先确认精确文件清单再做 Git 操作，下面的本地提交事先没有经用户确认，请补确认。
-4. **署名**：用户已决定，以后推送的提交作者用 `MingYao Song <2441377859@qq.com>`，并加 `Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid>`。MINOR 这条新提交已按此署名；`c96d6bc`/`8beaa8d`/`3c3b34c`/`23cfd7b` 仍为 Forge 署名，本次未改写，改写留待后续步骤。推送仍须用户逐次批准（U-9）。
+4. **署名**：用户已决定，以后推送的提交作者用 `MingYao Song <2441377859@qq.com>`，并加 `Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid>`。MINOR 这条新提交已按此署名；`aca86bd（原 c96d6bc）`/`6a0a0a3（原 8beaa8d）`/`21c9d93（原 3c3b34c）`/`17a5d21（原 23cfd7b）` 仍为 Forge 署名，本次未改写，改写留待后续步骤。推送仍须用户逐次批准（U-9）。
 5. **Python 下限**：是否把 `requires-python` 收紧到 `>=3.11.4`（需重新生成锁文件）。
 
 ## 7. 提交与精确文件清单（待用户确认）
 
 | 提交 | 时间（UTC+8） | 作者/提交者 | 文件（精确清单） |
 |---|---|---|---|
-| `c96d6bcb8c86f390f3977f8911e9e5a19122a34a` | 2026-11-16 13:17:35 | Forge (AI agent) <forge-agent@agemorph3d.invalid> | `preprocessing/archive_preparation.py`（修改）、`preprocessing/safe_loading.py`（新增）、`backend/tests/test_archive_preparation.py`（修改）、`backend/tests/test_safe_loading.py`（新增） |
-| `8beaa8d5ed38cf2ff3f54cc044bf3596b18d0363` | 2026-11-16 13:17:35 | 同上 | `docs/数据安全加载规则开发记录.md`（新增）、`docs/归档解压与逐图核验开发记录.md`、`ARCHITECTURE.md`、`TASKS.md`、`PROGRESS.md`（修改） |
-| `3c3b34c2a8bd79329327c6be6c3a2d5e6fd674b5`（返工） | 2026-11-16 13:39:48 | 同上 | `preprocessing/safe_loading.py`、`preprocessing/archive_preparation.py`、`backend/tests/test_safe_loading.py`、`backend/tests/test_archive_preparation.py`（均为修改）；提交后完整后端 3180 通过 / 3 跳过 |
-| `23cfd7b19e727708ba045c223f1bf5df74ca5563`（返工） | 2026-11-16 13:39:48 | 同上 | `docs/数据安全加载规则开发记录.md`、`docs/归档解压与逐图核验开发记录.md`、`ARCHITECTURE.md`、`TASKS.md`、`PROGRESS.md`（均为修改）；仅文档，测试数同上 |
-| `4b5e5c5946695246a0fddb9ccdee7ef3757fa8a1`（MINOR） | 2026-11-21 15:31:49 | MingYao Song <2441377859@qq.com>；Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid> | `preprocessing/safe_loading.py`、`backend/tests/test_safe_loading.py`、`docs/数据安全加载规则开发记录.md`、`docs/归档解压与逐图核验开发记录.md`、`ARCHITECTURE.md`、`TASKS.md`、`PROGRESS.md`（均为修改）；提交后完整后端 3194 通过 / 3 跳过 |
-| `42e634b0ea23563e77c6eb4eeecf81bad88f0777`（ZIP 布局补强） | 2026-11-21 15:57:15 | 同上（作者 = 提交者，含同一 Co-authored-by 尾注） | `preprocessing/archive_preparation.py`、`backend/tests/test_archive_preparation.py`、`docs/数据安全加载规则开发记录.md`、`TASKS.md`、`PROGRESS.md`（均为修改）；提交前完整后端 3199 通过 / 3 跳过 |
+| `aca86bde415484483038f6a2f578f19c41d06724（原 c96d6bcb8c86f390f3977f8911e9e5a19122a34a）` | 2026-11-16 13:17:35 | Forge (AI agent) <forge-agent@agemorph3d.invalid> | `preprocessing/archive_preparation.py`（修改）、`preprocessing/safe_loading.py`（新增）、`backend/tests/test_archive_preparation.py`（修改）、`backend/tests/test_safe_loading.py`（新增） |
+| `6a0a0a3c46f0f86c18702320def18db98f4ba456（原 8beaa8d5ed38cf2ff3f54cc044bf3596b18d0363）` | 2026-11-16 13:17:35 | 同上 | `docs/数据安全加载规则开发记录.md`（新增）、`docs/归档解压与逐图核验开发记录.md`、`ARCHITECTURE.md`、`TASKS.md`、`PROGRESS.md`（修改） |
+| `21c9d93ce8ab2ea3553f0aec9b3e1a2e0d3421f8（原 3c3b34c2a8bd79329327c6be6c3a2d5e6fd674b5）`（返工） | 2026-11-16 13:39:48 | 同上 | `preprocessing/safe_loading.py`、`preprocessing/archive_preparation.py`、`backend/tests/test_safe_loading.py`、`backend/tests/test_archive_preparation.py`（均为修改）；提交后完整后端 3180 通过 / 3 跳过 |
+| `17a5d2173c25c35db4e7e506605dfdbc749935e0（原 23cfd7b19e727708ba045c223f1bf5df74ca5563）`（返工） | 2026-11-16 13:39:48 | 同上 | `docs/数据安全加载规则开发记录.md`、`docs/归档解压与逐图核验开发记录.md`、`ARCHITECTURE.md`、`TASKS.md`、`PROGRESS.md`（均为修改）；仅文档，测试数同上 |
+| `c042cfb7d37585ee050f05a8537ea2c22bd4abb6（原 4b5e5c5946695246a0fddb9ccdee7ef3757fa8a1）`（MINOR） | 2026-11-21 15:31:49 | MingYao Song <2441377859@qq.com>；Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid> | `preprocessing/safe_loading.py`、`backend/tests/test_safe_loading.py`、`docs/数据安全加载规则开发记录.md`、`docs/归档解压与逐图核验开发记录.md`、`ARCHITECTURE.md`、`TASKS.md`、`PROGRESS.md`（均为修改）；提交后完整后端 3194 通过 / 3 跳过 |
+| `fa56ed9828d66eadc17f1b031cfacdfff1905978（原 42e634b0ea23563e77c6eb4eeecf81bad88f0777）`（ZIP 布局补强） | 2026-11-21 15:57:15 | 同上（作者 = 提交者，含同一 Co-authored-by 尾注） | `preprocessing/archive_preparation.py`、`backend/tests/test_archive_preparation.py`、`docs/数据安全加载规则开发记录.md`、`TASKS.md`、`PROGRESS.md`（均为修改）；提交前完整后端 3199 通过 / 3 跳过 |
 
 - 五个提交都逐个 `git add -- <路径>`，没有用 `-A`；`git check-ignore` 确认所有提交文件都不在忽略规则内；没有暂存被忽略文件（`backend/src/agemorph3d_backend.egg-info/` 是 venv 安装产生的忽略目录，未提交）。MINOR 这条没有改写既有提交。
 - 敏感检查：新增内容里没有密码、令牌、真实人名或 `/workspace/hf` 路径；测试中的 `/etc/passwd` 只是链接目标字符串，从不读取；静态检查用例只是源码字符串，从不执行。
@@ -117,17 +119,17 @@ SAM 存量的准确情况（初版写“两处在加载前已核对 SHA-256”�
 
 | 意见 | 修正 | 位置 |
 |---|---|---|
-| MAJOR-1 SAM 描述不准确、漏报第 4 处 | `sam_probe` 改为“加载前无校验，SHA 只在加载后写报告”；写明 `sam_worker` 的 TOCTOU；补上 `install.py` 改写 `psp.py` 与 `pSp` 二次加载；字符串/字节字面量规则把补丁检测为已知存量；删除“新增任何违规测试都会失败” | `3c3b34c`（检测、已知清单）；`23cfd7b`（开发记录 §3、ARCHITECTURE、TASKS、PROGRESS）；本文 §3、§6 |
-| MAJOR-2 静态检查可被绕过、表述绝对 | 按模块解析导入别名；`getattr`、`**kwargs`、字典字面量、`unpack_archive`、`.extract(`、pickle 系、`torch.jit/hub.load`、星号导入、字符串补丁；为 Sentinel 列出的每种绕过各加用例；重新建立已知清单（新增 install.py 2 条、prepare_tddfa 1 条，没有隐藏）；开发记录 §3/§4 写明是启发式、列出盲区 | `3c3b34c`、`23cfd7b` |
-| MINOR-1 TASKS 写“SAM两处” | 改为 2 文件 3 处调用 + `psp.py` 补丁 = 4 处 | `23cfd7b` |
-| MINOR-2 缺 `data_filter` 时行为不明 | 显式 `TAR_DATA_FILTER_UNAVAILABLE`；monkeypatch 删除属性后单元/端到端测试；没改 pyproject/lock，见 §5、§6 | `3c3b34c`、`23cfd7b` |
+| MAJOR-1 SAM 描述不准确、漏报第 4 处 | `sam_probe` 改为“加载前无校验，SHA 只在加载后写报告”；写明 `sam_worker` 的 TOCTOU；补上 `install.py` 改写 `psp.py` 与 `pSp` 二次加载；字符串/字节字面量规则把补丁检测为已知存量；删除“新增任何违规测试都会失败” | `21c9d93（原 3c3b34c）`（检测、已知清单）；`17a5d21（原 23cfd7b）`（开发记录 §3、ARCHITECTURE、TASKS、PROGRESS）；本文 §3、§6 |
+| MAJOR-2 静态检查可被绕过、表述绝对 | 按模块解析导入别名；`getattr`、`**kwargs`、字典字面量、`unpack_archive`、`.extract(`、pickle 系、`torch.jit/hub.load`、星号导入、字符串补丁；为 Sentinel 列出的每种绕过各加用例；重新建立已知清单（新增 install.py 2 条、prepare_tddfa 1 条，没有隐藏）；开发记录 §3/§4 写明是启发式、列出盲区 | `21c9d93（原 3c3b34c）`、`17a5d21（原 23cfd7b）` |
+| MINOR-1 TASKS 写“SAM两处” | 改为 2 文件 3 处调用 + `psp.py` 补丁 = 4 处 | `17a5d21（原 23cfd7b）` |
+| MINOR-2 缺 `data_filter` 时行为不明 | 显式 `TAR_DATA_FILTER_UNAVAILABLE`；monkeypatch 删除属性后单元/端到端测试；没改 pyproject/lock，见 §5、§6 | `21c9d93（原 3c3b34c）`、`17a5d21（原 23cfd7b）` |
 | MINOR-3 “16 项失败”表述 | 拆成 9 项（函数不存在）+ 7 项（新行为），其余属纵深防御 | 本文 §4 |
 | MINOR-4 时间应为 UTC+8 | 本文统一为 UTC+8；本次改动的仓库文档只写日期（2026-11-16，在 UTC+8 下不变），没有写具体时刻 | 本文 |
-| MINOR-5 已知存量只比数量 | 改为按（文件、拒绝码、规范化片段）逐条比对，并加测试证明“同文件换一种违规写法”会失败；残余盲区（同文本挪位置）已写明 | `3c3b34c`；开发记录 §3 |
+| MINOR-5 已知存量只比数量 | 改为按（文件、拒绝码、规范化片段）逐条比对，并加测试证明“同文件换一种违规写法”会失败；残余盲区（同文本挪位置）已写明 | `21c9d93（原 3c3b34c）`；开发记录 §3 |
 
 ## 9. Sentinel 复审 PASS 后的 MINOR（N1–N5）
 
-Sentinel 对 `3c3b34c`+`23cfd7b` 复审 PASS，并列出 5 条可直接修的 MINOR，无需再复审。修复是在 `23cfd7b` 之上新增一个提交，没有改写既有提交。精确文件清单与提交哈希见第 7 节。
+Sentinel 对 `21c9d93（原 3c3b34c）`+`17a5d21（原 23cfd7b）` 复审 PASS，并列出 5 条可直接修的 MINOR，无需再复审。修复是在 `17a5d21（原 23cfd7b）` 之上新增一个提交，没有改写既有提交。精确文件清单与提交哈希见第 7 节。
 
 | 意见 | 修正 |
 |---|---|
@@ -141,7 +143,7 @@ Sentinel 对 `3c3b34c`+`23cfd7b` 复审 PASS，并列出 5 条可直接修的 MI
 
 Sentinel 在复审 FG-8 时指出 FG-8 的 ZIP 检查（照 FG-4 重写）放过首尾拼接的 ZIP，并指出 FG-4 `archive_preparation.py:116` 有同一问题。原因：`_zip_guard` 只要求“中央目录起点 + 长度 ≤ 结束记录位置”，`_zip_layout` 只查条目重叠；CPython `zipfile` 发现偏移差时会把所有偏移平移（内部 `concat`），于是拼接包只读出后一个、前一个包被静默放过，前置或尾随数据同理。
 
-修复在 `4b5e5c5` 之上新增提交 `42e634b`，没有改写历史：
+修复在 `c042cfb（原 4b5e5c5）` 之上新增提交 `fa56ed9（原 42e634b）`，没有改写历史：
 
 | 检查 | 拒绝码 |
 |---|---|
@@ -152,10 +154,20 @@ Sentinel 在复审 FG-8 时指出 FG-8 的 ZIP 检查（照 FG-4 重写）放过
 | 条目从 0 开始首尾相接，最后条目紧接中央目录（数据描述符按 12/16 字节计） | `ZIP_ENTRY_GAP`、`ZIP_ENTRY_OVERLAP` |
 | 目录预算（条目数、1 MiB）仍在 `ZipFile` 分配前检查，且先于相邻性检查 | `ZIP_DIRECTORY_LIMIT` |
 
-- **测试**：`test_archive_preparation.py` 179 → 184（拼接包、自洽前置、中央目录前空隙、尾随数据与注释里藏结束记录、正常 stored/deflated 包仍通过）。把实现换回 `4b5e5c5` 版本跑这 5 项：前 4 项失败、最后 1 项通过，证明测试能抓到原问题。
+- **测试**：`test_archive_preparation.py` 179 → 184（拼接包、自洽前置、中央目录前空隙、尾随数据与注释里藏结束记录、正常 stored/deflated 包仍通过）。把实现换回 `c042cfb（原 4b5e5c5）` 版本跑这 5 项：前 4 项失败、最后 1 项通过，证明测试能抓到原问题。
 - **完整后端**：`--basetemp=/tmp/fg4-pytest/full`（父目录 `/tmp/fg4-pytest` 须先 `mkdir -p`，pytest 不会建多级父目录），venv `agemorph-fg4-31116`：**3199 通过 / 3 跳过 / 0 失败**（76.2 s，1 条既有 Starlette 警告）。之后 `ruff format` 只改了一处换行（纯格式），再跑 `test_archive_preparation.py`+`test_safe_loading.py` 276 通过。
 - **ruff**：两个改动文件 check/format 通过（`--config backend/pyproject.toml`）。
-- **代价（已写进开发记录）**：极少数合法但带空隙或前置数据的 ZIP（自解压包、`zip -A` 修过偏移的包）也会被拒，属有意的保守做法。
+- **代价（已写进开发记录）**：带空隙或前置数据的合法 ZIP（自解压包、`zip -A` 修过偏移的包）、末尾按块补零的包（bsdtar 管道输出）、强制 ZIP64 的包、注释里含结束签名的包会被拒，属有意的保守做法。本节初版还会误拒最后成员为 stored 内嵌 ZIP、或成员数据恰好含 `PK\x05\x06` 的合法包，已在 §11 修正。**严格布局未经真实归档验证。**
 - **署名**：作者 = 提交者 = MingYao Song <2441377859@qq.com>，尾注 Co-authored-by: Forge (AI agent)。署名口径由用户本人确认（经 Atlas 转达，2026-11-21）。
 - push 地址仍为 `DISABLED_NO_PUSH`；未 push、未 fetch/rebase。**本提交的精确文件清单待用户确认（RULES.md 第 14 行）。**
 - `feature_join.py` 的源码哈希清单包含 `archive_preparation.py`，本次改动后旧 P05 报告同样无法按原依赖哈希重放（与 §1 已述相同）。
+
+## 11. ZIP 补强复审 PASS 后的 2 条 MINOR（无需再复审）
+
+Sentinel SN-6 第二轮：`fa56ed9（原 42e634b）` PASS，0 / 0 / 2 MINOR。修复为一条新提交，之后随分支一起做了署名改写：`322d9ca`（原 `abe10f2`），2026-11-21 16:13:53（UTC+8），文件为 `preprocessing/archive_preparation.py`、`backend/tests/test_archive_preparation.py`、`docs/数据安全加载规则开发记录.md`、`TASKS.md`、`PROGRESS.md`（均修改）。
+
+- **MINOR-1 误拒**：与 FG-8 同样的修法（`_end_record_position`：只认注释长度恰好到文件尾的结束签名，候选多于一个或注释里还有签名才算歧义）。最后成员为 stored 内嵌 ZIP、或成员数据含 `PK\x05\x06` 的合法包不再被拒；拼接、前置、尾随数据仍被拒。新增 3 项测试（184 → 187），换回旧实现时 3 项都失败。Sentinel 的合成包里，结果与 FG-8 相同。
+- **代价补充**（开发记录与本文 §10）：带空隙或前置数据的包、bsdtar 补零输出、强制 ZIP64、注释里含结束签名的包会被拒；补强初版曾误拒内嵌 stored ZIP，现已修正。
+- **MINOR-2**：开发记录写明“严格布局未经真实归档验证”（RN-3 用的是旧规则，WIDER/AFLW 压缩包已删除）。
+- **测试**：最终 `ruff format` 无改动后跑的完整后端为 **3202 通过 / 3 跳过 / 0 失败**（`--basetemp=/tmp/fg4-pytest/full`）；ruff check 通过。
+

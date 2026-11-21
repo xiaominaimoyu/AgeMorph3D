@@ -1,8 +1,10 @@
 # FG-1 WIDER FACE 标注转换器 · 说明
 
+> **署名改写（2026-11-21 约 16:20 UTC+8，FG-PUSH-PREP，用户本人确认、经 Atlas 转达）：**本地分支上作者或提交者为 Forge (AI agent) 的提交已改写为作者和提交者都是 MingYao Song <2441377859@qq.com>，并加 `Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid>`；作者时间、提交时间、提交说明正文和树内容都没变。下文提交哈希已换成新哈希，括号里是原哈希；表格里“作者”栏写的 Forge (AI agent) 是改写前的状态。备份引用 `refs/backup/pre-rewrite/<分支名>`，完整对照见 `署名改写记录.md`。
+
 - 执行：Forge；完成时间 2026-11-16 约 05:35（UTC+1，即 12:35 UTC+8）
 - 分支：本地 `feat/wider-converter`（worktree `/workspace/AgeMorph3D_forge`，基于 `35c0cd6`）
-- 提交：`c2a1d58`（转换模块 + 测试）、`e324d28`（仓库内开发记录与 ARCHITECTURE/TASKS/PROGRESS 条目）、`688bc09`（按 Sentinel 审核 MINOR 修正，2026-11-16 约 05:50 UTC+1）
+- 提交：`a6da9a2（原 c2a1d58）`（转换模块 + 测试）、`ca65bf1（原 e324d28）`（仓库内开发记录与 ARCHITECTURE/TASKS/PROGRESS 条目）、`db296b6（原 688bc09）`（按 Sentinel 审核 MINOR 修正，2026-11-16 约 05:50 UTC+1）
 - Sentinel 审核：PASS（无 CRITICAL/MAJOR，7 条 MINOR 已处理，见第 8 节）
 - worktree 推送地址已设为 `DISABLED_NO_PUSH`（仅本 worktree），保持不动
 - **未 push、未开 PR、未动任何远程**；主副本 `/workspace/AgeMorph3D` 工作区未改动；只用合成数据，未下载、未读取任何真实 WIDER 文件。
@@ -71,8 +73,8 @@ cd backend && python -m pytest tests/test_wider_annotations.py -q
 | 状态 | 结果 |
 |---|---|
 | 基线 35c0cd6（草稿暂时移出） | 3006 passed, 3 skipped, 1 条既有警告 |
-| 首版（e324d28） | 3092 passed, 3 skipped, 1 条既有警告（+86） |
-| 审核修正后（688bc09） | **3103 passed**, 3 skipped, 1 条既有警告（+97，全部为新增用例） |
+| 首版（ca65bf1（原 e324d28）） | 3092 passed, 3 skipped, 1 条既有警告（+86） |
+| 审核修正后（db296b6（原 688bc09）） | **3103 passed**, 3 skipped, 1 条既有警告（+97，全部为新增用例） |
 | 新增测试单独 | 97 passed |
 | ruff 0.17.1 check / format | **只针对新增的两个文件**通过；35c0cd6 全库仍有 17 处既有 I001（另由小修复分支处理） |
 
@@ -101,7 +103,7 @@ cd backend && python -m pytest tests/test_wider_annotations.py -q
 2. 统计 EXIF 方向 ≠ 1 导致的逐图失败数。
 3. 对小脸目视抽查叠加，确认 `x1+w` 约定后才能把 `box_convention_verified_on_real_data` 改为 true。
 
-## 8. Sentinel 审核 MINOR 处理（688bc09）
+## 8. Sentinel 审核 MINOR 处理（db296b6（原 688bc09））
 
 1. 退出码 2 不留输出：`SAMPLE_ID_COLLISION` 改在建目录前检查；之后的 `K5_MANIFEST_TOO_LARGE`、`REPORT_TOO_LARGE` 及任何意外异常，先删除本次新建的输出目录和本次新建的空父目录再抛出，已有目录不动。新增测试逐一断言（含 `output/research` 已存在/不存在两种情况）。
 2. `_image_info` 的 `Image.open` 加 `formats=["JPEG","PNG"]`；新增测试：GIF/BMP/TIFF/WEBP 内容（后缀为 .jpg）被拒，记 `IMAGE_UNREADABLE`。
@@ -116,6 +118,6 @@ cd backend && python -m pytest tests/test_wider_annotations.py -q
 
 **如实说明**：仓库 RULES.md 第 14 行要求精确文件清单确认后才做 Git 操作。这三个本地提交的文件清单**事先没有经用户确认**（只有 Atlas 转达的“完成本地提交”指令）。精确清单如下，请用户补确认；如不同意，可在推送前调整：
 
-- `c2a1d58`：A `preprocessing/wider_annotations.py`；A `backend/tests/test_wider_annotations.py`
-- `e324d28`：A `docs/WIDER标注转换开发记录.md`；M `ARCHITECTURE.md`；M `TASKS.md`；M `PROGRESS.md`
-- `688bc09`：M `preprocessing/wider_annotations.py`；M `backend/tests/test_wider_annotations.py`；M `docs/WIDER标注转换开发记录.md`；M `ARCHITECTURE.md`；M `TASKS.md`；M `PROGRESS.md`
+- `a6da9a2（原 c2a1d58）`：A `preprocessing/wider_annotations.py`；A `backend/tests/test_wider_annotations.py`
+- `ca65bf1（原 e324d28）`：A `docs/WIDER标注转换开发记录.md`；M `ARCHITECTURE.md`；M `TASKS.md`；M `PROGRESS.md`
+- `db296b6（原 688bc09）`：M `preprocessing/wider_annotations.py`；M `backend/tests/test_wider_annotations.py`；M `docs/WIDER标注转换开发记录.md`；M `ARCHITECTURE.md`；M `TASKS.md`；M `PROGRESS.md`

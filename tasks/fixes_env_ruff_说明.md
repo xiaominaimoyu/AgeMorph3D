@@ -1,5 +1,7 @@
 # 环境检查与 Ruff 导入排序修复说明
 
+> **署名改写（2026-11-21 约 16:20 UTC+8，FG-PUSH-PREP，用户本人确认、经 Atlas 转达）：**本地分支上作者或提交者为 Forge (AI agent) 的提交已改写为作者和提交者都是 MingYao Song <2441377859@qq.com>，并加 `Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid>`；作者时间、提交时间、提交说明正文和树内容都没变。下文提交哈希已换成新哈希，括号里是原哈希；表格里“作者”栏写的 Forge (AI agent) 是改写前的状态。备份引用 `refs/backup/pre-rewrite/<分支名>`，完整对照见 `署名改写记录.md`。
+
 - 执行人：Forge
 - 时间：2026-11-16（Europe/Berlin，UTC+1）
 - 工作副本：`/workspace/AgeMorph3D_fixes`（`git worktree add`，基线提交 `35c0cd6`）
@@ -47,7 +49,7 @@ ENVIRONMENT = {"python_version": "3.11.16", "pillow_version": "13.0.0"}
 2. 近重复 / 重复筛查的像素哈希、dHash 和 LANCZOS 缩放走的是 Pillow 解码与重采样，复现性取决于 Pillow（及报告里已记录的 JPEG/zlib/WebP codec），不取决于 CPython 3.11 的补丁号。
 3. Pillow 已在 `backend/uv.lock` 钉死为 **13.0.0**，因此 Pillow 仍做精确匹配；Python 改为接受任意 `3.11.x`。
 
-未修改 `docs/干净环境与离线复现准备.md`，因为它本来就是对的。历史执行记录里写的“当时用了 3.11.16”仍然保留。开发记录第 43 行及旧计划重放说明已在复审跟进提交 `cbbf8a3` 中更新，见第 6 节。
+未修改 `docs/干净环境与离线复现准备.md`，因为它本来就是对的。历史执行记录里写的“当时用了 3.11.16”仍然保留。开发记录第 43 行及旧计划重放说明已在复审跟进提交 `95caac8（原 cbbf8a3）` 中更新，见第 6 节。
 
 ### 1.3 实现
 
@@ -107,8 +109,8 @@ I001 全部在测试文件，主要是第三方导入（`pytest` / `PIL` / `fast
 | 阶段 | 提交 / 工作区 | passed | failed | skipped | 说明 |
 |---|---|---:|---:|---:|---|
 | 改前基线 | `35c0cd6` | 2835 | 172 | 2 | 171 项为 Python 补丁号检查；1 项为未安装前端依赖；2 项跳过见上 |
-| 环境修复后 | `808f95f` | 3018 | 1 | 2 | 171 项环境失败全部消失；新增 12 项约束测试；剩余 1 项仍是未 `npm ci` |
-| 导入排序后 | `96641da` | 3018 | 1 | 2 | 与环境修复后完全一致，导入调整没有带来新的失败或行为变化 |
+| 环境修复后 | `63a3673（原 808f95f）` | 3018 | 1 | 2 | 171 项环境失败全部消失；新增 12 项约束测试；剩余 1 项仍是未 `npm ci` |
+| 导入排序后 | `703e466（原 96641da）` | 3018 | 1 | 2 | 与环境修复后完全一致，导入调整没有带来新的失败或行为变化 |
 
 两次修复后都仍有 1 条既有 `StarletteDeprecationWarning`（`starlette.testclient` / `httpx2`），与仓库原有记录一致。
 
@@ -118,12 +120,12 @@ I001 全部在测试文件，主要是第三方导入（`pytest` / `PIL` / `fast
 
 | 提交 | 完整哈希 | 时间（Europe/Berlin） | 说明 |
 |---|---|---|---|
-| 环境检查 | `808f95f054e2f069cd195a0e119ac3717ecc13df` | 2026-11-16 05:43:14 | 将近重复筛查的 Python 冻结从 3.11.16 放宽为任意 3.11.x |
-| 导入排序 | `96641da25697a765c1405af043ae93f9d628f66a` | 2026-11-16 05:44:54 | 按锁定的 ruff 0.17.1 修复 17 处 I001 导入排序 |
-| 报告溯源 | `5a384286fb95d0b4cb240949b1867b4832cceaf8` | 2026-11-16 05:58:56 | 报告增补 python_runtime，冻结合同仍只记录 3.11.* 约束 |
-| 约定记录 | `cbbf8a3693e81de8c7b7385b125e53f5222b11f7` | 2026-11-16 05:58:56 | 记录 3.11.* 约束变更及旧冻结计划无法直接重放 |
+| 环境检查 | `63a36735f3a28a6ef5bd75b3c03a3c1a30aea29b（原 808f95f054e2f069cd195a0e119ac3717ecc13df）` | 2026-11-16 05:43:14 | 将近重复筛查的 Python 冻结从 3.11.16 放宽为任意 3.11.x |
+| 导入排序 | `703e466494ab0d632c812cf3421cc5a6011ab28e（原 96641da25697a765c1405af043ae93f9d628f66a）` | 2026-11-16 05:44:54 | 按锁定的 ruff 0.17.1 修复 17 处 I001 导入排序 |
+| 报告溯源 | `603f62e3dcd05211261dc031d4dabe04395359a4（原 5a384286fb95d0b4cb240949b1867b4832cceaf8）` | 2026-11-16 05:58:56 | 报告增补 python_runtime，冻结合同仍只记录 3.11.* 约束 |
+| 约定记录 | `95caac8a8d236b1555da12012e5aab4e5f98d45a（原 cbbf8a3693e81de8c7b7385b125e53f5222b11f7）` | 2026-11-16 05:58:56 | 记录 3.11.* 约束变更及旧冻结计划无法直接重放 |
 
-分支当前指向 `cbbf8a3`。每笔提交的精确文件清单见第 8 节。
+分支当前指向 `95caac8（原 cbbf8a3）`。每笔提交的精确文件清单见第 8 节。
 
 ## 5. PROGRESS.md 第 9、11 行建议稿（未写入仓库）
 
@@ -141,11 +143,11 @@ I001 全部在测试文件，主要是第三方导入（`pytest` / `PIL` / `fast
 
 > 30新增/完整2956后端（1既有弃用提示）及 Ruff format 通过。就提交 35c0cd6 用锁定的 ruff 0.17.1 复核，`ruff check src tests` 有 17 处 I001（导入排序），不能写成 Ruff check 通过。
 
-导入排序已在本分支 `96641da` 修掉。若日后把该修复合入 main，可在新的进度条目里写明 check 已清，而不必改写当年 L01/K2 的历史记录语气以外的事实。
+导入排序已在本分支 `703e466（原 96641da）` 修掉。若日后把该修复合入 main，可在新的进度条目里写明 check 已清，而不必改写当年 L01/K2 的历史记录语气以外的事实。
 
 ## 6. Sentinel 复审跟进（FAIL → 已按意见修改，待再送审）
 
-初审结论：FAIL（CRITICAL 0 / MAJOR 1 / MINOR 3）。以下均在 `fix/env-and-imports` 上以**新提交**修复，没有 rebase、amend 或改写 `808f95f`、`96641da`。未 push，未开 PR，本 worktree 的 push 地址保持 `DISABLED_NO_PUSH`。
+初审结论：FAIL（CRITICAL 0 / MAJOR 1 / MINOR 3）。以下均在 `fix/env-and-imports` 上以**新提交**修复，没有 rebase、amend 或改写 `63a3673（原 808f95f）`、`703e466（原 96641da）`。未 push，未开 PR，本 worktree 的 push 地址保持 `DISABLED_NO_PUSH`。
 
 ### MAJOR-1：报告补回实际 Python 补丁号
 
@@ -190,14 +192,14 @@ I001 全部在测试文件，主要是第三方导入（`pytest` / `PIL` / `fast
 
 ## 8. 各提交精确文件清单
 
-### `808f95f` 将近重复筛查的 Python 冻结从 3.11.16 放宽为任意 3.11.x
+### `63a3673（原 808f95f）` 将近重复筛查的 Python 冻结从 3.11.16 放宽为任意 3.11.x
 
 - `backend/tests/test_duplicate_screening.py`
 - `backend/tests/test_near_duplicate_probe.py`
 - `preprocessing/duplicate_screening.py`
 - `tools/near_duplicate_probe.py`
 
-### `96641da` 按锁定的 ruff 0.17.1 修复 17 处 I001 导入排序
+### `703e466（原 96641da）` 按锁定的 ruff 0.17.1 修复 17 处 I001 导入排序
 
 - `backend/tests/fixtures/aging_contract_app.py`
 - `backend/tests/test_age_refit_probe.py`
@@ -215,14 +217,14 @@ I001 全部在测试文件，主要是第三方导入（`pytest` / `PIL` / `fast
 - `backend/tests/test_target_uv_probe.py`
 - `backend/tests/test_uv_support_probe.py`
 
-### `5a38428` 报告增补 python_runtime，冻结合同仍只记录 3.11.* 约束
+### `603f62e（原 5a38428）` 报告增补 python_runtime，冻结合同仍只记录 3.11.* 约束
 
 - `backend/tests/test_duplicate_screening.py`
 - `backend/tests/test_near_duplicate_probe.py`
 - `preprocessing/duplicate_screening.py`
 - `tools/near_duplicate_probe.py`
 
-### `cbbf8a3` 记录 3.11.* 约束变更及旧冻结计划无法直接重放
+### `95caac8（原 cbbf8a3）` 记录 3.11.* 约束变更及旧冻结计划无法直接重放
 
 - `PROGRESS.md`
 - `TASKS.md`

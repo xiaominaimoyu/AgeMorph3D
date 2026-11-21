@@ -1,5 +1,7 @@
 # FG-8 说明：LX-1 到 LX-3 本机脚本包（第一阶段）
 
+> **署名改写（2026-11-21 约 16:20 UTC+8，FG-PUSH-PREP，用户本人确认、经 Atlas 转达）：**本地分支上作者或提交者为 Forge (AI agent) 的提交已改写为作者和提交者都是 MingYao Song <2441377859@qq.com>，并加 `Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid>`；作者时间、提交时间、提交说明正文和树内容都没变。下文提交哈希已换成新哈希，括号里是原哈希；表格里“作者”栏写的 Forge (AI agent) 是改写前的状态。备份引用 `refs/backup/pre-rewrite/<分支名>`，完整对照见 `署名改写记录.md`。
+
 > 本文时间均为 UTC+8。
 
 ## 0. 基本信息
@@ -7,8 +9,8 @@
 - **执行**：Forge（AI agent）。
   - 初版：2026-11-16 13:35（UTC+8）。
   - 按 Sentinel 复审返工：2026-11-21 15:37（UTC+8）。
-  - 按 Sentinel SN-6（审到 `91d27d4`，0 CRITICAL / 1 MAJOR / 10 MINOR）第二轮返工：2026-11-21 15:54（UTC+8）；同步修了 FG-4 的同一 ZIP 问题（15:57，见第 7 节）。
-- **仓库**：`/workspace/AgeMorph3D_fg8`（git worktree），本地分支 `feat/lx-local-scripts`，基于 `feat/agedb-parser` @ `377acaee8a42e578ebd0827bd2bddf8a41eedf32`。
+  - 按 Sentinel SN-6（审到 `15b8d9d（原 91d27d4）`，0 CRITICAL / 1 MAJOR / 10 MINOR）第二轮返工：2026-11-21 15:54（UTC+8）；同步修了 FG-4 的同一 ZIP 问题（15:57，见第 7 节）。
+- **仓库**：`/workspace/AgeMorph3D_fg8`（git worktree），本地分支 `feat/lx-local-scripts`，基于 `feat/agedb-parser` @ `3ff80d6d4ab465f08f1c48528754412211ef1cd1（原 377acaee8a42e578ebd0827bd2bddf8a41eedf32）`。
 - **推送状态**：push 地址仍为 `DISABLED_NO_PUSH`（worktree 级配置）。
   - **未 push、未开 PR、未 fetch/rebase，GitHub 上什么都没动。**
   - 未改主副本 `/workspace/AgeMorph3D`，也没有从主副本运行或导入任何东西。
@@ -32,7 +34,7 @@
 
 ## 2. Sentinel 复审意见 → 修复对照
 
-| 编号 | 意见 | 修复（提交 `8312999` 代码 / `91d27d4` 文档） | 对应测试 |
+| 编号 | 意见 | 修复（提交 `c8b5d3c（原 8312999）` 代码 / `15b8d9d（原 91d27d4）` 文档） | 对应测试 |
 |---|---|---|---|
 | MAJOR-1 | 续跑不复核输入，会复用过期或半成品产物 | 见表下说明 | `test_resume_recomputes_lx2_when_an_input_image_changes`、`test_resume_discards_edited_lx2_outputs`、`test_lx3_alone_refuses_when_inputs_changed_since_lx2`、`test_failed_lx3_leaves_no_stale_ledger_and_stashes_old_summary`、`test_reused_folder_is_verified_against_zip_central_directory` |
 | MAJOR-2 | BadZipFile 未捕获，泄漏文件名和 traceback，退出码 1 | 见表下说明 | `test_cli_corrupt_archive_exits_2_with_fixed_code_and_no_leak`（3 种损坏输入，子进程实跑）、`test_cli_bad_crc_member_is_caught_without_traceback_or_names`、`test_cli_argument_errors_do_not_echo_values` |
@@ -111,18 +113,18 @@
 
 | 提交 | 时间（UTC+8） | 作者 / 提交者 | 文件（精确清单） |
 |---|---|---|---|
-| `515dcb084f492ebd41c212c8e1578345dbc5e7af`（初版，未改写） | 2026-11-16 13:35:47 | Forge (AI agent) <forge-agent@agemorph3d.invalid> | 新增 `preprocessing/lx_local.py`、`backend/tests/test_lx_local.py`、`tools/lx-local.ps1`、`docs/LX本机脚本包开发记录.md`、`docs/lx-summary-sample.json`；修改 `TASKS.md`、`PROGRESS.md` |
-| `83129998027cea1ff2a5a628e481dc0321b6fe07` | 2026-11-21 15:37:37 | MingYao Song <2441377859@qq.com>（作者 = 提交者），尾注 `Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid>` | 修改 `preprocessing/lx_local.py`、`backend/tests/test_lx_local.py`、`tools/lx-local.ps1`、`docs/lx-summary-sample.json`（由合成夹具重新生成） |
-| `91d27d4ff95758003054c77d9f6f813c8aeb41f9` | 2026-11-21 15:37:37 | 同上（含同一 Co-authored-by 尾注） | 修改 `docs/LX本机脚本包开发记录.md`、`TASKS.md`、`PROGRESS.md` |
-| `864452865a3e865a9aec6b0f6e45fcda255c9827`（第二轮代码） | 2026-11-21 15:54:06 | 同上 | 修改 `preprocessing/lx_local.py`、`backend/tests/test_lx_local.py`、`tools/lx-local.ps1`、`docs/lx-summary-sample.json`（由合成夹具重新生成） |
-| `f3fbe7a972bd4fa085116319ca12dae220368118`（第二轮文档） | 2026-11-21 15:54:06 | 同上 | 修改 `docs/LX本机脚本包开发记录.md`、`TASKS.md`、`PROGRESS.md` |
+| `128f394723ff15ca74e0ca4afcc40ee25db62e12（原 515dcb084f492ebd41c212c8e1578345dbc5e7af）`（初版，未改写） | 2026-11-16 13:35:47 | Forge (AI agent) <forge-agent@agemorph3d.invalid> | 新增 `preprocessing/lx_local.py`、`backend/tests/test_lx_local.py`、`tools/lx-local.ps1`、`docs/LX本机脚本包开发记录.md`、`docs/lx-summary-sample.json`；修改 `TASKS.md`、`PROGRESS.md` |
+| `c8b5d3ce021bb6094fe160065c009032a3354698（原 83129998027cea1ff2a5a628e481dc0321b6fe07）` | 2026-11-21 15:37:37 | MingYao Song <2441377859@qq.com>（作者 = 提交者），尾注 `Co-authored-by: Forge (AI agent) <forge-agent@agemorph3d.invalid>` | 修改 `preprocessing/lx_local.py`、`backend/tests/test_lx_local.py`、`tools/lx-local.ps1`、`docs/lx-summary-sample.json`（由合成夹具重新生成） |
+| `15b8d9da13d6e0efde0c8c7fa8579fb96fa8ac35（原 91d27d4ff95758003054c77d9f6f813c8aeb41f9）` | 2026-11-21 15:37:37 | 同上（含同一 Co-authored-by 尾注） | 修改 `docs/LX本机脚本包开发记录.md`、`TASKS.md`、`PROGRESS.md` |
+| `8e879f7f05c31d90d25beed394e47c0fc3530ba1（原 864452865a3e865a9aec6b0f6e45fcda255c9827）`（第二轮代码） | 2026-11-21 15:54:06 | 同上 | 修改 `preprocessing/lx_local.py`、`backend/tests/test_lx_local.py`、`tools/lx-local.ps1`、`docs/lx-summary-sample.json`（由合成夹具重新生成） |
+| `5c51a06c8eb6690006a4d101bd2d4b6d2394cad8（原 f3fbe7a972bd4fa085116319ca12dae220368118）`（第二轮文档） | 2026-11-21 15:54:06 | 同上 | 修改 `docs/LX本机脚本包开发记录.md`、`TASKS.md`、`PROGRESS.md` |
 
-- **提交方式**：第一轮两条新提交叠在 `515dcb0` 之上，第二轮两条叠在 `91d27d4` 之上，都没有改写历史。逐个文件 `git add -- <路径>`，没有用 `-A`/`.`。
+- **提交方式**：第一轮两条新提交叠在 `128f394（原 515dcb0）` 之上，第二轮两条叠在 `15b8d9d（原 91d27d4）` 之上，都没有改写历史。逐个文件 `git add -- <路径>`，没有用 `-A`/`.`。
 - **提交前检查**：
   - 读了 `.gitignore` 和 `RULES.md`；`git check-ignore` 确认这 7 个文件都不被忽略（两轮各查一次）。
   - 做了敏感检查：没有密码、令牌、真实人名，也没有 `/workspace/hf` 路径。样例 summary 通过白名单和泄漏测试。
 - **署名**：署名口径由用户本人确认（经 Atlas 转达，2026-11-21）：作者和提交者都是 MingYao Song <2441377859@qq.com>，加 `Co-authored-by: Forge (AI agent)`，不抹去 AI 署名。
-- **515dcb0 的作者**：仍是 Forge (AI agent)。按指示本执行者**没有改写任何旧提交的署名**；旧本地提交的署名改写（带备份 ref）由上级另行处理。
+- **128f394（原 515dcb0） 的作者**：仍是 Forge (AI agent)。按指示本执行者**没有改写任何旧提交的署名**；旧本地提交的署名改写（带备份 ref）由上级另行处理。
 - **待用户确认**：**RULES.md 第 14 行要求的本批精确文件清单**。推送需要用户逐次批准（U-9）。
 - **合并提示**：`PROGRESS.md` 文首和 FG-1/FG-2 一样各加了一行，以后合并时要手工保留各段。
 
@@ -148,7 +150,7 @@
 3. **小格计数抑制**：未做，规则待定，`--suppress-small-cells` 会被拒绝。
 4. **在 Windows 本机实跑 `tools/lx-local.ps1`**：这里没有 PowerShell，未实测。
 5. **本批精确文件清单确认**（RULES.md:14），以及 push/PR 是否进行、何时进行（逐次批准）。
-6. **旧提交署名改写**：用户已确认署名口径；改写 515dcb0 等旧本地提交由上级另行操作，本执行者未动。
+6. **旧提交署名改写**：用户已确认署名口径；改写 128f394（原 515dcb0） 等旧本地提交由上级另行操作，本执行者未动。
 7. **依赖分支**：FG-4 和 fix/env-and-imports 仍未合并。本底 P03 仍钉死 Python 3.11.16，用户本机若是 3.11.18，调用 P03 时会被记入 `p03_p04_block_reason`。
 8. **group_id 是否加盐**：`group_id` 是姓名字段的无盐 SHA-256 前 16 位十六进制，**不是匿名化**，拿公开的 568 个姓名逐个算哈希就能反查。本次没有改方案，是否加盐（以及盐放哪里）由用户决定。
 9. **严格 ZIP 布局的代价**：带空隙或前置数据的合法 ZIP 会被拒（fail-closed）；如官方包恰好是这种格式需用户决定是否放宽。
@@ -163,9 +165,9 @@
   - `training/__pycache__`：13:27:20；
   - `backend/src/agemorph3d/__pycache__`：13:27:49–13:28:25。
 - **与 FG-8 的时间线**（UTC+8）：
-  - fg8 worktree 创建于 13:25:14（reflog：branch created from 377acae）；
+  - fg8 worktree 创建于 13:25:14（reflog：branch created from 3ff80d6（原 377acae））；
   - fg8 venv 创建于 13:34:11（pyvenv.cfg）；
-  - 初版提交 515dcb0 在 13:35:47。
+  - 初版提交 128f394（原 515dcb0） 在 13:35:47。
 - **pyc 内容**：只有主副本已有的模块，例如 archive_preparation、resource_acquisition、duplicate_screening、split_freeze、dataset_manifest、near_duplicate_probe、training/preflight、backend app。**没有** `agedb_filenames` 或 `lx_local`，这两个模块主副本里根本没有。主副本 `backend/tests/` 下也没有 `__pycache__`。
 - **排除项**：
   - 同一时间窗内机器上的其他写入只有 MT-4 任务（`/tmp/MT-4`，Python 3.13 venv），而这批是 3.11 字节码，不是它。
@@ -182,18 +184,18 @@
 - **第二轮**：完整套件期间 `/tmp/pytest-of-box/` 新出现 `pytest-99`。不是本执行者所为（本次一律 `--basetemp=/tmp/fg8-pytest/...` 或 `/tmp/fg4-pytest/...`），来源是 Runner 的 `/workspace/AgeMorph3D_runner/output/fe1/run-backend-pytest.sh`。该目录下文件一律未删，由用户决定。
 - **建议**：所有代理跑 pytest 时都带 `--basetemp`，否则 pytest 会自动轮换掉 `/tmp/pytest-of-box` 下的旧目录。
 
-**主副本 HEAD 有变动（与本任务无关）：** 主副本 HEAD 在 2026-11-21 15:26:12（UTC+8）fast-forward 到 `10f1918`（reflog：`merge origin/main`），不是本次所为，可能是 Runner 或其他代理所为。本分支仍基于 377acae，按 Atlas 指示没有 rebase。
+**主副本 HEAD 有变动（与本任务无关）：** 主副本 HEAD 在 2026-11-21 15:26:12（UTC+8）fast-forward 到 `10f1918`（reflog：`merge origin/main`），不是本次所为，可能是 Runner 或其他代理所为。本分支仍基于 3ff80d6（原 377acae），按 Atlas 指示没有 rebase。
 
 ## 7. 第二轮：Sentinel SN-6 意见 → 修复对照
 
-审到 `91d27d4`，结论 FAIL（0 CRITICAL / 1 MAJOR / 10 MINOR）。修复是叠在 `91d27d4` 上的两条新提交 `8644528`（代码）和 `f3fbe7a`（文档），以及 FG-4 的独立提交 `42e634b`；没有改写历史。
+审到 `15b8d9d（原 91d27d4）`，结论 FAIL（0 CRITICAL / 1 MAJOR / 10 MINOR）。修复是叠在 `15b8d9d（原 91d27d4）` 上的两条新提交 `8e879f7（原 8644528）`（代码）和 `5c51a06（原 f3fbe7a）`（文档），以及 FG-4 的独立提交 `fa56ed9（原 42e634b）`；没有改写历史。
 
 | 意见 | 修复 | 测试 |
 |---|---|---|
 | MAJOR-1 偶数张图时中位数是小数，被白名单拒收 | 保留 FG-2 的真实中位数；白名单接受有限、非负、非 bool 的整数或 x.5（偶数张取中间两数平均）；拒 NaN/inf/bool/负数；0 张可读时统一为 7 个键（median `null`，分位数 `null`，直方图 `{}`）。口径写进开发记录 | `test_even_image_count_runs_end_to_end_with_true_median`（CLI 端到端 72.5）、`test_even_image_count_with_whole_median_and_odd_count`、`test_zero_readable_images_give_consistent_short_side_keys`、`test_median_and_histogram_values_are_checked` |
 | MINOR-1 续跑时旧账本/P03/P04 半成品/state 里的 lx3 残留 | 新 `invalidate_lx3`：LX-3 开始时、以及 LX-2 需要重算时（含只跑 LX-2），先删账本与 P03/P04 产物、从 state 去掉 lx3，再做校验；校验失败也不留旧账本。开发记录原 :76 已改 | `test_failed_lx3_verification_still_clears_ledger_and_state`、`test_lx2_only_rerun_with_changed_inputs_clears_old_ledger` |
 | MINOR-2 try 之前的失败不写拒收 summary | 分两段：A 段只校验根目录和输出目录、不写任何东西；B 段（在 try 内）之后任何失败都写拒收 summary。state.json 损坏报 `STATE_CORRUPT` 且原样保留。输出目录无效（越界、不在 `output/research/` 下）时**任何地方都不写**；顺带修了 main 的错误处理会在无效目录里新建 state.json 的问题。文档写明哪些情况写、哪些不写 | `test_corrupt_state_json_writes_rejected_summary_and_keeps_state`、`test_out_of_scope_images_dir_writes_rejected_summary`、`test_invalid_output_dir_writes_nothing_anywhere`（3 组参数） |
-| MINOR-3 拼接 ZIP 只读出后一个包 | 严格连续布局：首个本地头在 0、条目无空隙、中央目录紧接最后条目并紧接结束记录、唯一结束记录、无前置/尾随数据。FG-4 同一问题单独提交 `42e634b` 修复，FG-4 文档与 `FG-4_说明.md` §10 已更新 | `test_concatenated_zip_is_rejected_not_partially_read`、`test_zip_layout_gaps_and_trailing_data_are_rejected`；FG-4 新增 5 项（4 项在旧代码上失败） |
+| MINOR-3 拼接 ZIP 只读出后一个包 | 严格连续布局：首个本地头在 0、条目无空隙、中央目录紧接最后条目并紧接结束记录、唯一结束记录、无前置/尾随数据。FG-4 同一问题单独提交 `fa56ed9（原 42e634b）` 修复，FG-4 文档与 `FG-4_说明.md` §10 已更新 | `test_concatenated_zip_is_rejected_not_partially_read`、`test_zip_layout_gaps_and_trailing_data_are_rejected`；FG-4 新增 5 项（4 项在旧代码上失败） |
 | MINOR-4 ps1 | 取第一个 Application 类型的 python；跳过 WindowsApps 占位；先探测 `py -3.11`，缺失时报固定码并退出 2；启动失败、非 0/1/2 退出码一律 2；恢复 `PYTHONDONTWRITEBYTECODE`。**仍未在 Windows 实跑** | `test_powershell_launcher_failures_map_to_exit_2`（静态） |
 | MINOR-5 署名表述 | 改为“署名口径由用户本人确认（经 Atlas 转达，2026-11-21）” | — |
 | MINOR-6 仓库文档里有本机路径 | 已删，改为“本批精确文件清单另行提交给用户确认（RULES.md 第 14 行）”；`/workspace/hf` 改为“本机 HF 目录” | — |
@@ -205,4 +207,24 @@
 
 - **测试数**：`test_lx_local.py` 47 → 63；完整后端 3186 通过 / 3 跳过；ruff check/format 对改动文件通过。FG-4：184 项 / 完整 3199 通过 / 3 跳过。
 - **数据**：全部合成，虚构名字（DeltaPerson、EpsilonPerson 等）；未读 `/workspace/hf`，未下载任何真实数据。
-- **未做**：未 push、未开 PR、未 fetch/rebase、未改写旧提交署名；push 地址仍为 `DISABLED_NO_PUSH`。**第二轮两条提交和 FG-4 `42e634b` 的精确文件清单待用户确认（RULES.md 第 14 行）。**
+- **未做**：未 push、未开 PR、未 fetch/rebase、未改写旧提交署名；push 地址仍为 `DISABLED_NO_PUSH`。**第二轮两条提交和 FG-4 `fa56ed9（原 42e634b）` 的精确文件清单待用户确认（RULES.md 第 14 行）。**
+
+## 8. 第二轮复审 PASS 后的 4 条 MINOR（无需再复审）
+
+Sentinel SN-6 第二轮：FG-8（`8e879f7（原 8644528）`+`5c51a06（原 f3fbe7a）`）PASS，0 CRITICAL / 0 MAJOR / 4 MINOR。修复为两条新提交，之后随整个分支一起做了署名改写：
+
+| 提交（新哈希，括号内为改写前） | 时间（UTC+8） | 文件 |
+|---|---|---|
+| `a8a75d5`（原 `6ac40e1`），代码 | 2026-11-21 16:10:45 | `preprocessing/lx_local.py`、`backend/tests/test_lx_local.py`、`tools/lx-local.ps1`（均修改） |
+| `01d4392`（原 `b4ac53e`），文档 | 2026-11-21 16:10:45 | `docs/LX本机脚本包开发记录.md`、`TASKS.md`、`PROGRESS.md`（均修改） |
+
+| 意见 | 修复 |
+|---|---|
+| 1. 末 64 KB 只许一个结束签名导致误拒（回归） | 新函数 `_end_record_position`：从后往前找，只认注释长度恰好到文件尾的签名；这样的候选多于一个、或所选记录的注释里还有签名，才报 `ZIP_END_AMBIGUOUS`。成员数据里的签名不再误拒。Sentinel 的 `py_nested_store.zip`（`/tmp/sentinel-fg8/prod/`，只读）现在通过；同目录合成包里只有 bsdtar 补零输出 2 个和强制 ZIP64 1 个被拒，旧版同样拒绝（错误码由 `ZIP_LAYOUT_UNSUPPORTED` 变为 `ZIP_END_INVALID`），4 个加密包都通过。新增测试：stored 内嵌 zip 为最后成员、成员数据含签名的端到端 LX-1、拼接/前置/尾随仍拒、多卷结束记录；其中 3 项在旧实现上失败 |
+| 2. ps1 只给 `py -3.11` 做版本探测 | 新函数 `Test-Python311`，venv、`py -3.11`、PATH python 三条路径都用它，不是 3.11 就跳过；静态测试；**仍未在 Windows 实跑** |
+| 3. group_id 描述不准 | 开发记录与 docstring 改为 `"subject-" + sha256(subject_id)[:16]`，`subject_id = "agedb-subject:" + sha256(姓名)[:24]`：两次未加盐哈希，仍可按公开名单反查 |
+| 4. 未经真实归档验证 | 开发记录写明严格布局只在合成包上测过，官方 AgeDB 包是否符合未经验证，用户应先在本机只跑 LX-1（`--stages lx1`）预检 |
+
+- 测试：`test_lx_local.py` 63 → 68；最终 `ruff format` 无改动之后跑的完整后端为 **3191 通过 / 3 跳过 / 0 失败**；ruff check 通过。
+- 署名改写后的复测见 `署名改写记录.md`。
+
