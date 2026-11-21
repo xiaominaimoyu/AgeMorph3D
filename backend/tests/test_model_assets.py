@@ -166,6 +166,8 @@ def test_checked_in_manifests_record_academic_use_without_changing_artifact_pins
         assert manifest["redistribution"] == "not_redistributed"
         assert manifest["license_decided_at"] == "2026-11-01"
         assert "宋明耀" in manifest["license_decided_by"]
+        assert "member A" in manifest["license_decided_by"]
+        assert "member B" not in manifest["license_decided_by"]
         assert "not an upstream grant" in manifest["weights_license"]
         assert "not a legal clearance" in manifest["weights_license"]
         observed = [
