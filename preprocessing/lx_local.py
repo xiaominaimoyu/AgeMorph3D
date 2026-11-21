@@ -22,6 +22,7 @@ import argparse
 import binascii
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -101,6 +102,12 @@ FORCED_DISCLOSURES = {
     "split_age_stratified": False,
     "small_cell_suppression_status": "pending_user_decision",
     "pending_user_decisions": list(PENDING_USER_DECISIONS),
+    # Always true/false in this version; forced so an edited summary is detected.
+    "p01_quality_checks_performed": False,
+    "exact_duplicate_zero_does_not_prove_no_leakage": True,
+    "small_cell_suppression_applied": False,
+    "freeze_authorized": False,
+    "split_assignment_performed": False,
 }
 STAGE_VALUES = {"lx1", "lx2", "lx3"}
 STATUS_VALUES = {"passed", "needs_review", "rejected"}
@@ -183,6 +190,7 @@ SUMMARY_WHITELIST = (
     "k5_audit_finding_codes",
     "lx2_resumed",
     "assignment_ledger_sha256",
+    "identity_group_origin",
     "screening_report_sha256",
     "frozen_inputs_sha256",
     "split_freeze_status",
@@ -212,16 +220,11 @@ _BOOL_KEYS = {
     "extracted_readonly",
     "extracted_archive_crc_checked",
     "near_duplicate_screening_performed",
-    "p01_quality_checks_performed",
-    "exact_duplicate_zero_does_not_prove_no_leakage",
-    "small_cell_suppression_applied",
     "p03_p04_invoked",
     "contains_file_names_or_person_names",
     "password_accepted_or_stored",
     "research_only",
     "verified_on_real_data",
-    "freeze_authorized",
-    "split_assignment_performed",
 } | set(acquisition.FLAGS)
 _SHA_KEYS = {
     "producer_sha256",
@@ -415,16 +418,21 @@ def _looks_like_zip(path):
 
 
 def _zip_guard(path, max_members=MAX_MEMBERS):
-    """Bound the central directory before ZipFile builds entry objects.
+    """Bound and pin the zip layout before ZipFile builds entry objects.
 
-    Mirrors the layout rules of the unmerged FG-4 ``archive_preparation._zip_guard``
-    (re-implemented here, not imported): no prepended data, a single end record,
-    no multi-disk or ZIP64 layout, and a bounded directory inside the file.
+    Re-implements (does not import) the unmerged FG-4 layout rules, tightened in
+    SN-6 round 2: the file starts with a local header (or is an empty archive),
+    there is exactly one end record and it ends the file (comment only; a comment
+    may not contain another end signature), no multi-disk, ZIP64 or locator, and
+    the central directory ends exactly where the end record starts. CPython's
+    ``zipfile`` silently tolerates prepended or concatenated data by shifting
+    offsets; this guard refuses such files instead. Returns the directory offset.
     """
     require(_looks_like_zip(path), "ARCHIVE_NOT_ZIP")
     size = path.stat().st_size
     with path.open("rb") as stream:
-        stream.seek(max(0, size - 65557))
+        tail_start = max(0, size - 65557)
+        stream.seek(tail_start)
         tail = stream.read(65557)
     position = tail.rfind(b"PK\x05\x06")
     require(position >= 0 and position + 22 <= len(tail), "ZIP_END_INVALID")
@@ -439,18 +447,31 @@ def _zip_guard(path, max_members=MAX_MEMBERS):
         and offset != 0xFFFFFFFF,
         "ZIP_LAYOUT_UNSUPPORTED",
     )
+    end_record = tail_start + position
+    # Exactly one end record: none hidden earlier in the tail window either
+    # (a concatenated or nested archive leaves its own end record behind).
+    require(tail.count(b"PK\x05\x06") == 1, "ZIP_END_AMBIGUOUS")
+    require(b"PK\x06\x07" not in tail[max(0, position - 20) : position], "ZIP_LAYOUT_UNSUPPORTED")
     require(
         count <= max_members and directory_bytes <= MAX_ZIP_DIRECTORY_BYTES,
         "ZIP_DIRECTORY_LIMIT",
     )
-    require(offset + directory_bytes <= size - len(tail) + position, "ZIP_DIRECTORY_INVALID")
+    require(offset + directory_bytes == end_record, "ZIP_DIRECTORY_NOT_ADJACENT")
+    if count == 0:
+        require(offset == 0 and directory_bytes == 0, "ZIP_LAYOUT_UNSUPPORTED")
+    else:
+        with path.open("rb") as stream:
+            require(stream.read(4) == b"PK\x03\x04", "ZIP_PREFIX_UNSUPPORTED")
+    return offset, count
 
 
 def _zip_layout(path, infos, directory_offset):
-    """Local headers must match the central directory; entry data may not overlap."""
+    """Entries start at offset 0, follow each other with no gap or overlap, and the
+    central directory starts right after the last one; local headers match it."""
     end = 0
     with path.open("rb") as stream:
         for info in sorted(infos, key=lambda item: item.header_offset):
+            require(info.header_offset <= end, "ZIP_ENTRY_GAP")
             require(info.header_offset >= end, "ZIP_ENTRY_OVERLAP")
             stream.seek(info.header_offset)
             header = stream.read(_ZIP_LOCAL.size)
@@ -467,19 +488,24 @@ def _zip_layout(path, infos, directory_offset):
                 "ZIP_LOCAL_HEADER_MISMATCH",
             )
             end = info.header_offset + _ZIP_LOCAL.size + name_length + extra_length
-            end += info.compress_size + (12 if flags & 0x08 else 0)
+            end += info.compress_size
+            if flags & 0x08:  # data descriptor, with or without its optional signature
+                stream.seek(end)
+                end += 16 if stream.read(4) == b"PK\x07\x08" else 12
             require(end <= directory_offset, "ZIP_ENTRY_OVERLAP")
+    require(end == directory_offset, "ZIP_ENTRY_GAP")
 
 
 def _checked_infos(path, max_members=MAX_MEMBERS):
     """Guarded central-directory read; any zipfile error becomes a fixed code."""
-    _zip_guard(path, max_members)
+    offset, count = _zip_guard(path, max_members)
     try:
         with zipfile.ZipFile(path) as container:
             infos = list(container.infolist())
             directory_offset = container.start_dir
     except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, zlib.error) as error:
         raise Error(error_code_of(error)) from None
+    require(directory_offset == offset and len(infos) == count, "ZIP_DIRECTORY_INVALID")
     _zip_layout(path, infos, directory_offset)
     return infos
 
@@ -718,16 +744,74 @@ def _validate_count_map(key, value):
     return out
 
 
+def _require_median(value):
+    """Median of integer pixel sides: FG-2 keeps ``statistics.median`` (true median).
+
+    For an even count it is the mean of the two middle values, so it is an int, an
+    ``x.0`` float or an ``x.5`` float. Accept exactly those (finite, non-negative,
+    not bool) or None when no image was readable.
+    """
+    if value is None:
+        return None
+    if _is_int(value):
+        require(value >= 0, "SUMMARY_FIELD_VALUE")
+        return value
+    require(type(value) is float, "SUMMARY_FIELD_TYPE")
+    require(math.isfinite(value) and value >= 0, "SUMMARY_FIELD_VALUE")
+    require((value * 2).is_integer(), "SUMMARY_FIELD_VALUE")
+    return value
+
+
+def normalize_short_side(value):
+    """Give the zero-readable case the same keys as the normal case.
+
+    FG-2 ``_short_side_stats`` returns only count/min/max/median/quantiles when no
+    image header was readable; the summary always carries all seven keys, with
+    None for min/max/median, 0 below 128, and empty histogram/quantiles.
+    """
+    require(type(value) is dict, "SUMMARY_FIELD_TYPE")
+    if value.get("count") == 0 and set(value) <= SHORT_SIDE_KEYS:
+        require(
+            all(value.get(key) is None for key in ("min", "max", "median", "quantiles")),
+            "SUMMARY_FIELD_VALUE",
+        )
+        return {
+            "count": 0,
+            "min": None,
+            "max": None,
+            "median": None,
+            "below_128": 0,
+            "histogram": {},
+            "quantiles": {},
+        }
+    return value
+
+
 def _validate_short_side(value):
     require(type(value) is dict and set(value) == SHORT_SIDE_KEYS, "SUMMARY_FIELD_TYPE")
     out = {}
-    for field in ("count", "min", "max", "median", "below_128"):
-        out[field] = _require_int(value[field], allow_null=field in {"min", "max", "median"})
+    for field in ("count", "min", "max", "below_128"):
+        out[field] = _require_int(value[field], allow_null=field in {"min", "max"})
+    out["median"] = _require_median(value["median"])
+    if out["count"] == 0:
+        require(
+            out["min"] is None
+            and out["max"] is None
+            and out["median"] is None
+            and out["below_128"] == 0
+            and value["histogram"] == {}
+            and value["quantiles"] == {},
+            "SUMMARY_FIELD_VALUE",
+        )
+    else:
+        require(None not in (out["min"], out["max"], out["median"]), "SUMMARY_FIELD_VALUE")
+        require(out["min"] <= out["median"] <= out["max"], "SUMMARY_FIELD_VALUE")
     require(type(value["histogram"]) is dict, "SUMMARY_FIELD_TYPE")
     histogram = {}
     for item_key, item_value in value["histogram"].items():
         require(type(item_key) is str and bool(HIST_RE.fullmatch(item_key)), "SUMMARY_FIELD_VALUE")
         require(_is_int(item_value), "SUMMARY_FIELD_TYPE")
+        require(item_value >= 0, "SUMMARY_FIELD_VALUE")
         histogram[item_key] = item_value
     out["histogram"] = histogram
     require(type(value["quantiles"]) is dict, "SUMMARY_FIELD_TYPE")
@@ -735,7 +819,8 @@ def _validate_short_side(value):
     for item_key, item_value in value["quantiles"].items():
         ok = type(item_key) is str and bool(QUANTILE_RE.fullmatch(item_key))
         require(ok, "SUMMARY_FIELD_VALUE")
-        require(_is_int(item_value) or item_value is None, "SUMMARY_FIELD_TYPE")
+        require(_is_int(item_value), "SUMMARY_FIELD_TYPE")
+        require(item_value >= 0, "SUMMARY_FIELD_VALUE")
         quantiles[item_key] = item_value
     out["quantiles"] = quantiles
     return out
@@ -764,6 +849,9 @@ def project_summary(values):
             out[key] = value
         elif key == "error_code":
             out[key] = _require_code(value, allow_null=True)
+        elif key == "identity_group_origin":
+            require(value in {"official", "unknown"}, "SUMMARY_FIELD_VALUE")
+            out[key] = value
         elif key == "lx2_status":
             require(value in LX2_STATUS_VALUES, "SUMMARY_FIELD_VALUE")
             out[key] = value
@@ -928,7 +1016,13 @@ def _record_error(root, output, code):
     if not output:
         return
     try:
+        # Only update a state file that already exists in a valid output directory;
+        # never create anything for an output argument that failed validation.
+        if type(output) is not str or not output.startswith("output/research/"):
+            return
         root = Path(root).absolute()
+        if not safe(root, _local(output, "state.json")).is_file():
+            return
         state = _load_state(root, output)
         state["last_error_code"] = code
         _save_state(root, output, state)
@@ -945,7 +1039,18 @@ def _load_state(root, output):
             "output_dir": output,
             "stages": {},
         }
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise Error("STATE_CORRUPT") from None
+    require(
+        type(state) is dict
+        and state.get("schema_id") == STATE_SCHEMA
+        and state.get("output_dir") == output
+        and type(state.get("stages")) is dict,
+        "STATE_CORRUPT",
+    )
+    return state
 
 
 def _save_state(root, output, state):
@@ -1058,8 +1163,7 @@ def run_lx2(root, images_dir, output, state):
         if stats.get("inventory_sha256") == inventory:
             return stats, {"resumed": True, "inputs_stable": True}
     state.setdefault("stages", {}).pop("lx2", None)
-    state["stages"].pop("lx3", None)
-    _save_state(root, output, state)
+    invalidate_lx3(root, output, state)
     if safe(root, stats_dir).exists():
         _remove_owned(root, output, "agedb-stats")
     stats = agedb.export(root, images_dir, stats_dir)
@@ -1078,6 +1182,14 @@ def run_lx2(root, images_dir, output, state):
         prior.get("status") == "passed" and prior.get("inventory_sha256") == inventory
     )
     return stats, {"resumed": False, "inputs_stable": inputs_stable}
+
+
+def invalidate_lx3(root, output, state):
+    """Mark LX-3 not passed and delete its ledger and P03/P04 leftovers (local/ only)."""
+    state.setdefault("stages", {}).pop("lx3", None)
+    _save_state(root, output, state)
+    for leaf in LX3_OUTPUTS:
+        _remove_owned(root, output, leaf)
 
 
 def _lx2_reusable(root, prior, stats_dir, inventory):
@@ -1182,6 +1294,21 @@ def _exact_duplicates(records, assignments):
     return len(groups), extra, cross, {d: ids for d, ids in by_hash.items() if len(ids) > 1}
 
 
+def identity_group_origin(records, archive_consistent):
+    """``official`` only for agedb-official records whose folder matched the archive
+    in this same run (SN-6 condition); otherwise ``unknown``.
+
+    Groups come from the name field of the official filenames by a fixed rule (FG-2);
+    nobody reviewed them, so ``human`` is never used. ``group_id`` is an unsalted
+    SHA-256 prefix of the name and can be reversed against the public name list: it
+    is a stable key, not an anonymisation.
+    """
+    official = archive_consistent is True and all(
+        row.get("dataset_id") == agedb.DATASET_ID for row in records
+    )
+    return "official" if official else "unknown"
+
+
 def run_p03_p04(root, output, prep_report, prepared_manifest, assignments, basis):
     """Call duplicate_screening.screen and split_freeze.precheck when plans are ready."""
     require(
@@ -1245,6 +1372,7 @@ def run_lx3(
     prepared_manifest=None,
     split_seed=SPLIT_SEED,
     images_dir=None,
+    archive_consistent=False,
 ):
     """Identity-based split proposal plus exact-hash QC; call P03/P04 when possible.
 
@@ -1258,11 +1386,9 @@ def run_lx3(
     decisions and are not chosen here; summary.json says so in fixed fields.
     This stage always recomputes after re-verifying the LX-2 pins.
     """
+    # Invalidate first: a failed re-verification must not leave an old ledger behind.
+    invalidate_lx3(root, output, state)
     lx2 = verify_lx2_outputs(root, output, state, images_dir)
-    state.setdefault("stages", {}).pop("lx3", None)
-    _save_state(root, output, state)
-    for leaf in LX3_OUTPUTS:
-        _remove_owned(root, output, leaf)
     stats_dir = lx2["output_dir"]
     manifest_body = safe(root, stats_dir + "/manifest.json").read_bytes()
     require(
@@ -1272,6 +1398,7 @@ def run_lx3(
     manifest = json.loads(manifest_body.decode("utf-8"))
     metadata.validate_manifest(manifest)
     records = manifest["records"]
+    origin = identity_group_origin(records, archive_consistent)
     assignments, exclusions, included, by_id = assign_identities(records, seed=split_seed)
     groups, extra, cross, group_map = _exact_duplicates(records, assignments)
     ledger = {
@@ -1279,6 +1406,7 @@ def run_lx3(
         "local_only": True,
         "stage": "lx3",
         "seed": split_seed,
+        "identity_group_origin": origin,
         "assignments": assignments,
         "exclusions_by_reason": exclusions,
         "note": "Proposal only; split_freeze does not authorize a real freeze.",
@@ -1316,8 +1444,7 @@ def run_lx3(
                             "group_id": "subject-"
                             + hashlib.sha256(subject.encode()).hexdigest()[:16],
                             "sample_ids": [row["sample_id"] for row in rows],
-                            # Membership comes from the official filename name field.
-                            "origin": "official",
+                            "origin": origin,
                             "recorded_by": "lx-local-identity-split",
                             "evidence": ledger_pin,
                         }
@@ -1359,6 +1486,7 @@ def run_lx3(
         "exact_duplicate_extra_copies": extra,
         "cross_split_exact_duplicate_groups": cross,
         "assignment_ledger_sha256": ledger_pin["sha256"],
+        "identity_group_origin": origin,
         "near_duplicate_screening_performed": tool["near_duplicate_screening_performed"],
         "p01_quality_checks_performed": False,
         "exact_duplicate_zero_does_not_prove_no_leakage": True,
@@ -1420,7 +1548,7 @@ def _lx2_aggregates(root, output, stats):
         "age_max": summary["age_max"],
         "images_by_age_decade": summary["images_by_age_decade"],
         "images_by_gender": summary["images_by_gender"],
-        "short_side_px": summary["short_side_px"],
+        "short_side_px": normalize_short_side(summary["short_side_px"]),
         "images_without_size": summary["images_without_size"],
         "filter_short_ge_128_age_20_70": summary["filter_short_ge_128_age_20_70"],
         "filter_short_ge_128": summary["filter_short_ge_128"],
@@ -1445,21 +1573,17 @@ def run_pack(
     split_seed=SPLIT_SEED,
     suppress_small_cells=False,
 ):
+    # Phase A: validate where we may write. A failure here writes nothing at all,
+    # because the output location itself is not trusted yet.
     root = Path(root).absolute()
     require(root.is_dir() and root == root.resolve(), "INVALID_ROOT")
-    require(output.startswith("output/research/"), "OUTPUT_MUST_BE_RESEARCH_DIRECTORY")
-    safe(root, output + "/summary.json")  # validate the output path early
-    if suppress_small_cells:
-        raise Error("SMALL_CELL_SUPPRESSION_POLICY_UNSETTLED")
-    safe(root, _local(output, "state.json")).parent.mkdir(parents=True, exist_ok=True)
-    _stash_summary(root, output)
-    if images_dir is not None:
-        require_images_dir(images_dir)
-    state = _load_state(root, output)
-    stages = tuple(stages)
-    require(all(s in {"lx1", "lx2", "lx3"} for s in stages), "INVALID_STAGE")
-    require(images_dir is not None, "IMAGES_DIR_REQUIRED")
-    require("lx1" in stages or safe(root, images_dir).exists(), "IMAGES_DIR_MISSING")
+    require(
+        type(output) is str and output.startswith("output/research/"),
+        "OUTPUT_MUST_BE_RESEARCH_DIRECTORY",
+    )
+    safe(root, output + "/summary.json")
+    safe(root, _local(output, "state.json"))
+    # Phase B: from here on every failure writes a rejected summary.json.
     summary = {
         "schema_id": SCHEMA,
         "schema_version": 1,
@@ -1482,6 +1606,17 @@ def run_pack(
         "status": "passed",
     }
     try:
+        if suppress_small_cells:
+            raise Error("SMALL_CELL_SUPPRESSION_POLICY_UNSETTLED")
+        safe(root, _local(output, "state.json")).parent.mkdir(parents=True, exist_ok=True)
+        _stash_summary(root, output)
+        if images_dir is not None:
+            require_images_dir(images_dir)
+        state = _load_state(root, output)
+        stages = tuple(stages)
+        require(all(s in {"lx1", "lx2", "lx3"} for s in stages), "INVALID_STAGE")
+        require(images_dir is not None, "IMAGES_DIR_REQUIRED")
+        require("lx1" in stages or safe(root, images_dir).exists(), "IMAGES_DIR_MISSING")
         if "lx1" in stages:
             lx1 = run_lx1(root, archive, images_dir, terms_snapshot, output, state)
             summary.update(
@@ -1527,14 +1662,20 @@ def run_pack(
                     prepared_manifest=prepared_manifest,
                     split_seed=split_seed,
                     images_dir=None if "lx2" in stages else images_dir,
+                    archive_consistent=(
+                        "lx1" in stages and summary.get("extracted_archive_consistent") is True
+                    ),
                 )
             )
             summary["stages_completed"].append("lx3")
     except Exception as error:
         code = error_code_of(error)
-        state = _load_state(root, output)
-        state["last_error_code"] = code
-        _save_state(root, output, state)
+        try:  # a corrupt state.json is left as it is, not overwritten
+            state = _load_state(root, output)
+            state["last_error_code"] = code
+            _save_state(root, output, state)
+        except Exception:
+            pass
         _write_rejected_summary(root, output, summary, code)
         if isinstance(error, Error):
             raise

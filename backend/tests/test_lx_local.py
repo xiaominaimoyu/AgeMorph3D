@@ -824,3 +824,273 @@ def test_powershell_entry_keeps_exit_codes_and_caller_state():
     assert "-B -m preprocessing.lx_local @args" in text and "exit $Code" in text
     assert "WindowsApps" in text and "-3.11" in text
     assert "password" not in text.replace("does not accept or store a password", "").lower()
+
+
+# ---- Sentinel SN-6 round 2 (MAJOR-1 median regression, MINOR-1..10) ----
+
+EVEN_FILES = {  # short sides 64, 65, 80, 90 -> true median 72.5
+    "0_DeltaPerson_30_f.jpg": (64, 100),
+    "1_DeltaPerson_50_f.jpg": (65, 120),
+    "2_EpsilonPerson_40_m.jpg": (80, 80),
+    "3_EpsilonPerson_60_m.jpg": (90, 95),
+}
+
+
+def _cli_no_archive(root, extra=None):
+    args = cli(root, extra=extra)
+    del args[args.index("--archive") : args.index("--archive") + 2]
+    return args
+
+
+def test_even_image_count_runs_end_to_end_with_true_median(tmp_path):
+    terms(tmp_path)
+    write_images(tmp_path, EVEN_FILES)
+    completed = run_module(_cli_no_archive(tmp_path))
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    data = _assert_clean(
+        (tmp_path / OUTPUT / "summary.json").read_bytes(), ("DeltaPerson", "EpsilonPerson")
+    )
+    assert data["images"] == 4
+    assert data["short_side_px"]["median"] == 72.5
+    assert data["short_side_px"]["count"] == 4
+
+
+def test_even_image_count_with_whole_median_and_odd_count(tmp_path):
+    terms(tmp_path)
+    files = dict(EVEN_FILES, **{"1_DeltaPerson_50_f.jpg": (64, 120)})  # 64, 64, 80, 90 -> 72.0
+    write_images(tmp_path, files)
+    data = _no_archive_run(tmp_path)
+    assert data["short_side_px"]["median"] == 72.0
+    odd = tmp_path / "odd"
+    odd.mkdir()
+    terms(odd)
+    write_images(odd, dict(list(EVEN_FILES.items())[:3]))  # 64, 65, 80 -> 65
+    assert lx.run_pack(odd, OUTPUT, images_dir=IMAGES)["short_side_px"]["median"] == 65
+
+
+def test_zero_readable_images_give_consistent_short_side_keys(tmp_path, capsys):
+    terms(tmp_path)
+    folder = tmp_path / IMAGES
+    folder.mkdir(parents=True)
+    for name in ("0_DeltaPerson_30_f.jpg", "1_DeltaPerson_50_f.jpg"):
+        (folder / name).write_bytes(b"not a jpeg, synthetic bytes only")
+    assert lx.main(_cli_no_archive(tmp_path)) == 1  # header failures -> needs_review
+    capsys.readouterr()
+    data = _assert_clean((tmp_path / OUTPUT / "summary.json").read_bytes(), ("DeltaPerson",))
+    assert data["status"] == "needs_review"
+    assert data["short_side_px"] == {
+        "count": 0,
+        "min": None,
+        "max": None,
+        "median": None,
+        "below_128": 0,
+        "histogram": {},
+        "quantiles": {},
+    }
+
+
+def test_median_and_histogram_values_are_checked():
+    for good in (None, 0, 72, 72.0, 72.5):
+        assert lx._require_median(good) == good
+    for bad in (float("nan"), float("inf"), -1.0, -2, 72.3, True, "72"):
+        with pytest.raises(lx.Error):
+            lx._require_median(bad)
+    side = {
+        "count": 2,
+        "min": 64,
+        "max": 80,
+        "median": 72.0,
+        "below_128": 2,
+        "histogram": {"0-63": 0, ">=128": 0},
+        "quantiles": {"p50": 64},
+    }
+    assert lx._validate_short_side(side)["median"] == 72.0
+    for field, value in (
+        ("histogram", {"0-63": -1}),
+        ("quantiles", {"p50": -64}),
+        ("quantiles", {"p50": None}),
+        ("median", 99),  # outside min..max
+    ):
+        with pytest.raises(lx.Error):
+            lx._validate_short_side({**side, field: value})
+
+
+def test_every_forced_disclosure_detects_tampering():
+    for key, value in lx.FORCED_DISCLOSURES.items():
+        if type(value) is list:
+            bads = [list(reversed(value)), value[:2], [*value, "X"], ",".join(value)]
+        elif type(value) is bool:
+            bads = [not value, int(value), "true" if value else "false"]
+        else:
+            bads = ["decided", None]
+        for bad in bads:
+            with pytest.raises(lx.Error, match="SUMMARY_DISCLOSURE_ALTERED"):
+                lx.project_summary({"schema_id": lx.SCHEMA, key: bad})
+    for key in (
+        "p01_quality_checks_performed",
+        "exact_duplicate_zero_does_not_prove_no_leakage",
+        "small_cell_suppression_applied",
+        "freeze_authorized",
+        "split_assignment_performed",
+    ):
+        assert key in lx.FORCED_DISCLOSURES
+
+
+def _touch_input(folder):
+    _unlock(folder)
+    jpeg(folder / "6_PersonB_30_m.jpg", (211, 211))
+
+
+def test_failed_lx3_verification_still_clears_ledger_and_state(tmp_path):
+    terms(tmp_path)
+    folder = write_images(tmp_path)
+    _no_archive_run(tmp_path)
+    local = tmp_path / OUTPUT / "local"
+    assert (local / "assignment-ledger.json").exists()
+    _touch_input(folder)
+    with pytest.raises(lx.Error, match="LX2_STALE_RERUN_REQUIRED"):
+        _no_archive_run(tmp_path, stages=("lx3",))
+    state = json.loads((local / "state.json").read_text())
+    assert "lx3" not in state["stages"]
+    assert not (local / "assignment-ledger.json").exists()
+    assert not (local / "exact-duplicates.json").exists()
+
+
+def test_lx2_only_rerun_with_changed_inputs_clears_old_ledger(tmp_path):
+    terms(tmp_path)
+    folder = write_images(tmp_path)
+    _no_archive_run(tmp_path)
+    local = tmp_path / OUTPUT / "local"
+    _touch_input(folder)
+    summary = _no_archive_run(tmp_path, stages=("lx2",))
+    assert summary["lx2_resumed"] is False
+    state = json.loads((local / "state.json").read_text())
+    assert "lx3" not in state["stages"]
+    assert not (local / "assignment-ledger.json").exists()
+
+
+def test_corrupt_state_json_writes_rejected_summary_and_keeps_state(tmp_path, capsys):
+    terms(tmp_path)
+    write_images(tmp_path)
+    _no_archive_run(tmp_path)
+    state_path = tmp_path / OUTPUT / "local/state.json"
+    state_path.chmod(stat.S_IREAD | stat.S_IWRITE)
+    state_path.write_text("{" + LEAK_NAME, encoding="utf-8")
+    assert lx.main(_cli_no_archive(tmp_path)) == 2
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["error_code"] == "STATE_CORRUPT"
+    assert state_path.read_text(encoding="utf-8") == "{" + LEAK_NAME  # left as it was
+    data = _assert_clean((tmp_path / OUTPUT / "summary.json").read_bytes())
+    assert data["status"] == "rejected" and data["error_code"] == "STATE_CORRUPT"
+
+
+def test_out_of_scope_images_dir_writes_rejected_summary(tmp_path):
+    with pytest.raises(lx.Error, match="IMAGES_DIR_SCOPE"):
+        lx.run_pack(tmp_path, OUTPUT, images_dir=f"data/datasets/{LEAK_NAME}")
+    data = _assert_clean((tmp_path / OUTPUT / "summary.json").read_bytes())
+    assert data["error_code"] == "IMAGES_DIR_SCOPE"
+
+
+@pytest.mark.parametrize("output", ["elsewhere/out", "output/research/../../escape", "output/x"])
+def test_invalid_output_dir_writes_nothing_anywhere(tmp_path, output, capsys):
+    args = _cli_no_archive(tmp_path)
+    args[args.index(OUTPUT)] = output
+    assert lx.main(args) == 2
+    capsys.readouterr()
+    assert not any(tmp_path.rglob("*"))
+
+
+def _shift_zip(data, prefix):
+    """Prepend bytes and fix every offset, like ``zip -A`` would (self-consistent)."""
+    data = bytearray(data)
+    end = data.rfind(b"PK\x05\x06")
+    count = int.from_bytes(data[end + 10 : end + 12], "little")
+    start = int.from_bytes(data[end + 16 : end + 20], "little")
+    cursor = start
+    for _ in range(count):
+        offset = int.from_bytes(data[cursor + 42 : cursor + 46], "little") + len(prefix)
+        data[cursor + 42 : cursor + 46] = offset.to_bytes(4, "little")
+        cursor += 46 + sum(
+            int.from_bytes(data[cursor + k : cursor + k + 2], "little") for k in (28, 30, 32)
+        )
+    data[end + 16 : end + 20] = (start + len(prefix)).to_bytes(4, "little")
+    return bytes(prefix) + bytes(data)
+
+
+def _zip_bytes(root, files):
+    path = make_zip(root, files=files, name="output/research/input/part.zip")
+    body = path.read_bytes()
+    path.unlink()
+    return body
+
+
+def test_concatenated_zip_is_rejected_not_partially_read(tmp_path):
+    hidden = _zip_bytes(tmp_path, {"0_HiddenPerson_30_m.jpg": (40, 40)})
+    shown = _zip_bytes(tmp_path, {"1_ShownPerson_33_f.jpg": (41, 41)})
+    (tmp_path / ARCHIVE).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / ARCHIVE).write_bytes(hidden + shown)
+    with pytest.raises(lx.Error, match="ZIP_END_AMBIGUOUS|ZIP_DIRECTORY_NOT_ADJACENT"):
+        _lx1(tmp_path)
+    assert not (tmp_path / IMAGES).exists()
+
+
+def test_zip_layout_gaps_and_trailing_data_are_rejected(tmp_path):
+    body = _zip_bytes(tmp_path, dict(list(FILES.items())[:3]))
+    archive = tmp_path / ARCHIVE
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    cases = []
+    # Self-consistent prefix that still starts with a local-header signature.
+    cases.append((_shift_zip(body, b"PK\x03\x04" + b"\x00" * 60), "ZIP_ENTRY_GAP"))
+    # A gap between the last entry and the central directory.
+    data = bytearray(body)
+    end = data.rfind(b"PK\x05\x06")
+    start = int.from_bytes(data[end + 16 : end + 20], "little")
+    gapped = data[:start] + b"\x00" * 16 + data[start:]
+    pos = end + 16
+    gapped[pos + 16 : pos + 20] = (start + 16).to_bytes(4, "little")
+    cases.append((bytes(gapped), "ZIP_ENTRY_GAP"))
+    # Trailing bytes after the end record (not declared as a comment).
+    cases.append((body + b"trailing", "ZIP_END_INVALID|ZIP_LAYOUT_UNSUPPORTED"))
+    # A comment that hides a second end-record signature.
+    data = bytearray(body)
+    data[-2:] = (22).to_bytes(2, "little")
+    cases.append((bytes(data) + b"PK\x05\x06" + b"\x00" * 18, "ZIP_END_AMBIGUOUS|ZIP_LAYOUT"))
+    for blob, code in cases:
+        archive.write_bytes(blob)
+        with pytest.raises(lx.Error, match=code):
+            _lx1(tmp_path)
+        assert not (tmp_path / IMAGES).exists()
+    archive.write_bytes(body)  # the untouched archive still extracts
+    assert _lx1(tmp_path)["extraction_method"] == "safe_unencrypted_zip"
+
+
+def test_identity_group_origin_requires_verified_official_archive(tmp_path):
+    terms(tmp_path)
+    write_images(tmp_path)
+    no_archive = _no_archive_run(tmp_path)
+    assert no_archive["identity_group_origin"] == "unknown"
+    ledger = json.loads((tmp_path / OUTPUT / "local/assignment-ledger.json").read_text())
+    assert ledger["identity_group_origin"] == "unknown"
+    other = tmp_path / "with-archive"
+    other.mkdir()
+    terms(other)
+    make_zip(other)
+    verified = lx.run_pack(other, OUTPUT, archive=ARCHIVE, images_dir=IMAGES)
+    assert verified["extracted_archive_consistent"] is True
+    assert verified["identity_group_origin"] == "official"
+    lx3_only = lx.run_pack(other, OUTPUT, images_dir=IMAGES, stages=("lx3",))
+    assert lx3_only["identity_group_origin"] == "unknown"  # not verified in this run
+    rows = [{"dataset_id": "agedb-official"}, {"dataset_id": "other-set"}]
+    assert lx.identity_group_origin(rows, True) == "unknown"
+    assert lx.identity_group_origin(rows[:1], None) == "unknown"
+    assert lx.identity_group_origin(rows[:1], True) == "official"
+
+
+def test_powershell_launcher_failures_map_to_exit_2():
+    text = (ROOT / "tools/lx-local.ps1").read_text(encoding="utf-8")
+    assert "Select-Object -First 1" in text and "-All" in text
+    assert "foreach ($Candidate in $Candidates)" in text and "break" in text
+    assert "LAUNCHER_PYTHON_311_REQUIRED" in text and "LAUNCHER_START_FAILED" in text
+    assert "sys.version_info[:2] == (3, 11)" in text
+    assert "$Code -notin 0, 1, 2" in text and "catch {" in text
+    assert "never run on Windows" in text
