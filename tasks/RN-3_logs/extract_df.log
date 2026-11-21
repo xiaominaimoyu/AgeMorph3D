@@ -1,0 +1,26 @@
+### wider_face_split df_before=122983235584 utc=2026-11-21T07:41:25Z
+exit=0 df_after=122973794304 utc=2026-11-21T07:41:25Z
+### WIDER_val df_before=122973782016 utc=2026-11-21T07:41:25Z
+Traceback (most recent call last):
+  File "/tmp/rn3/safe_extract.py", line 15, in <module>
+    inv = ap._scan(archive, "zip", limits, dest)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/AgeMorph3D_fg4/preprocessing/archive_preparation.py", line 237, in _scan
+    with _container(path, kind, limits) as container:
+  File "/home/box/.local/share/uv/python/cpython-3.11.16-linux-x86_64-gnu/lib/python3.11/contextlib.py", line 137, in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+  File "/workspace/AgeMorph3D_fg4/preprocessing/archive_preparation.py", line 134, in _container
+    _zip_guard(path, limits)
+  File "/workspace/AgeMorph3D_fg4/preprocessing/archive_preparation.py", line 97, in _zip_guard
+    with path.open("rb") as stream:
+         ^^^^^^^^^^^^^^^
+  File "/home/box/.local/share/uv/python/cpython-3.11.16-linux-x86_64-gnu/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/workspace/data/datasets/wider_face/archives/WIDER_val.zip'
+exit=1 df_after=122973192192 utc=2026-11-21T07:41:25Z
+### WIDER_train df_before=122973179904 utc=2026-11-21T07:41:25Z
+exit=0 df_after=119861907456 utc=2026-11-21T07:41:53Z
+### WIDER_val(retry) df_before=119840247808 utc=2026-11-21T07:41:59Z
+exit=0 df_after=119440793600 utc=2026-11-21T07:42:03Z

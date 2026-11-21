@@ -1,0 +1,6 @@
+start utc=2026-11-21T07:39:52Z berlin=2026-11-21T08:39:52+01:00 url=https://mmlab.ie.cuhk.edu.hk/projects/WIDERFace/support/bbx_annotation/wider_face_split.zip
+df_before_avail=124924727296
+http=200 bytes=3591642 final=https://mmlab.ie.cuhk.edu.hk/projects/WIDERFace/support/bbx_annotation/wider_face_split.zip ctype=application/zip
+curl_exit=0
+end utc=2026-11-21T07:39:55Z berlin=2026-11-21T08:39:55+01:00
+df_after_avail=124913553408

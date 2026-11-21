@@ -1,0 +1,28 @@
+{
+ "archive": "/workspace/data/datasets/wider_face/archives/WIDER_val.zip",
+ "output": "/workspace/data/datasets/wider_face/extracted/WIDER_val",
+ "limits": {
+  "members": 20000,
+  "member_bytes": 67108864,
+  "total_bytes": 4294967296
+ },
+ "fg4_module": "/workspace/AgeMorph3D_fg4/preprocessing/archive_preparation.py",
+ "fg4_module_sha256": "7e9d501efb12fabe8f7771c4480ac4adb60204ad4462c599c45daf9d1b5d7028",
+ "zip_directory_cap_override": 8388608,
+ "preflight_unmodified": "PASS",
+ "preflight_members": 3289,
+ "preflight_files": 3226,
+ "preflight_dirs": 63,
+ "preflight_total_bytes": 365054675,
+ "extract_seconds": 2.3,
+ "status_counts": {
+  "directory": 63,
+  "extracted": 3226
+ },
+ "failures": [],
+ "extracted_bytes": 365054675,
+ "stage_leftover": [],
+ "stage_removed_empty": true,
+ "member_manifest": "/workspace/data/datasets/wider_face/extracted/WIDER_val.members.json",
+ "member_manifest_sha256": "8baaaad493411ac25d29bd64b555a30f1a6183feac46897c9f990479b5aaf586"
+}

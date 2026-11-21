@@ -1,0 +1,6 @@
+start utc=2026-11-21T07:40:06Z berlin=2026-11-21T08:40:06+01:00 url=https://drive.usercontent.google.com/download?id=15hGDLhsx8bLgLcIRD5DhYt5iBxnjNF1M&export=download&confirm=t&uuid=143e3a27-cf8f-42e5-9042-efafbdd68a16
+df_before_avail=124904427520
+http=200 bytes=1465602149 final=https://drive.usercontent.google.com/download?id=15hGDLhsx8bLgLcIRD5DhYt5iBxnjNF1M&export=download&confirm=t&uuid=143e3a27-cf8f-42e5-9042-efafbdd68a16 ctype=application/octet-stream
+curl_exit=0
+end utc=2026-11-21T07:40:24Z berlin=2026-11-21T08:40:24+01:00
+df_after_avail=123391893504

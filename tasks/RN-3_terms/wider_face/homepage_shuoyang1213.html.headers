@@ -1,0 +1,17 @@
+HTTP/2 200 
+server: GitHub.com
+date: Sat, 21 Nov 2026 07:39:37 GMT
+content-type: text/html; charset=utf-8
+content-length: 10128
+vary: Accept-Encoding
+last-modified: Wed, 26 Oct 2022 04:09:27 GMT
+vary: Accept-Encoding
+access-control-allow-origin: *
+etag: "6358b2f7-2790"
+expires: Sat, 21 Nov 2026 07:49:37 GMT
+cache-control: max-age=600
+accept-ranges: bytes
+x-proxy-cache: MISS
+x-github-request-id: 3686:15822D:9CB693:B23355:6B014AB9
+x-github-edge-region: iad
+

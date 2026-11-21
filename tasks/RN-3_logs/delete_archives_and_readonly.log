@@ -1,0 +1,31 @@
+# RN-3 archive deletion (user decision relayed by Atlas) — preconditions then rm
+counts_ok=1 (utc=2026-11-21T07:54:57Z berlin=2026-11-21T08:54:57+01:00 utc+8=2026-11-21T15:54:57+08:00)
+## wider_face/archives/WIDER_train.zip
+expected sha=e23b76129c825cafae8be944f65310b2e1ba1c76885afe732f179c41e5ed6d59 size=1465602149 ; actual sha=e23b76129c825cafae8be944f65310b2e1ba1c76885afe732f179c41e5ed6d59 size=1465602149 mtime=2026-11-21 07:40:24.499504441 +0000
+df_before_avail=113171140608
+delete_at utc=2026-11-21T07:54:58Z berlin=2026-11-21T08:54:58+01:00 utc+8=2026-11-21T15:54:58+08:00
+deleted ok
+df_after_avail=114636750848
+## wider_face/archives/WIDER_val.zip
+expected sha=f9efbd09f28c5d2d884be8c0eaef3967158c866a593fc36ab0413e4b2a58a17a size=362752168 ; actual sha=f9efbd09f28c5d2d884be8c0eaef3967158c866a593fc36ab0413e4b2a58a17a size=362752168 mtime=2026-11-21 07:40:46.907124559 +0000
+df_before_avail=114636750848
+delete_at utc=2026-11-21T07:54:59Z berlin=2026-11-21T08:54:59+01:00 utc+8=2026-11-21T15:54:59+08:00
+deleted ok
+df_after_avail=114999508992
+## wider_face/archives/wider_face_split.zip
+expected sha=c7561e4f5e7a118c249e0a5c5c902b0de90bbf120d7da9fa28d99041f68a8a5c size=3591642 ; actual sha=c7561e4f5e7a118c249e0a5c5c902b0de90bbf120d7da9fa28d99041f68a8a5c size=3591642 mtime=2026-11-21 07:39:55.191992399 +0000
+df_before_avail=114999508992
+delete_at utc=2026-11-21T07:54:59Z berlin=2026-11-21T08:54:59+01:00 utc+8=2026-11-21T15:54:59+08:00
+deleted ok
+df_after_avail=115003101184
+## aflw2000_3d/archives/AFLW2000-3D.zip
+expected sha=252bc35274d65ff27b6e573aa96c2f4c116ad88452cc984fb882258c0ed6e2d8 size=87413900 ; actual sha=252bc35274d65ff27b6e573aa96c2f4c116ad88452cc984fb882258c0ed6e2d8 size=87413900 mtime=2026-11-21 07:43:34.005385546 +0000
+df_before_avail=115003101184
+delete_at utc=2026-11-21T07:54:59Z berlin=2026-11-21T08:54:59+01:00 utc+8=2026-11-21T15:54:59+08:00
+deleted ok
+df_after_avail=115090518016
+## read-only utc=2026-11-21T07:54:59Z berlin=2026-11-21T08:54:59+01:00 utc+8=2026-11-21T15:54:59+08:00
+perm_before:   20129 444 f;      4 644 f;    146 755 d;
+perm_after:   20133 444 f;    146 555 d;
+remaining archives: 0
+done utc=2026-11-21T07:54:59Z berlin=2026-11-21T08:54:59+01:00 utc+8=2026-11-21T15:54:59+08:00

@@ -1,0 +1,286 @@
+{
+  "回执": "RN-3 数据下载回执：WIDER FACE（train + val + wider_face_split.zip）",
+  "执行": "executor 子代理（经主代理转达 Atlas 任务），box 上执行",
+  "时间说明": "同时给 UTC 与 Europe/Berlin（UTC+1）。box 时钟当前读数为 2026-11-21（与对话标注日期 2026-11-16 不同），以下时间均为 box 时钟读数，未做校正",
+  "授权范围": "经 Atlas 转达的用户决定：仅下载 WIDER FACE（train、val、wider_face_split.zip）与 AFLW2000-3D；未下载 WIDER_test.zip（Runner 未直接收到用户本人的书面批准）",
+  "存放位置": {
+    "根目录": "/workspace/datasets/wider_face",
+    "是否在git仓库内": "否（git rev-parse 报 not a git repository）",
+    "压缩包": "archives/（压缩包已于 2026-11-21 08:54:58—08:54:59 UTC+1 删除，见“压缩包删除”）",
+    "解压": "extracted/<名称>/files/",
+    "不在 /workspace/AgeMorph3D* 下，未提交，未 push": true
+  },
+  "官方来源": {
+    "作者主页": "http://shuoyang1213.me/WIDERFACE/（本机 HTTP 经出口代理返回 500；HTTPS 证书为 *.github.com 与域名不匹配，GitHub Pages 自定义域名无匹配证书）",
+    "主页快照获取方式": "curl -k https://shuoyang1213.me/WIDERFACE/（HTTP 200，Server: GitHub.com，last-modified 2022-10-26）；内容与外部 WebFetch 抓取的主页正文一致（Download 栏、License 栏相同）",
+    "主页列出的渠道": "Training/Validation/Testing Images 各有 Google Drive、Tencent Drive（share.weiyun.com）、Hugging Face；Face annotations → ./support/bbx_annotation/wider_face_split.zip"
+  },
+  "压缩包": [
+    {
+      "文件": "wider_face_split.zip",
+      "本地路径": "/workspace/datasets/wider_face/archives/wider_face_split.zip",
+      "官方页面链接": "https://shuoyang1213.me/WIDERFACE/ → ./support/bbx_annotation/wider_face_split.zip（同一相对路径托管在 CUHK 历史官方入口）",
+      "下载渠道": "CUHK MMLab 历史官方入口（HTTPS 证书有效）；作者主页 shuoyang1213.me 的同一相对链接因本机 HTTPS 证书不匹配未直接用于下载",
+      "实际下载URL": "https://mmlab.ie.cuhk.edu.hk/projects/WIDERFace/support/bbx_annotation/wider_face_split.zip",
+      "开始": {
+        "UTC": "2026-11-21T07:39:52Z",
+        "柏林": "2026-11-21T08:39:52+01:00"
+      },
+      "结束": {
+        "UTC": "2026-11-21T07:39:55Z",
+        "柏林": "2026-11-21T08:39:55+01:00"
+      },
+      "HTTP": 200,
+      "下载前df可用字节": 124924727296,
+      "下载后df可用字节": 124913553408,
+      "实际字节数": 3591642,
+      "SHA-256": "c7561e4f5e7a118c249e0a5c5c902b0de90bbf120d7da9fa28d99041f68a8a5c",
+      "期望值": {
+        "字节数": 3591642,
+        "SHA-256": "c7561e4f5e7a118c249e0a5c5c902b0de90bbf120d7da9fa28d99041f68a8a5c",
+        "来源": "作者主页同列的 Hugging Face 渠道（huggingface.co/datasets/wider_face → CUHK-CSE/wider_face）LFS 元数据 data/wider_face_split.zip，快照见 RN-3_terms/wider_face/hf_wider_face_api.json"
+      },
+      "核对": "字节数与 SHA-256 均一致：本文件只从 CUHK MMLab 历史官方入口下载，再与作者主页同列的 HF（CUHK-CSE/wider_face）LFS 元数据互证；另与 RD-6 记录的 HEAD 大小 3,591,642 B 一致"
+    },
+    {
+      "文件": "WIDER_train.zip",
+      "本地路径": "/workspace/datasets/wider_face/archives/WIDER_train.zip",
+      "官方页面链接": "https://drive.google.com/file/d/15hGDLhsx8bLgLcIRD5DhYt5iBxnjNF1M/view?usp=sharing（主页 Training Images 的 [Google Drive] 链接）",
+      "下载渠道": "作者主页列出的 Google Drive 文件（drive.usercontent.google.com 直链，带病毒扫描确认参数 confirm=t&uuid）",
+      "实际下载URL": "https://drive.usercontent.google.com/download?id=15hGDLhsx8bLgLcIRD5DhYt5iBxnjNF1M&export=download&confirm=t&uuid=143e3a27-cf8f-42e5-9042-efafbdd68a16",
+      "开始": {
+        "UTC": "2026-11-21T07:40:06Z",
+        "柏林": "2026-11-21T08:40:06+01:00"
+      },
+      "结束": {
+        "UTC": "2026-11-21T07:40:24Z",
+        "柏林": "2026-11-21T08:40:24+01:00"
+      },
+      "HTTP": 200,
+      "下载前df可用字节": 124904427520,
+      "下载后df可用字节": 123391893504,
+      "实际字节数": 1465602149,
+      "SHA-256": "e23b76129c825cafae8be944f65310b2e1ba1c76885afe732f179c41e5ed6d59",
+      "期望值": {
+        "字节数": 1465602149,
+        "SHA-256": "e23b76129c825cafae8be944f65310b2e1ba1c76885afe732f179c41e5ed6d59",
+        "来源": "作者主页同列的 Hugging Face 渠道（huggingface.co/datasets/wider_face → CUHK-CSE/wider_face）LFS 元数据 data/WIDER_train.zip，快照见 RN-3_terms/wider_face/hf_wider_face_api.json"
+      },
+      "核对": "字节数与 SHA-256 均一致：本文件只从作者主页列出的 Google Drive 链接下载（未用 CUHK、未用 HF 下载），再与作者主页同列的 HF（CUHK-CSE/wider_face）LFS 元数据互证"
+    },
+    {
+      "文件": "WIDER_val.zip",
+      "本地路径": "/workspace/datasets/wider_face/archives/WIDER_val.zip",
+      "官方页面链接": "https://drive.google.com/file/d/1GUCogbp16PMGa39thoMMeWxp7Rp5oM8Q/view?usp=sharing（主页 Validation Images 的 [Google Drive] 链接）",
+      "下载渠道": "同上，作者主页列出的 Google Drive 文件",
+      "实际下载URL": "https://drive.usercontent.google.com/download?id=1GUCogbp16PMGa39thoMMeWxp7Rp5oM8Q&export=download&confirm=t&uuid=78ee1d50-3c33-48d0-ba95-93378fda0911",
+      "开始": {
+        "UTC": "2026-11-21T07:40:41Z",
+        "柏林": "2026-11-21T08:40:41+01:00"
+      },
+      "结束": {
+        "UTC": "2026-11-21T07:40:46Z",
+        "柏林": "2026-11-21T08:40:46+01:00"
+      },
+      "HTTP": 200,
+      "下载前df可用字节": 123372625920,
+      "下载后df可用字节": 123009486848,
+      "实际字节数": 362752168,
+      "SHA-256": "f9efbd09f28c5d2d884be8c0eaef3967158c866a593fc36ab0413e4b2a58a17a",
+      "期望值": {
+        "字节数": 362752168,
+        "SHA-256": "f9efbd09f28c5d2d884be8c0eaef3967158c866a593fc36ab0413e4b2a58a17a",
+        "来源": "作者主页同列的 Hugging Face 渠道（huggingface.co/datasets/wider_face → CUHK-CSE/wider_face）LFS 元数据 data/WIDER_val.zip，快照见 RN-3_terms/wider_face/hf_wider_face_api.json"
+      },
+      "核对": "字节数与 SHA-256 均一致：本文件只从作者主页列出的 Google Drive 链接下载（未用 CUHK、未用 HF 下载），再与作者主页同列的 HF（CUHK-CSE/wider_face）LFS 元数据互证"
+    }
+  ],
+  "条款快照": {
+    "文件": {
+      "作者主页HTML": "/workspace/AgeMorph3D_tasks/RN-3_terms/wider_face/homepage_shuoyang1213.html（.meta 记 URL 与抓取时间，.headers 为响应头）",
+      "CUHK落地页HTML": "/workspace/AgeMorph3D_tasks/RN-3_terms/wider_face/cuhk_landing.html",
+      "HF数据集卡": "/workspace/AgeMorph3D_tasks/RN-3_terms/wider_face/hf_CUHK-CSE_wider_face_README.md",
+      "HF文件树(含LFS SHA-256)": "/workspace/AgeMorph3D_tasks/RN-3_terms/wider_face/hf_wider_face_api.json"
+    },
+    "抓取时间": {
+      "UTC": "2026-11-21T07:39:37Z—07:39:39Z",
+      "柏林": "2026-11-21T08:39:37+01:00—08:39:39+01:00"
+    },
+    "许可": "作者主页 License 栏原文「Creative Common License (cc by-nc-nd)」，未写版本；HF 数据集卡写 CC BY-NC-ND 4.0。按非商业、署名、禁止演绎（不得分发修改后的数据）理解；毕设内部研究使用，不再分发图片或标注；需引用 Yang et al., CVPR 2016"
+  },
+  "解压": {
+    "规则": "复用 FG-4（/workspace/AgeMorph3D_fg4，feat/safe-loading @4b5e5c5）preprocessing/archive_preparation.py 的 _scan/_extract 原函数：不用 extractall；建目录前完整预检（路径穿越/绝对路径/盘符/反斜杠/控制字符/保留名、拒绝链接与特殊文件、本地头与中央目录一致、条目不重叠、压缩比≤200、NFC+casefold 重名、成员数/单成员/总量上限）；流式写入后设只读。均为 ZIP，tar 的 filter=\"data\" 不适用",
+    "FG-4模块SHA-256": "7e9d501efb12fabe8f7771c4480ac4adb60204ad4462c599c45daf9d1b5d7028",
+    "Python": "/workspace/.venvs/agemorph-fg4-31116（3.11.16，Pillow 13.0.0）",
+    "本次上限": {
+      "members": 20000,
+      "member_bytes": 67108864,
+      "total_bytes": 4294967296
+    },
+    "偏差": "WIDER_train.zip 中央目录 1,997,987 字节，超过 FG-4 写死的 1 MiB 中央目录上限，未改动的预检报 ZIP_DIRECTORY_LIMIT。驱动脚本仅把该一处上限换成 8 MiB（运行时替换 _zip_guard 的这一个比较，源文件未改），其余检查全部原样；之后预检通过。split 与 val 未放宽即通过",
+    "驱动脚本": "/workspace/AgeMorph3D_tasks/RN-3_logs/safe_extract.py",
+    "结果": {
+      "wider_face_split": {
+        "压缩包": "/workspace/datasets/wider_face/archives/wider_face_split.zip",
+        "输出目录": "/workspace/datasets/wider_face/extracted/wider_face_split/files",
+        "成员数": 8,
+        "文件数": 7,
+        "目录数": 1,
+        "解压总字节": 9100296,
+        "状态统计": {
+          "directory": 1,
+          "extracted": 7
+        },
+        "失败成员数": 0,
+        "stage残留": [],
+        "FG-4预检（未改上限）": "PASS",
+        "FG-4预检（仅放宽中央目录字节上限）": "未使用",
+        "逐成员清单": "/workspace/datasets/wider_face/extracted/wider_face_split.members.json",
+        "逐成员清单SHA-256": "df1ed0e86f1b0f563d88980571fc85eb0cbcc876065adbba03291efe07f68b25",
+        "报告": "/workspace/AgeMorph3D_tasks/RN-3_logs/extract_wider_face_split.json"
+      },
+      "WIDER_train": {
+        "压缩包": "/workspace/datasets/wider_face/archives/WIDER_train.zip",
+        "输出目录": "/workspace/datasets/wider_face/extracted/WIDER_train/files",
+        "成员数": 12943,
+        "文件数": 12880,
+        "目录数": 63,
+        "解压总字节": 1474029628,
+        "状态统计": {
+          "directory": 63,
+          "extracted": 12880
+        },
+        "失败成员数": 0,
+        "stage残留": [],
+        "FG-4预检（未改上限）": "REJECT:ZIP_DIRECTORY_LIMIT",
+        "FG-4预检（仅放宽中央目录字节上限）": "PASS",
+        "逐成员清单": "/workspace/datasets/wider_face/extracted/WIDER_train.members.json",
+        "逐成员清单SHA-256": "9f566b1040fe3c63dc0bce85e13bd8ac86211c2654e85eeb927de983da7bda5b",
+        "报告": "/workspace/AgeMorph3D_tasks/RN-3_logs/extract_WIDER_train.json"
+      },
+      "WIDER_val": {
+        "压缩包": "/workspace/datasets/wider_face/archives/WIDER_val.zip",
+        "输出目录": "/workspace/datasets/wider_face/extracted/WIDER_val/files",
+        "成员数": 3289,
+        "文件数": 3226,
+        "目录数": 63,
+        "解压总字节": 365054675,
+        "状态统计": {
+          "directory": 63,
+          "extracted": 3226
+        },
+        "失败成员数": 0,
+        "stage残留": [],
+        "FG-4预检（未改上限）": "PASS",
+        "FG-4预检（仅放宽中央目录字节上限）": "未使用",
+        "逐成员清单": "/workspace/datasets/wider_face/extracted/WIDER_val.members.json",
+        "逐成员清单SHA-256": "8baaaad493411ac25d29bd64b555a30f1a6183feac46897c9f990479b5aaf586",
+        "报告": "/workspace/AgeMorph3D_tasks/RN-3_logs/extract_WIDER_val.json"
+      }
+    },
+    "文件系统复核": "find：三处解压目录均无符号链接、无非普通文件；train 12,880 张 jpg、val 3,226 张 jpg（与官方 40%/10% 划分数一致），61 个事件目录；split 含 7 个文件（train/val bbx_gt.txt、3 个 .mat、test_filelist、readme）",
+    "过程记录": "WIDER_val 第一次解压失败：extract_df.log 记录 2026-11-21 08:41:25（UTC+1；07:41:25Z）脚本报 FileNotFoundError，原因是当时 val 下载文件仍名为 WIDER_val.zip.part、尚未改名，脚本找不到 WIDER_val.zip；失败发生在 FG-4 预检打开文件之前，没有创建任何输出目录。随后重新核对 .part 的 SHA-256（仍为 f9efbd09…a17a）、改名为 WIDER_val.zip，08:41:59（UTC+1；07:41:59Z）重试解压成功（08:42:03 结束）。日志：/workspace/AgeMorph3D_tasks/RN-3_logs/extract_df.log"
+  },
+  "磁盘": {
+    "下载前df可用字节": 124924727296,
+    "三次下载后df可用字节": 123009486848,
+    "解压前df可用字节": 122983235584,
+    "解压后df可用字节": 119440793600,
+    "说明": "box 为共享机器，df 差值含其他进程写入；以 du 为准",
+    "du占用": {
+      "总计（apparent）": 3686270500,
+      "总计（分配块）": 3720773632,
+      "压缩包": 1831945959,
+      "解压后": 1848184599
+    },
+    "与v3§3对照": "v3 §3 预计 WIDER 下载阶段峰值 3.4 GiB、删压缩包后常驻 1.7 GiB；实测压缩包+解压 3.43 GiB（apparent），解压后 1.72 GiB，一致",
+    "压缩包删除后": "压缩包已删，常驻仅为解压文件约 1.72 GiB（与 v3 §3 常驻 1.7 GiB 一致）"
+  },
+  "未做": [
+    "未下载 WIDER_test.zip",
+    "未转 YOLO 格式、未读取图片内容",
+    "除按用户决定删除 /workspace/hf/wfs.zip 外，未触碰 /workspace/hf 及 RN-2 清单内其他数据"
+  ],
+  "渠道小结": "train/val 只从作者主页的 Google Drive 链接下载；CUHK 只用于 wider_face_split.zip；HF 只用来读取 LFS 元数据（大小与 SHA-256）做互证，没有从 HF 下载任何压缩包",
+  "移动记录": {
+    "时间": {
+      "UTC": "2026-11-21T07:53:55Z",
+      "柏林(UTC+1)": "2026-11-21T08:53:55+01:00",
+      "UTC+8": "2026-11-21T15:53:55+08:00"
+    },
+    "原因": "经 Atlas 转达的用户决定：数据目录定为 /workspace/datasets/",
+    "方式": "同一文件系统（/dev/vdb）上 mv 整个数据集目录，未复制、未改权限（移动前后均为文件 0444 解压件 / 0644 压缩包与清单、目录 0755）；之后 rmdir 了 Runner 在 RN-3 中自建且已为空的 /workspace/data/datasets 与 /workspace/data",
+    "移动前df可用字节": 116200308736,
+    "移动后df可用字节": 116200067072,
+    "日志": "/workspace/AgeMorph3D_tasks/RN-3_logs/move_to_workspace_datasets.log",
+    "说明": "RN-3_logs/ 下的 dl_*.log、extract_*.json 是移动前生成的历史记录，其中路径仍为 /workspace/data/datasets/…，未改写；本回执其余路径已改为新位置",
+    "从": "/workspace/data/datasets/wider_face",
+    "到": "/workspace/datasets/wider_face",
+    "新位置复核（2026-11-21 08:53:55—08:53:57 UTC+1）": {
+      "SHA-256": "3 个压缩包的字节数与 SHA-256 与本回执记录完全一致（train e23b7612…6d59 / 1,465,602,149 B；val f9efbd09…a17a / 362,752,168 B；split c7561e4f…8a5c / 3,591,642 B）",
+      "文件数": "WIDER_train 12,880 个 jpg（1,474,029,628 B）、WIDER_val 3,226 个 jpg（365,054,675 B）、wider_face_split 7 个文件（9,100,296 B），无符号链接，与解压时一致"
+    }
+  },
+  "压缩包删除": {
+    "依据": "经 Atlas 转达的用户决定，按 v3 §3“解压并核对哈希后删压缩包”",
+    "前置条件": "删除前置条件（2026-11-21 08:54:57 UTC+1 ＝ 15:54:57 UTC+8）：新位置文件计数全部吻合（WIDER_train 12,880 / WIDER_val 3,226 / split 7 / AFLW 2,000 jpg + 2,000 mat + Code 16），并在删除前逐个重新计算 SHA-256 与回执一致；任一不符即跳过，本次无跳过",
+    "记录": [
+      {
+        "压缩包路径": "/workspace/datasets/wider_face/archives/WIDER_train.zip",
+        "原字节数": 1465602149,
+        "原SHA-256": "e23b76129c825cafae8be944f65310b2e1ba1c76885afe732f179c41e5ed6d59",
+        "删除前复算SHA-256与回执一致": true,
+        "删除时间": {
+          "UTC+1": "2026-11-21T08:54:58+01:00",
+          "UTC+8": "2026-11-21T15:54:58+08:00",
+          "UTC": "2026-11-21T07:54:58Z"
+        },
+        "删除前df可用字节": 113171140608,
+        "删除后df可用字节": 114636750848
+      },
+      {
+        "压缩包路径": "/workspace/datasets/wider_face/archives/WIDER_val.zip",
+        "原字节数": 362752168,
+        "原SHA-256": "f9efbd09f28c5d2d884be8c0eaef3967158c866a593fc36ab0413e4b2a58a17a",
+        "删除前复算SHA-256与回执一致": true,
+        "删除时间": {
+          "UTC+1": "2026-11-21T08:54:59+01:00",
+          "UTC+8": "2026-11-21T15:54:59+08:00",
+          "UTC": "2026-11-21T07:54:59Z"
+        },
+        "删除前df可用字节": 114636750848,
+        "删除后df可用字节": 114999508992
+      },
+      {
+        "压缩包路径": "/workspace/datasets/wider_face/archives/wider_face_split.zip",
+        "原字节数": 3591642,
+        "原SHA-256": "c7561e4f5e7a118c249e0a5c5c902b0de90bbf120d7da9fa28d99041f68a8a5c",
+        "删除前复算SHA-256与回执一致": true,
+        "删除时间": {
+          "UTC+1": "2026-11-21T08:54:59+01:00",
+          "UTC+8": "2026-11-21T15:54:59+08:00",
+          "UTC": "2026-11-21T07:54:59Z"
+        },
+        "删除前df可用字节": 114999508992,
+        "删除后df可用字节": 115003101184
+      }
+    ],
+    "日志": "/workspace/AgeMorph3D_tasks/RN-3_logs/delete_archives_and_readonly.log",
+    "说明": "archives/ 空目录保留（只删了压缩包）"
+  },
+  "只读设置": {
+    "时间": {
+      "UTC+1": "2026-11-21T08:54:59+01:00",
+      "UTC+8": "2026-11-21T15:54:59+08:00"
+    },
+    "操作": "经 Atlas 转达的用户决定：/workspace/datasets/ 下全部文件设为 0444、全部数据集目录设为 0555（find … -exec chmod）",
+    "结果": "之后 20,133 个文件均为 0444，数据集内 145 个目录均为 0555。/workspace/datasets 根目录本身先一并被设为 0555，随后改回 0755，以便以后放入新的数据集；这一点与“目录 0555”的字面要求不同，如需也设为只读可再执行 chmod 0555 /workspace/datasets",
+    "说明": "members.json 逐成员清单原为 0644，现也为 0444",
+    "日志": "/workspace/AgeMorph3D_tasks/RN-3_logs/delete_archives_and_readonly.log"
+  },
+  "与/workspace/hf/wfs.zip比对（仅比对）": {
+    "wfs.zip": "3,591,642 B，SHA-256 c7561e4f5e7a118c249e0a5c5c902b0de90bbf120d7da9fa28d99041f68a8a5c，修改时间 2026-11-15 13:05:08 UTC+1",
+    "结论": "大小与 SHA-256 均与本回执的 wider_face_split.zip 完全一致，即同一官方文件的副本",
+    "后续": "wfs.zip 已按经 Atlas 转达的用户决定于 2026-11-21 08:55:12 UTC+1（15:55:12 UTC+8）删除，记录见 RN-2_box数据清单.md 附录 G 与 RN-3_logs/delete_hf_wfs_zip.log"
+  }
+}

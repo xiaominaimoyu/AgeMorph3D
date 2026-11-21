@@ -1,0 +1,24 @@
+# move RN-3 data /workspace/data/datasets -> /workspace/datasets
+start utc=2026-11-21T07:53:55Z berlin=2026-11-21T08:53:55+01:00 utc+8=2026-11-21T15:53:55+08:00
+df_before_avail=116200308736
+perm_before:   20129 444 f;      8 644 f;    146 755 d;
+rmdir /workspace/data/datasets and /workspace/data: ok (were empty, created by Runner in RN-3)
+perm_after:   20129 444 f;      8 644 f;    145 755 d;
+end utc=2026-11-21T07:53:55Z berlin=2026-11-21T08:53:55+01:00 utc+8=2026-11-21T15:53:55+08:00
+df_after_avail=116200067072
+## re-verify sha256
+e23b76129c825cafae8be944f65310b2e1ba1c76885afe732f179c41e5ed6d59  wider_face/archives/WIDER_train.zip
+f9efbd09f28c5d2d884be8c0eaef3967158c866a593fc36ab0413e4b2a58a17a  wider_face/archives/WIDER_val.zip
+c7561e4f5e7a118c249e0a5c5c902b0de90bbf120d7da9fa28d99041f68a8a5c  wider_face/archives/wider_face_split.zip
+252bc35274d65ff27b6e573aa96c2f4c116ad88452cc984fb882258c0ed6e2d8  aflw2000_3d/archives/AFLW2000-3D.zip
+1465602149 wider_face/archives/WIDER_train.zip
+362752168 wider_face/archives/WIDER_val.zip
+3591642 wider_face/archives/wider_face_split.zip
+87413900 aflw2000_3d/archives/AFLW2000-3D.zip
+## counts
+wider_face/extracted/wider_face_split files=7 jpg=0 mat=0 links=0 bytes=9100296
+wider_face/extracted/WIDER_train files=12880 jpg=12880 mat=0 links=0 bytes=1474029628
+wider_face/extracted/WIDER_val files=3226 jpg=3226 mat=0 links=0 bytes=365054675
+aflw2000_3d/extracted/AFLW2000-3D files=4016 jpg=2000 mat=2000 links=0 bytes=88798089
+aflw Code files=16
+verify_end utc=2026-11-21T07:53:57Z

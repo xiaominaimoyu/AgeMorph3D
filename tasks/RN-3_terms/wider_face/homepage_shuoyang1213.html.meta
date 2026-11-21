@@ -1,0 +1,3 @@
+url=https://shuoyang1213.me/WIDERFACE/ fetched utc=2026-11-21T07:39:37Z berlin=2026-11-21T08:39:37+01:00
+http=200 bytes=10128 final=https://shuoyang1213.me/WIDERFACE/
+note: TLS cert for shuoyang1213.me presented CN=*.github.com (site hosted on GitHub Pages; custom domain has no matching cert; HTTP returns 500 via box egress); fetched with curl -k; content cross-checked with external WebFetch text

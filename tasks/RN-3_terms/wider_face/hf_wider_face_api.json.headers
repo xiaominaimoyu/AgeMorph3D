@@ -1,0 +1,44 @@
+HTTP/2 307 
+content-type: text/plain; charset=utf-8
+content-length: 83
+date: Sat, 21 Nov 2026 07:39:39 GMT
+location: /api/datasets/CUHK-CSE/wider_face/tree/main/data
+x-powered-by: huggingface-moon
+x-request-id: Root=1-6b014abb-069e62e75d7dbeae7f5be046
+ratelimit: "api";r=499;t=105
+ratelimit-policy: "fixed window";"api";q=500;w=300
+cross-origin-opener-policy: same-origin
+referrer-policy: strict-origin-when-cross-origin
+access-control-max-age: 86400
+access-control-allow-origin: https://huggingface.co
+vary: Origin, Accept
+access-control-expose-headers: X-Repo-Commit,X-HF-Warning,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash,RateLimit,RateLimit-Policy
+x-cache: Miss from cloudfront
+via: 1.1 f96e72cfd61c675b75ea8547da63de24.cloudfront.net (CloudFront)
+x-amz-cf-pop: IAD55-P8
+alt-svc: h3=":443"; ma=86400
+x-amz-cf-id: z-5TMYyayma-kD8XXt3q2yOvQJaZSqvl-lWTuQGEawQ33k4UJf7ToA==
+strict-transport-security: max-age=31536000
+
+HTTP/2 200 
+content-type: application/json; charset=utf-8
+content-length: 1223
+date: Sat, 21 Nov 2026 07:39:39 GMT
+etag: W/"4c7-A3ElzZXfgydvv2+u7NunzwEeo4Y"
+x-powered-by: huggingface-moon
+x-request-id: Root=1-6b014abb-2fb0c8c16a6a2d990a6a22de
+ratelimit: "api";r=498;t=105
+ratelimit-policy: "fixed window";"api";q=500;w=300
+cross-origin-opener-policy: same-origin
+referrer-policy: strict-origin-when-cross-origin
+access-control-max-age: 86400
+access-control-allow-origin: https://huggingface.co
+vary: Origin
+access-control-expose-headers: X-Repo-Commit,X-HF-Warning,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash,RateLimit,RateLimit-Policy
+x-cache: Miss from cloudfront
+via: 1.1 f96e72cfd61c675b75ea8547da63de24.cloudfront.net (CloudFront)
+x-amz-cf-pop: IAD55-P8
+alt-svc: h3=":443"; ma=86400
+x-amz-cf-id: 3noB4gh40NFCkzTI2pfdOrNNUyxnD6B8Jmt20wLVP2gxxkTwhTeBgw==
+strict-transport-security: max-age=31536000
+

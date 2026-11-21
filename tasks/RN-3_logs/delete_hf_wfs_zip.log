@@ -1,0 +1,10 @@
+# /workspace/hf/wfs.zip deletion (user decision relayed by Atlas); contents not opened
+size=3591642 mtime=2026-11-15 12:05:08.205508303 +0000 ctime=2026-11-15 12:05:08.205508303 +0000 mode=644 owner=box
+sha256=c7561e4f5e7a118c249e0a5c5c902b0de90bbf120d7da9fa28d99041f68a8a5c
+wider_face_split.zip (receipt): size=3591642 sha256=c7561e4f5e7a118c249e0a5c5c902b0de90bbf120d7da9fa28d99041f68a8a5c
+sha_match=yes
+df_before_avail=115096748032
+delete_at utc=2026-11-21T07:55:12Z berlin=2026-11-21T08:55:12+01:00 utc+8=2026-11-21T15:55:12+08:00
+deleted ok
+ls: cannot access '/workspace/hf/wfs.zip': No such file or directory
+df_after_avail=115100340224

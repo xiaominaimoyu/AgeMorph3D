@@ -1,0 +1,29 @@
+{
+ "archive": "/workspace/data/datasets/wider_face/archives/WIDER_train.zip",
+ "output": "/workspace/data/datasets/wider_face/extracted/WIDER_train",
+ "limits": {
+  "members": 20000,
+  "member_bytes": 67108864,
+  "total_bytes": 4294967296
+ },
+ "fg4_module": "/workspace/AgeMorph3D_fg4/preprocessing/archive_preparation.py",
+ "fg4_module_sha256": "7e9d501efb12fabe8f7771c4480ac4adb60204ad4462c599c45daf9d1b5d7028",
+ "zip_directory_cap_override": 8388608,
+ "preflight_unmodified": "REJECT:ZIP_DIRECTORY_LIMIT",
+ "preflight_with_dircap_override": "PASS",
+ "preflight_members": 12943,
+ "preflight_files": 12880,
+ "preflight_dirs": 63,
+ "preflight_total_bytes": 1474029628,
+ "extract_seconds": 11.5,
+ "status_counts": {
+  "directory": 63,
+  "extracted": 12880
+ },
+ "failures": [],
+ "extracted_bytes": 1474029628,
+ "stage_leftover": [],
+ "stage_removed_empty": true,
+ "member_manifest": "/workspace/data/datasets/wider_face/extracted/WIDER_train.members.json",
+ "member_manifest_sha256": "9f566b1040fe3c63dc0bce85e13bd8ac86211c2654e85eeb927de983da7bda5b"
+}

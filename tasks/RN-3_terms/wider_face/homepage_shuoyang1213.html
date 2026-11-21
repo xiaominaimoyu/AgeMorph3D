@@ -1,0 +1,179 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!-- saved from url=(0059)http://mmlab.ie.cuhk.edu.hk/projects/WIDERFace/index.html -->
+<html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>WIDER FACE: A Face Detection Benchmark</title>
+
+<!-- Meta tags for search engines to crawl -->
+<meta name="robots" content="index,follow">
+<meta name="description" content="Face detection is one of the most studied topics in the computer vision community. Much of the progresses have been made by the availability of face detection benchmark datasets. We show that there is a gap between current face detection performance and the real world requirements. To facilitate future face detection research, we introduce the WIDER FACE dataset, which is 10 times larger than existing datasets. The dataset contains rich annotations, including occlusions, poses, event categories, and face bounding boxes. Faces in the proposed dataset are extremely challenging due to large variations in scale, pose and occlusion. Furthermore, we show that WIDER FACE dataset is an effective training source for face detection. We benchmark several representative detection systems, providing an overview of state-of-the-art performance and propose a solution to deal with large scale variation. Finally, we discuss common failure cases that worth to be further investigated.">
+<meta name="keywords" content="face detection; benchmarks; wider face; WIDER FACE; computer vision;">
+<link rel="author" href="mmlab.ie.cuhk.edu.hk/projects/WIDERFace/index.html">
+
+<!-- Fonts and stuff -->
+<link href="./support/css" rel="stylesheet" type="text/css">
+<link rel="stylesheet" type="text/css" href="./support/project.css" media="screen">
+<link rel="stylesheet" type="text/css" media="screen" href="./support/iconize.css">
+<script async="" src="./support/prettify.js"></script>
+
+    <script type="text/javascript">
+        
+        var _gaq = _gaq || [];
+        _gaq.push(['_setAccount', 'UA-22940424-1']);
+        _gaq.push(['_trackPageview']);
+        
+        (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+        })();
+        
+    </script>
+
+</head>
+
+
+</head>
+
+<body>
+  <div id="content">
+    <div id="content-inner">
+      
+      <div class="section head">
+	<h1>WIDER FACE: A Face Detection Benchmark</h1>
+
+	<div class="affiliations">
+	  <a href="http://mmlab.ie.cuhk.edu.hk/">Multimedia Laboratory, </a>
+	  <a href="http://www.ie.cuhk.edu.hk/">Department of Information Engineering, </a>
+	  <a href="www.cuhk.edu.hk">The Chinese University of Hong Kong</a>
+	</div>
+	<ul id="tabs">
+    	<li><a href="./index.html" name="#tab1">Home</a></li>
+    	<li><a href="./WiderFace_Results.html" name="#tab2">Results</a></li>  
+	</ul> 
+    </div>
+
+    <center><img src="./support/intro.jpg" border="0" width="90%"></center>
+    
+    <div class="section News">
+    <h2 id="News">News</h2>  	
+	<p>
+	<!--Last update: 2015-11-19 -->
+	</p><ul>
+	<li><strong>2017-03-31</strong> The new version of <a href="./support/eval_script/eval_tools.zip">evaluation code and validation results</a>is released.</li>
+	<li><strong>2017-03-31</strong> Add text version ground truth and fix rounding problem of bounding box annotations.</li>
+	<li><strong>2016-08-19</strong> Two new algorithms are added into leader-board.</li>
+	<li><strong>2016-04-17</strong> The face attribute labels i.e. pose and occlusion are available.</li>
+	<li><strong>2015-11-19</strong> Results of four baseline methods: ACF, Faceness, Multiscale Cascade CNN, and Two-stage CNN are released.</li>
+	<li><strong>2015-11-19</strong> WIDER FACE v1.0 is released with images, face bounding box annotations, and event category annotations.</li>
+	</ul>	
+	<p></p>
+	</div>
+	
+	<div class="section Description">
+	</code></pre><h2 id="Description">Description</h2>
+	<p>WIDER FACE dataset is a face detection benchmark dataset, of which images are selected from the publicly available <a href="http://personal.ie.cuhk.edu.hk/~xy012/event_recog/WIDER/">WIDER dataset</a>. We choose <strong>32,203</strong> images and label <strong>393,703</strong> faces with a high degree of variability in scale, pose and occlusion as depicted in the sample images. WIDER FACE dataset is organized based on 61 event classes. For each event class, we randomly select 40%/10%/50% data as training, validation and testing sets. We adopt the same evaluation metric employed in the <a href="http://host.robots.ox.ac.uk:8080/pascal/VOC/voc2012/index.html">PASCAL VOC dataset</a>. Similar to <a href="http://www.cbsr.ia.ac.cn/faceevaluation/">MALF</a> and <a href="http://www.vision.caltech.edu/Image_Datasets/CaltechPedestrians/">Caltech</a> datasets, we do not release bounding box ground truth for the test images. Users are required to submit final prediction files, which we shall proceed to evaluate.</p>
+    </div>
+
+
+	<div class="section Download">
+	<h2 id="Download">Download</h2>  	
+	<p>
+	</p><ul>
+	<li>WIDER Face Training Images <a href="https://drive.google.com/file/d/15hGDLhsx8bLgLcIRD5DhYt5iBxnjNF1M/view?usp=sharing">[Google Drive]</a> <a href="https://share.weiyun.com/5WjCBWV">[Tencent Drive]</a>  <a href="https://huggingface.co/datasets/wider_face/blob/main/data/WIDER_train.zip">[Hugging Face]</a> </li>
+	<li>WIDER Face Validation Images <a href="https://drive.google.com/file/d/1GUCogbp16PMGa39thoMMeWxp7Rp5oM8Q/view?usp=sharing">[Google Drive]</a> <a href="https://share.weiyun.com/5ot9Qv1">[Tencent Drive]</a>   <a href="https://huggingface.co/datasets/wider_face/blob/main/data/WIDER_val.zip">[Hugging Face]</a> </li>
+	<li>WIDER Face Testing Images <a href="https://drive.google.com/file/d/1HIfDbVEWKmsYKJZm4lchTBDLW5N7dY5T/view?usp=sharing">[Google Drive]</a> <a href="https://share.weiyun.com/5vSUomP">[Tencent Drive]</a> <a href="https://huggingface.co/datasets/wider_face/blob/main/data/WIDER_test.zip">[Hugging Face]</a> </li>
+	<li><a href="./support/bbx_annotation/wider_face_split.zip">Face annotations</a></li>
+	<li><a href="./support/example/Submission_example.zip">Examples and formats of the submissions</a></li>
+	</ul>	
+	<p></p>
+	</div>
+
+	<div class="section Benchmark">
+	<h2 id="Benchmark">Benchmark</h2>  	
+	<p>
+	For details on the evaluation scheme please refer to the <a href="http://arxiv.org/abs/1511.06523">technical report</a>.
+	<br>
+	For detection resutls please refer to the <a href="./WiderFace_Results.html">result page</a>.
+	</p>
+	<p>
+	</p><ul>
+	<li>
+	<font color="red"><i><b>Scenario-Ext</b></i></font>: A face detector is trained using any external data, and tested on the WIDER FACE test partition.
+	</li>
+	<li>
+	<font color="red"><i><b>Scenario-Int</b></i></font>: A face detector is trained using WIDER FACE training/validation partitions, and tested on WIDER FACE test partition.
+	</li>
+	</ul>
+	<p></p>
+
+	</div>
+
+	<div class="section submission">
+	<h2 id="Submission">Submission</h2>  	
+	<p>	
+	Please contact us to evaluate your detection results. An evaluation server will be available soon. <br> 
+	The detection result for each image should be a text file, with the same name of the image. The detection results are organized by the event categories. For example, if the directory of a testing image is "./0--Parade/0_Parade_marchingband_1_5.jpg", the detection result should be writtern in the text file in "./0--Parade/0_Parade_marchingband_1_5.txt". The detection output is expected in the follwing format:
+	<br>
+	...
+	<br>
+	&lt; image name i &gt;
+	<br>
+	&lt; number of faces in this image = im &gt;
+	<br>
+	&lt; face i1 &gt;
+	<br>
+	&lt; face i2 &gt;
+	<br>
+	...
+	<br>
+	&lt; face im &gt;
+	<br>
+	...
+	<br>
+	Each text file should contain 1 row per detected bounding box, in the format "[left, top, width, height, score]". 
+	Please see the output example files and the README if the above descriptions are unclear.
+	</p>
+	</div>
+
+
+	<div class="section Related Datasets">
+	<h2 id="Related Datasets">Related Datasets</h2>  	
+	<p>Below we list other face detection datasets. A more detailed comparison of the datasets can be found in the paper.
+	</p><ul>
+	<li><a href="http://www.nist.gov/itl/iad/ig/ijba_request.cfm">IJB-A dataset</a>: IJB-A is proposed for face detection and face recognition. IJB-A contains 24,327 images and 49,759 faces.</li>
+	<li><a href="http://www.cbsr.ia.ac.cn/faceevaluation/">MALF dataset</a>: MALF is the first face detection dataset that supports fine-gained evaluation. MALF consists of 5,250 images and 11,931 faces.</li>
+	<li><a href="http://vis-www.cs.umass.edu/fddb/index.html">FDDB dataset</a>: FDDB dataset contains the annotations for 5,171 faces in a set of 2,845 images.</li>
+	<li><a href="http://www.ics.uci.edu/~xzhu/face/">AFW dataset</a>: AFW dataset is built using Flickr images. It has 205 images with 473 labeled faces. For each face, annotations include a rectangular bounding box, 6 landmarks and the pose angles.</li>
+	</ul>	
+	<p></p>
+	</div>
+
+
+	<div class="section bibtex">
+	<h2 id="Citation">Citation</h2>
+	  	<pre>	@inproceedings{yang2016wider,
+	Author = {Yang, Shuo and Luo, Ping and Loy, Chen Change and Tang, Xiaoou},
+	Booktitle = {IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+	Title = {WIDER FACE: A Face Detection Benchmark},
+	Year = {2016}}
+		</pre>
+		</div>
+ 	</div>
+
+	<div class="section contact">
+	<h2 id="contact">Contact</h2>
+	<p>For questions and result submission, please contact Shuo Yang at <strong>shuoyang.1213@gmail.com</strong></p>
+	</div>
+
+	<div class="section license">
+	<h2 id="license">License</h2>
+	<p><strong>Creative Common License (cc by-nc-nd)</strong></p>
+	</div>
+
+	<br>
+	<br>
+
+
+
+
+</body></html>
