@@ -1195,3 +1195,41 @@ def test_zip_strict_layout_still_accepts_a_normal_archive(tmp_path):
         assert report["receipt"] == OUTPUT + "/report.json"
         assert any(row["member"] == "notes.txt" for row in report["inventory"])
         shutil.rmtree(case["root"] / OUTPUT)
+
+
+# ---- SN-6 round 2 follow-up: end signatures inside member data are not ambiguous ----
+
+
+def test_zip_stored_nested_zip_as_last_member_passes(tmp_path):
+    case = one_image_case(tmp_path)
+    inner = _plain_zip_bytes([("inner.txt", b"synthetic")])
+    zip_with(case, [("nested.zip", inner)], zipfile.ZIP_STORED)
+    assert case["archive"].read_bytes().count(b"PK\x05\x06") == 2
+    path, checksum = refresh(case)
+    report = data.prepare(case["root"], path.relative_to(case["root"]).as_posix(), checksum, OUTPUT)
+    assert any(row["member"] == "nested.zip" for row in report["inventory"])
+
+
+def test_zip_member_data_containing_end_signature_passes(tmp_path):
+    case = one_image_case(tmp_path)
+    fake_end = b"PK\x05\x06" + b"\0" * 18
+    zip_with(case, [("notes.bin", b"synthetic" + fake_end + b"tail")], zipfile.ZIP_STORED)
+    path, checksum = refresh(case)
+    report = data.prepare(case["root"], path.relative_to(case["root"]).as_posix(), checksum, OUTPUT)
+    assert any(row["member"] == "notes.bin" for row in report["inventory"])
+
+
+def test_zip_concat_prepend_trailing_still_rejected_with_nested_member(tmp_path):
+    inner = _plain_zip_bytes([("inner.txt", b"synthetic")])
+    good = _plain_zip_bytes([("ok.png", image_bytes()), ("nested.zip", inner)])
+    cases = [
+        (good + good, "ZIP_DIRECTORY_NOT_ADJACENT|ZIP_END_AMBIGUOUS"),
+        (b"MZ" + b"\0" * 30 + good, "ZIP_PREFIX_UNSUPPORTED"),
+        (_shift_offsets(good, b"PK\x03\x04" + b"\0" * 60), "ZIP_ENTRY_GAP"),
+        (good + b"trailing", "ZIP_END_INVALID"),
+        (good + b"PK\x05\x06" + b"\0" * 18, "ZIP_END_AMBIGUOUS|ZIP_DIRECTORY_NOT_ADJACENT"),
+    ]
+    for index, (blob, code) in enumerate(cases):
+        case = one_image_case(tmp_path / str(index))
+        rewrite(case, lambda path, blob=blob: path.write_bytes(blob))
+        assert_rejected_cleanly(case, code)

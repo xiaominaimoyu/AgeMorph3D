@@ -92,11 +92,35 @@ def _write_json(root, name, value):
         stream.write(body)
 
 
+def _end_record_position(tail):
+    """The single end record whose declared comment length reaches EOF exactly.
+
+    Scans backward through every end signature in the tail window. Two
+    self-consistent candidates, or an end signature inside the chosen record's
+    comment (where CPython ``zipfile`` would pick a different record), are
+    ambiguous. Signatures that are not self-consistent are member data, e.g. a
+    stored nested zip as the last member, and are not rejected.
+    """
+    found, start = [], len(tail)
+    while (position := tail.rfind(b"PK\x05\x06", 0, start)) >= 0:
+        start = position
+        if position + 22 <= len(tail):
+            comment = int.from_bytes(tail[position + 20 : position + 22], "little")
+            if position + 22 + comment == len(tail):
+                found.append(position)
+    require(found, "ZIP_END_INVALID")
+    require(len(found) == 1, "ZIP_END_AMBIGUOUS")
+    require(b"PK\x05\x06" not in tail[found[0] + 22 :], "ZIP_END_AMBIGUOUS")
+    return found[0]
+
+
 def _zip_end(path, limits=None):
     """Parse the single end record; the directory must end exactly where it starts.
 
     CPython ``zipfile`` tolerates prepended or concatenated data by shifting every
     offset by the difference; this refuses such files instead (SN-6 round 2).
+    Concatenated, prepended and trailing data are rejected by directory adjacency,
+    the entry gap check and the comment-reaches-EOF rule.
     """
     with path.open("rb") as stream:
         head = stream.read(4)
@@ -105,8 +129,7 @@ def _zip_end(path, limits=None):
         stream.seek(tail_start)
         tail = stream.read(65557)
     require(head in {b"PK\x03\x04", b"PK\x05\x06"}, "ZIP_PREFIX_UNSUPPORTED")
-    position = tail.rfind(b"PK\x05\x06")
-    require(position >= 0 and position + 22 <= len(tail), "ZIP_END_INVALID")
+    position = _end_record_position(tail)
     _, disk, directory_disk, disk_count, count, directory_bytes, offset, comment = struct.unpack(
         "<4s4H2LH", tail[position : position + 22]
     )
@@ -120,9 +143,7 @@ def _zip_end(path, limits=None):
     )
     if limits is not None:
         require(count <= limits["members"] and directory_bytes <= 1024**2, "ZIP_DIRECTORY_LIMIT")
-    # Exactly one end record in the tail window (a comment may not hide a second one,
-    # and a concatenated archive leaves its own end record behind), and no ZIP64 locator.
-    require(tail.count(b"PK\x05\x06") == 1, "ZIP_END_AMBIGUOUS")
+    # No ZIP64 locator in front of the end record.
     require(b"PK\x06\x07" not in tail[max(0, position - 20) : position], "ZIP_LAYOUT_UNSUPPORTED")
     require(offset + directory_bytes == tail_start + position, "ZIP_DIRECTORY_NOT_ADJACENT")
     if count == 0:
