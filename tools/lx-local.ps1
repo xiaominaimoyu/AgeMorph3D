@@ -1,28 +1,49 @@
-# Requires PowerShell 5.1 or newer.
-# Runs preprocessing/lx_local.py (LX-1..LX-3). Paths may contain spaces.
-# Prefer backend\.venv\Scripts\python.exe; otherwise python on PATH.
-# This script does not install dependencies, does not accept a password,
-# and must be given --local-only-ack. Only summary.json is shareable.
+#Requires -Version 5.1
+# Runs preprocessing/lx_local.py (LX-1..LX-3) on the user's own Windows machine.
+# Paths may contain spaces. Prefers backend\.venv\Scripts\python.exe, then the
+# "py -3.11" launcher, then python on PATH (the Microsoft Store alias is refused).
+# This script does not install dependencies, does not accept or store a password,
+# and the Python CLI refuses to run without --local-only-ack. Only summary.json is
+# shareable; everything under <output-dir>\local\ stays on this machine.
+# Exit codes are passed through: 0 passed, 1 needs_review, 2 rejected.
 
 $ErrorActionPreference = 'Stop'
 $ToolsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ToolsDir
 $VenvPython = Join-Path $Root 'backend\.venv\Scripts\python.exe'
 
-$LauncherPython = $null
-if (Test-Path -LiteralPath $VenvPython) {
-    $LauncherPython = $VenvPython
+$Launcher = $null
+$LauncherArgs = @()
+if (Test-Path -LiteralPath $VenvPython -PathType Leaf) {
+    $Launcher = $VenvPython
 } else {
-    $Command = Get-Command python -ErrorAction SilentlyContinue
-    if ($Command) {
-        $LauncherPython = $Command.Source
+    $Py = Get-Command py -CommandType Application -ErrorAction SilentlyContinue
+    if ($Py) {
+        $Launcher = $Py.Source
+        $LauncherArgs = @('-3.11')
+    } else {
+        $Command = Get-Command python -CommandType Application -ErrorAction SilentlyContinue
+        if ($Command -and ($Command.Source -notlike '*\WindowsApps\*')) {
+            $Launcher = $Command.Source
+        }
     }
 }
-if (-not $LauncherPython) {
-    Write-Error 'Python is required to run python -m preprocessing.lx_local. Install the project interpreter or add python to PATH.'
+if (-not $Launcher) {
+    # Write to stderr without a terminating error so the exit code stays 2.
+    [Console]::Error.WriteLine('Python 3.11 is required (backend\.venv, "py -3.11", or python on PATH).')
     exit 2
 }
 
-Set-Location -LiteralPath $Root
-& $LauncherPython -B -m preprocessing.lx_local @args
-exit $LASTEXITCODE
+# Keep the caller's working directory and environment unchanged afterwards.
+$Code = 2
+$PreviousNoBytecode = $env:PYTHONDONTWRITEBYTECODE
+$env:PYTHONDONTWRITEBYTECODE = '1'
+Push-Location -LiteralPath $Root
+try {
+    & $Launcher @LauncherArgs -B -m preprocessing.lx_local @args
+    $Code = $LASTEXITCODE
+} finally {
+    Pop-Location
+    $env:PYTHONDONTWRITEBYTECODE = $PreviousNoBytecode
+}
+exit $Code

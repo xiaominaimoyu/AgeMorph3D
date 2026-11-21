@@ -106,6 +106,18 @@ def make_zip(root, files=FILES, name=ARCHIVE, *, encrypted=False, slip=None):
     return path
 
 
+def run_module(args):
+    """Run the CLI as ``python -B -m`` from this worktree; never writes bytecode."""
+    return subprocess.run(
+        [sys.executable, "-B", "-m", "preprocessing.lx_local", *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+    )
+
+
 def terms(root):
     path = root / TERMS
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -455,14 +467,7 @@ def test_run_p03_p04_calls_real_screening_and_precheck(tmp_path):
 def test_cli_as_module_prints_warning_and_writes_summary(tmp_path):
     terms(tmp_path)
     make_zip(tmp_path)
-    completed = subprocess.run(
-        [sys.executable, "-m", "preprocessing.lx_local", *cli(tmp_path, OUTPUT + "-mod")],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        env={**os.environ, "PYTHONPATH": str(ROOT)},
-    )
+    completed = run_module(cli(tmp_path, OUTPUT + "-mod"))
     assert completed.returncode == 0, completed.stderr + completed.stdout
     assert lx.LOCAL_ONLY_WARNING in completed.stderr
     assert json.loads(completed.stdout)["status"] == "passed"
@@ -487,3 +492,335 @@ def test_committed_sample_summary_is_clean_and_whitelisted():
     data = _assert_clean(body)
     assert data["schema_id"] == lx.SCHEMA
     assert "lx1" in data["stages_completed"]
+    assert lx.project_summary(data) == data
+    assert data["pending_user_decisions"] == list(lx.PENDING_USER_DECISIONS)
+    assert data["near_duplicate_checked_at_full_scale"] is False
+
+
+# ---- Sentinel FG-8 rework (MAJOR-1..3, MINOR-1..9, FG-4 partial equivalence) ----
+
+NO_ARCHIVE_STAGES = ("lx1", "lx2", "lx3")
+
+
+def _unlock(path):
+    for item in [path, *path.rglob("*")]:
+        item.chmod(stat.S_IRWXU if item.is_dir() else stat.S_IREAD | stat.S_IWRITE)
+
+
+def _no_archive_run(root, **kwargs):
+    return lx.run_pack(root, OUTPUT, images_dir=IMAGES, terms_snapshot=TERMS, **kwargs)
+
+
+def test_summary_value_whitelist_rejects_name_like_values():
+    base = {"schema_id": lx.SCHEMA, "status": "passed"}
+    bad = [
+        ({"k5_audit_status": "PersonA"}, "SUMMARY_FIELD_VALUE"),
+        ({"lx2_status": "PersonA"}, "SUMMARY_FIELD_VALUE"),
+        ({"error_code": "0_PersonA_20_f.jpg"}, "SUMMARY_FIELD_VALUE"),
+        ({"rejected_by_reason": {"PersonA 20": 1}}, "SUMMARY_FIELD_VALUE"),
+        ({"images_by_gender": {"PersonA": 1}}, "SUMMARY_FIELD_VALUE"),
+        ({"images": -1}, "SUMMARY_FIELD_VALUE"),
+        ({"images": True}, "SUMMARY_FIELD_TYPE"),
+        ({"screening_status": "PersonA"}, "SUMMARY_FIELD_VALUE"),
+        ({"split_freeze_status": "frozen"}, "SUMMARY_FIELD_VALUE"),
+        ({"k5_audit_finding_codes": ["agedb:1"]}, "SUMMARY_FIELD_VALUE"),
+        ({"near_duplicate_checked_at_full_scale": True}, "SUMMARY_DISCLOSURE_ALTERED"),
+        ({"split_age_stratified": 0}, "SUMMARY_DISCLOSURE_ALTERED"),
+        ({"pending_user_decisions": ["SPLIT_RULE"]}, "SUMMARY_DISCLOSURE_ALTERED"),
+        ({"near_duplicate_method_status": "done"}, "SUMMARY_DISCLOSURE_ALTERED"),
+    ]
+    for extra, code in bad:
+        with pytest.raises(lx.Error, match=code):
+            lx.project_summary({**base, **extra})
+
+
+def test_summary_discloses_pending_user_decisions_and_unchecked_near_duplicates(tmp_path):
+    terms(tmp_path)
+    make_zip(tmp_path)
+    data = lx.run_pack(tmp_path, OUTPUT, archive=ARCHIVE, images_dir=IMAGES, terms_snapshot=TERMS)
+    assert data["cross_split_exact_duplicate_groups"] == 0
+    assert data["exact_duplicate_zero_does_not_prove_no_leakage"] is True
+    assert data["near_duplicate_screening_performed"] is False
+    assert data["near_duplicate_checked_at_full_scale"] is False
+    assert data["near_duplicate_method_status"] == "pending_user_decision"
+    assert data["p01_quality_checks_performed"] is False
+    assert data["split_rule_status"] == "provisional_pending_user_decision"
+    assert data["split_ratio_has_source"] is False
+    assert data["split_age_stratified"] is False
+    assert data["small_cell_suppression_applied"] is False
+    assert data["small_cell_suppression_status"] == "pending_user_decision"
+    assert data["pending_user_decisions"] == [
+        "NEAR_DUPLICATE_METHOD",
+        "SPLIT_RULE",
+        "SMALL_CELL_SUPPRESSION",
+    ]
+    assert data["freeze_authorized"] is False
+    assert "NEAR_DUPLICATE_REVIEW_PENDING" in data["k5_audit_finding_codes"]
+    _assert_clean((tmp_path / OUTPUT / "summary.json").read_bytes())
+
+
+def test_rejected_summary_still_carries_the_disclosures(tmp_path):
+    terms(tmp_path)
+    (tmp_path / ARCHIVE).parent.mkdir(parents=True)
+    (tmp_path / ARCHIVE).write_bytes(b"not a zip at all")
+    with pytest.raises(lx.Error, match="ARCHIVE_NOT_ZIP"):
+        lx.run_pack(tmp_path, OUTPUT, archive=ARCHIVE, images_dir=IMAGES, terms_snapshot=TERMS)
+    data = _assert_clean((tmp_path / OUTPUT / "summary.json").read_bytes())
+    assert data["status"] == "rejected" and data["error_code"] == "ARCHIVE_NOT_ZIP"
+    assert data["pending_user_decisions"] == list(lx.PENDING_USER_DECISIONS)
+    assert data["near_duplicate_checked_at_full_scale"] is False
+
+
+@pytest.mark.parametrize(
+    ("body", "code"),
+    [
+        (b"PK\x03\x04" + b"\x00" * 64, "ZIP_END_INVALID"),
+        (b"PK\x05\x06" + b"\xff" * 30, "ZIP_LAYOUT_UNSUPPORTED"),
+        (b"plain text, not an archive", "ARCHIVE_NOT_ZIP"),
+    ],
+)
+def test_cli_corrupt_archive_exits_2_with_fixed_code_and_no_leak(tmp_path, body, code):
+    terms(tmp_path)
+    leaky = f"data/datasets/{LEAK_NAME}_{LEAK_PERSON}.zip"
+    (tmp_path / leaky).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / leaky).write_bytes(body)
+    args = cli(tmp_path)
+    args[args.index(ARCHIVE)] = leaky
+    completed = run_module(args)
+    assert completed.returncode == 2
+    for stream in (completed.stdout, completed.stderr):
+        assert "Traceback" not in stream
+        assert LEAK_NAME not in stream and LEAK_PERSON not in stream
+        assert str(tmp_path) not in stream
+    printed = json.loads(completed.stdout)
+    assert printed == {"status": "rejected", "error_code": code, **lx.acquisition.FLAGS}
+    data = _assert_clean((tmp_path / OUTPUT / "summary.json").read_bytes())
+    assert data["error_code"] == code
+
+
+def test_cli_bad_crc_member_is_caught_without_traceback_or_names(tmp_path):
+    terms(tmp_path)
+    archive = make_zip(tmp_path)
+    with zipfile.ZipFile(archive) as container:
+        info = next(i for i in container.infolist() if LEAK_PERSON in i.filename)
+        start = info.header_offset + 30 + len(info.filename.encode()) + len(info.extra)
+    data = bytearray(archive.read_bytes())
+    data[start + info.compress_size // 2] ^= 0xFF
+    archive.write_bytes(bytes(data))
+    completed = run_module(cli(tmp_path))
+    assert completed.returncode == 2
+    assert "Traceback" not in completed.stderr and LEAK_PERSON not in completed.stderr
+    assert LEAK_PERSON not in completed.stdout
+    assert json.loads(completed.stdout)["error_code"] in {
+        "ARCHIVE_CORRUPT_OR_NOT_ZIP",
+        "ARCHIVE_DECOMPRESS_FAILED",
+    }
+    assert not (tmp_path / IMAGES).exists()
+
+
+def test_cli_argument_errors_do_not_echo_values(tmp_path):
+    completed = run_module(cli(tmp_path) + ["--password", "should-not-be-accepted"])
+    assert completed.returncode == 2
+    assert "should-not-be-accepted" not in completed.stderr + completed.stdout
+    assert json.loads(completed.stdout)["error_code"] == "ARGUMENT_REJECTED"
+
+
+def _zip_with(root, entries):
+    path = root / ARCHIVE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as container:
+        for info, body in entries:
+            container.writestr(info, body)
+    return path
+
+
+def _lx1(root):
+    return lx.run_pack(root, OUTPUT, archive=ARCHIVE, images_dir=IMAGES, stages=("lx1",))
+
+
+def test_safe_extract_rejects_symlink_and_device_members(tmp_path):
+    for mode in (stat.S_IFLNK | 0o777, stat.S_IFCHR | 0o644):
+        info = zipfile.ZipInfo("0_PersonA_20_f.jpg")
+        info.external_attr = mode << 16
+        _zip_with(tmp_path, [(info, b"target")])
+        with pytest.raises(lx.Error, match="SPECIAL_MEMBER"):
+            _lx1(tmp_path)
+        assert not (tmp_path / IMAGES).exists()
+
+
+def test_safe_extract_rejects_nfc_and_casefold_duplicate_names(tmp_path):
+    for first, second in (("1_Ze\u0301ta_20_f.jpg", "1_Z\u00e9ta_20_f.jpg"), ("A.jpg", "a.jpg")):
+        _zip_with(tmp_path, [(first, b"one"), (second, b"two")])
+        with pytest.raises(lx.Error, match="DUPLICATE_MEMBER_PATH"):
+            _lx1(tmp_path)
+        assert not (tmp_path / IMAGES).exists()
+
+
+def test_safe_extract_rejects_high_compression_ratio(tmp_path):
+    _zip_with(tmp_path, [("0_PersonA_20_f.jpg", b"\x00" * (2 * 1024**2))])
+    with pytest.raises(lx.Error, match="COMPRESSION_RATIO_LIMIT"):
+        _lx1(tmp_path)
+    assert not (tmp_path / IMAGES).exists()
+
+
+def test_safe_extract_rejects_prepended_data_and_overlapping_entries(tmp_path):
+    archive = make_zip(tmp_path)
+    original = archive.read_bytes()
+    archive.write_bytes(b"MZ-stub" + original)
+    with pytest.raises(lx.Error, match="ARCHIVE_NOT_ZIP"):
+        _lx1(tmp_path)
+    # Point the second central entry at the first local header (overlap bomb shape).
+    data = bytearray(original)
+    archive.write_bytes(original)
+    with zipfile.ZipFile(archive) as container:
+        start = container.start_dir
+    second = start + 46 + int.from_bytes(data[start + 28 : start + 30], "little")
+    second += int.from_bytes(data[start + 30 : start + 32], "little")
+    second += int.from_bytes(data[start + 32 : start + 34], "little")
+    assert data[second : second + 4] == b"PK\x01\x02"
+    data[second + 42 : second + 46] = (0).to_bytes(4, "little")
+    archive.write_bytes(bytes(data))
+    with pytest.raises(lx.Error, match="ZIP_ENTRY_OVERLAP|ZIP_LOCAL_HEADER_MISMATCH"):
+        _lx1(tmp_path)
+    assert not (tmp_path / IMAGES).exists()
+
+
+@pytest.mark.parametrize(
+    "images_dir",
+    [
+        "data",
+        "data/datasets",
+        "data/datasets/photos",
+        "data/datasets/agedb/inner",
+        "../agedb",
+        "data/datasets/../agedb",
+        "/abs/agedb",
+        "data\\datasets\\agedb",
+    ],
+)
+def test_images_dir_scope_is_restricted(tmp_path, images_dir):
+    with pytest.raises(lx.Error, match="IMAGES_DIR_SCOPE"):
+        lx.run_pack(tmp_path, OUTPUT, images_dir=images_dir, stages=("lx1",))
+
+
+def test_reused_folder_is_verified_against_zip_central_directory(tmp_path):
+    terms(tmp_path)
+    make_zip(tmp_path, encrypted=True)
+    folder = write_images(tmp_path)
+    victim = folder / "6_PersonB_30_m.jpg"
+    body = bytearray(victim.read_bytes())
+    body[-3] ^= 0xFF
+    victim.write_bytes(bytes(body))
+    with pytest.raises(lx.Error, match="EXTRACTED_ARCHIVE_CRC_MISMATCH"):
+        _lx1(tmp_path)
+    # The check runs before chmod: a mismatching folder is not made read-only.
+    assert victim.stat().st_mode & 0o200
+    victim.unlink()
+    with pytest.raises(lx.Error, match="EXTRACTED_ARCHIVE_COUNT_MISMATCH"):
+        _lx1(tmp_path)
+
+
+def test_reused_folder_matches_zip_with_a_top_level_folder(tmp_path):
+    files = {"AgeDB/" + name: size for name, size in FILES.items()}
+    make_zip(tmp_path, files=files, encrypted=True)
+    write_images(tmp_path)
+    summary = _lx1(tmp_path)
+    assert summary["extracted_archive_consistent"] is True
+    assert summary["extracted_archive_crc_checked"] is True
+
+
+def test_resume_recomputes_lx2_when_an_input_image_changes(tmp_path):
+    terms(tmp_path)
+    folder = write_images(tmp_path)
+    first = _no_archive_run(tmp_path)
+    again = _no_archive_run(tmp_path)
+    assert again["lx2_resumed"] is True and again["inputs_stable"] is True
+    _unlock(folder)
+    jpeg(folder / "6_PersonB_30_m.jpg", (210, 210))
+    changed = _no_archive_run(tmp_path)
+    assert changed["lx2_resumed"] is False and changed["inputs_stable"] is False
+    assert changed["inventory_sha256"] != first["inventory_sha256"]
+    state = json.loads((tmp_path / OUTPUT / "local/state.json").read_text())
+    assert state["stages"]["lx2"]["inventory_sha256"] == changed["inventory_sha256"]
+
+
+def test_resume_discards_edited_lx2_outputs(tmp_path):
+    terms(tmp_path)
+    write_images(tmp_path)
+    first = _no_archive_run(tmp_path)
+    manifest = tmp_path / OUTPUT / "local/agedb-stats/manifest.json"
+    _unlock(manifest.parent)
+    manifest.write_text(manifest.read_text() + " ", encoding="utf-8")
+    with pytest.raises(lx.Error, match="LX2_OUTPUT_CHANGED"):
+        _no_archive_run(tmp_path, stages=("lx3",))
+    rerun = _no_archive_run(tmp_path)
+    assert rerun["lx2_resumed"] is False
+    assert rerun["k5_manifest_sha256"] == first["k5_manifest_sha256"]
+
+
+def test_lx3_alone_refuses_when_inputs_changed_since_lx2(tmp_path):
+    terms(tmp_path)
+    folder = write_images(tmp_path)
+    _no_archive_run(tmp_path)
+    _unlock(folder)
+    jpeg(folder / "13_GammaPerson_33_f.jpg", (150, 150))
+    with pytest.raises(lx.Error, match="LX2_STALE_RERUN_REQUIRED"):
+        _no_archive_run(tmp_path, stages=("lx3",))
+    data = _assert_clean((tmp_path / OUTPUT / "summary.json").read_bytes(), ("GammaPerson",))
+    assert data["status"] == "rejected"
+
+
+def test_failed_lx3_leaves_no_stale_ledger_and_stashes_old_summary(tmp_path, monkeypatch):
+    terms(tmp_path)
+    write_images(tmp_path)
+    _no_archive_run(tmp_path)
+    leftover = tmp_path / OUTPUT / "local/p03-screen"
+    leftover.mkdir()
+    (leftover / "half.json").write_text("{}", encoding="utf-8")
+
+    def boom(*_args, **_kwargs):
+        raise lx.Error("SYNTHETIC_LX3_FAILURE")
+
+    monkeypatch.setattr(lx, "assign_identities", boom)
+    with pytest.raises(lx.Error, match="SYNTHETIC_LX3_FAILURE"):
+        _no_archive_run(tmp_path)
+    local = tmp_path / OUTPUT / "local"
+    assert not (local / "assignment-ledger.json").exists()
+    assert not leftover.exists()
+    state = json.loads((local / "state.json").read_text())
+    assert "lx3" not in state["stages"] and state["last_error_code"] == "SYNTHETIC_LX3_FAILURE"
+    current = json.loads((tmp_path / OUTPUT / "summary.json").read_text())
+    assert current["status"] == "rejected"
+    assert json.loads((local / "summary.stale.json").read_text())["status"] == "passed"
+
+
+def test_lx2_needs_review_propagates_to_summary_status_and_exit_code(tmp_path, capsys):
+    terms(tmp_path)
+    folder = write_images(tmp_path)
+    jpeg(folder / "not-an-agedb-name.jpg")
+    args = cli(tmp_path)
+    del args[args.index("--archive") : args.index("--archive") + 2]
+    assert lx.main(args) == 1
+    data = _assert_clean((tmp_path / OUTPUT / "summary.json").read_bytes(), ("not-an-agedb",))
+    assert data["status"] == "needs_review" and data["lx2_status"] == "needs_review"
+    assert data["k5_audit_status"] in lx.K5_AUDIT_VALUES
+    capsys.readouterr()
+
+
+def test_small_cell_suppression_is_refused_until_the_user_decides(tmp_path, capsys):
+    terms(tmp_path)
+    make_zip(tmp_path)
+    assert lx.main(cli(tmp_path, extra=["--suppress-small-cells"])) == 2
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["error_code"] == "SMALL_CELL_SUPPRESSION_POLICY_UNSETTLED"
+    assert not (tmp_path / IMAGES).exists()
+
+
+def test_powershell_entry_keeps_exit_codes_and_caller_state():
+    text = (ROOT / "tools/lx-local.ps1").read_text(encoding="utf-8")
+    assert text.startswith("#Requires -Version 5.1")
+    assert "Write-Error" not in text  # would turn the exit-2 path into a terminating error
+    assert "Push-Location -LiteralPath $Root" in text and "Pop-Location" in text
+    assert "-B -m preprocessing.lx_local @args" in text and "exit $Code" in text
+    assert "WindowsApps" in text and "-3.11" in text
+    assert "password" not in text.replace("does not accept or store a password", "").lower()
