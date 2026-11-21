@@ -7,6 +7,7 @@ archive, mirror, dump or /workspace/hf path is read or downloaded.
 import hashlib
 import importlib
 import importlib.util
+import io
 import json
 import os
 import stat
@@ -575,7 +576,8 @@ def test_rejected_summary_still_carries_the_disclosures(tmp_path):
     ("body", "code"),
     [
         (b"PK\x03\x04" + b"\x00" * 64, "ZIP_END_INVALID"),
-        (b"PK\x05\x06" + b"\xff" * 30, "ZIP_LAYOUT_UNSUPPORTED"),
+        (b"PK\x05\x06" + b"\xff" * 30, "ZIP_END_INVALID"),  # comment length overruns EOF
+        (b"PK\x05\x06\x01" + b"\x00" * 17, "ZIP_LAYOUT_UNSUPPORTED"),  # multi-disk
         (b"plain text, not an archive", "ARCHIVE_NOT_ZIP"),
     ],
 )
@@ -1093,4 +1095,74 @@ def test_powershell_launcher_failures_map_to_exit_2():
     assert "LAUNCHER_PYTHON_311_REQUIRED" in text and "LAUNCHER_START_FAILED" in text
     assert "sys.version_info[:2] == (3, 11)" in text
     assert "$Code -notin 0, 1, 2" in text and "catch {" in text
+    assert "never run on Windows" in text
+
+
+# ---- SN-6 round 2 follow-up: end signatures inside member data are not ambiguous ----
+
+
+def _jpeg_bytes(size=(40, 40)):
+    buffer = io.BytesIO()
+    Image.new("RGB", size, (90, 120, 150)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _nested_store_zip(path):
+    """A legit zip whose last member is a stored inner zip (its end record sits
+    just before the outer central directory, inside the last 64 KB)."""
+    inner = io.BytesIO()
+    with zipfile.ZipFile(inner, "w", zipfile.ZIP_STORED) as container:
+        container.writestr("inner.txt", b"synthetic")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as container:
+        container.writestr("0_PersonA_19_f.jpg", _jpeg_bytes())
+        container.writestr("nested.zip", inner.getvalue())
+    return path
+
+
+def test_stored_nested_zip_as_last_member_passes_layout_checks(tmp_path):
+    path = _nested_store_zip(tmp_path / ARCHIVE)
+    assert path.read_bytes().count(b"PK\x05\x06") == 2
+    infos = lx._checked_infos(path)
+    assert [info.filename for info in infos] == ["0_PersonA_19_f.jpg", "nested.zip"]
+
+
+def test_member_data_containing_end_signature_passes_end_to_end(tmp_path):
+    fake_end = b"PK\x05\x06" + b"\x00" * 18  # self-consistent only for its own window
+    files = dict(list(FILES.items())[:3])
+    path = tmp_path / ARCHIVE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as container:
+        for name, size in files.items():
+            container.writestr(name, _jpeg_bytes(size) + fake_end + b"tail")
+    assert path.read_bytes().count(b"PK\x05\x06") == 4
+    summary = _lx1(tmp_path)
+    assert summary["status"] != "rejected"
+    assert summary["extracted_archive_consistent"] is True
+
+
+def test_concat_prepend_trailing_still_rejected_with_nested_members(tmp_path):
+    good = _nested_store_zip(tmp_path / "output/research/input/good.zip").read_bytes()
+    archive = tmp_path / ARCHIVE
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    cases = [
+        (good + good, "ZIP_DIRECTORY_NOT_ADJACENT|ZIP_END_AMBIGUOUS"),
+        (b"MZ" + b"\x00" * 30 + good, "ARCHIVE_NOT_ZIP|ZIP_PREFIX_UNSUPPORTED"),
+        (_shift_zip(good, b"PK\x03\x04" + b"\x00" * 60), "ZIP_ENTRY_GAP"),
+        (good + b"trailing", "ZIP_END_INVALID"),
+        (good + b"PK\x05\x06" + b"\x00" * 18, "ZIP_END_AMBIGUOUS|ZIP_DIRECTORY_NOT_ADJACENT"),
+    ]
+    for blob, code in cases:
+        archive.write_bytes(blob)
+        with pytest.raises(lx.Error, match=code):
+            lx._checked_infos(archive)
+
+
+def test_powershell_launcher_uses_one_version_probe_for_every_candidate():
+    text = (ROOT / "tools" / "lx-local.ps1").read_text(encoding="utf-8")
+    assert text.count("sys.version_info[:2] == (3, 11)") == 1
+    assert "function Test-Python311" in text
+    assert "Test-Python311 $VenvPython @()" in text
+    assert "Test-Python311 $Py.Source @('-3.11')" in text
+    assert "Test-Python311 $Candidate.Source @()" in text
     assert "never run on Windows" in text

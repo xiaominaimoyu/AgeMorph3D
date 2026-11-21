@@ -1,8 +1,9 @@
 #Requires -Version 5.1
 # Runs preprocessing/lx_local.py (LX-1..LX-3) on the user's own Windows machine.
 # Paths may contain spaces. Prefers backend\.venv\Scripts\python.exe, then the
-# "py -3.11" launcher (only if it really has 3.11), then the first real python on
-# PATH (Microsoft Store WindowsApps aliases are skipped, not fatal).
+# "py -3.11" launcher, then the first real python on PATH (Microsoft Store
+# WindowsApps aliases are skipped, not fatal). Every candidate goes through the
+# same Test-Python311 probe and is skipped unless it really is 3.11.
 # This script does not install dependencies, does not accept or store a password,
 # and the Python CLI refuses to run without --local-only-ack. Only summary.json is
 # shareable; everything under <output-dir>\local\ stays on this machine.
@@ -22,39 +23,43 @@ $ToolsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ToolsDir
 $VenvPython = Join-Path $Root 'backend\.venv\Scripts\python.exe'
 
+function Test-Python311([string]$Exe, [string[]]$PrefixArgs) {
+    # One shared probe for every candidate (venv, "py -3.11", PATH python): the
+    # interpreter must start and report 3.11, else it is skipped. In Windows
+    # PowerShell 5.1 a redirected native stderr line becomes an error record, which
+    # 'Stop' would turn into a terminating error, so relax it for the probe only.
+    $Probe = 3
+    $PreviousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $Exe @PrefixArgs -B -c "import sys; sys.exit(0 if sys.version_info[:2] == (3, 11) else 3)" 2>$null | Out-Null
+        $Probe = $LASTEXITCODE
+    } catch {
+        $Probe = 3
+    } finally {
+        $ErrorActionPreference = $PreviousPreference
+    }
+    return ($Probe -eq 0)
+}
+
 $Launcher = $null
 $LauncherArgs = @()
-if (Test-Path -LiteralPath $VenvPython -PathType Leaf) {
+if ((Test-Path -LiteralPath $VenvPython -PathType Leaf) -and (Test-Python311 $VenvPython @())) {
     $Launcher = $VenvPython
 }
 if (-not $Launcher) {
+    # Probe first so a missing 3.11 does not leak py's own exit code.
     $Py = @(Get-Command py -CommandType Application -ErrorAction SilentlyContinue) | Select-Object -First 1
-    if ($Py) {
-        # Probe first so a missing 3.11 does not leak py's own exit code. In Windows
-        # PowerShell 5.1 a redirected native stderr line becomes an error record, which
-        # 'Stop' would turn into a terminating error, so relax it for the probe only.
-        $Probe = 3
-        $PreviousPreference = $ErrorActionPreference
-        try {
-            $ErrorActionPreference = 'Continue'
-            & $Py.Source -3.11 -c "import sys; sys.exit(0 if sys.version_info[:2] == (3, 11) else 3)" 2>$null | Out-Null
-            $Probe = $LASTEXITCODE
-        } catch {
-            $Probe = 3
-        } finally {
-            $ErrorActionPreference = $PreviousPreference
-        }
-        if ($Probe -eq 0) {
-            $Launcher = $Py.Source
-            $LauncherArgs = @('-3.11')
-        }
+    if ($Py -and (Test-Python311 $Py.Source @('-3.11'))) {
+        $Launcher = $Py.Source
+        $LauncherArgs = @('-3.11')
     }
 }
 if (-not $Launcher) {
-    # Get-Command may return several matches; take the first real application.
+    # Get-Command may return several matches; take the first real 3.11 application.
     $Candidates = @(Get-Command python -CommandType Application -All -ErrorAction SilentlyContinue)
     foreach ($Candidate in $Candidates) {
-        if ($Candidate.Source -notlike '*\WindowsApps\*') {
+        if ($Candidate.Source -notlike '*\WindowsApps\*' -and (Test-Python311 $Candidate.Source @())) {
             $Launcher = $Candidate.Source
             break
         }

@@ -417,16 +417,42 @@ def _looks_like_zip(path):
     return magic in ZIP_MAGICS
 
 
+def _end_record_position(tail):
+    """The single end record whose declared comment length reaches EOF exactly.
+
+    Scans backward through every end signature in the tail window. Two
+    self-consistent candidates, or an end signature inside the chosen record's
+    comment (where CPython ``zipfile`` would pick a different record), are
+    ambiguous. Signatures that are not self-consistent are member data.
+    """
+    found, start = [], len(tail)
+    while (position := tail.rfind(b"PK\x05\x06", 0, start)) >= 0:
+        start = position
+        if position + 22 <= len(tail):
+            comment = int.from_bytes(tail[position + 20 : position + 22], "little")
+            if position + 22 + comment == len(tail):
+                found.append(position)
+    require(found, "ZIP_END_INVALID")
+    require(len(found) == 1, "ZIP_END_AMBIGUOUS")
+    require(b"PK\x05\x06" not in tail[found[0] + 22 :], "ZIP_END_AMBIGUOUS")
+    return found[0]
+
+
 def _zip_guard(path, max_members=MAX_MEMBERS):
     """Bound and pin the zip layout before ZipFile builds entry objects.
 
     Re-implements (does not import) the unmerged FG-4 layout rules, tightened in
     SN-6 round 2: the file starts with a local header (or is an empty archive),
-    there is exactly one end record and it ends the file (comment only; a comment
-    may not contain another end signature), no multi-disk, ZIP64 or locator, and
+    exactly one end record ends the file (its declared comment reaches EOF, and the
+    comment holds no further end signature), no multi-disk, ZIP64 or locator, and
     the central directory ends exactly where the end record starts. CPython's
     ``zipfile`` silently tolerates prepended or concatenated data by shifting
     offsets; this guard refuses such files instead. Returns the directory offset.
+
+    End signatures earlier in the file (inside member data, e.g. a stored nested
+    zip as the last member) are fine: adjacency, the gap check and the
+    comment-reaches-EOF rule already reject concatenated, prepended and trailing
+    data (SN-6 round 2 follow-up).
     """
     require(_looks_like_zip(path), "ARCHIVE_NOT_ZIP")
     size = path.stat().st_size
@@ -434,8 +460,7 @@ def _zip_guard(path, max_members=MAX_MEMBERS):
         tail_start = max(0, size - 65557)
         stream.seek(tail_start)
         tail = stream.read(65557)
-    position = tail.rfind(b"PK\x05\x06")
-    require(position >= 0 and position + 22 <= len(tail), "ZIP_END_INVALID")
+    position = _end_record_position(tail)
     _, disk, directory_disk, disk_count, count, directory_bytes, offset, comment = struct.unpack(
         "<4s4H2LH", tail[position : position + 22]
     )
@@ -448,9 +473,6 @@ def _zip_guard(path, max_members=MAX_MEMBERS):
         "ZIP_LAYOUT_UNSUPPORTED",
     )
     end_record = tail_start + position
-    # Exactly one end record: none hidden earlier in the tail window either
-    # (a concatenated or nested archive leaves its own end record behind).
-    require(tail.count(b"PK\x05\x06") == 1, "ZIP_END_AMBIGUOUS")
     require(b"PK\x06\x07" not in tail[max(0, position - 20) : position], "ZIP_LAYOUT_UNSUPPORTED")
     require(
         count <= max_members and directory_bytes <= MAX_ZIP_DIRECTORY_BYTES,
@@ -1299,9 +1321,11 @@ def identity_group_origin(records, archive_consistent):
     in this same run (SN-6 condition); otherwise ``unknown``.
 
     Groups come from the name field of the official filenames by a fixed rule (FG-2);
-    nobody reviewed them, so ``human`` is never used. ``group_id`` is an unsalted
-    SHA-256 prefix of the name and can be reversed against the public name list: it
-    is a stable key, not an anonymisation.
+    nobody reviewed them, so ``human`` is never used. ``group_id`` is
+    ``"subject-" + sha256(subject_id)[:16]`` with ``subject_id = "agedb-subject:" +
+    sha256(name)[:24]`` (FG-2 ``agedb_filenames.subject_id``): two unsalted hashes of
+    the name, so it can still be reversed against the public name list. It is a
+    stable key, not an anonymisation.
     """
     official = archive_consistent is True and all(
         row.get("dataset_id") == agedb.DATASET_ID for row in records
