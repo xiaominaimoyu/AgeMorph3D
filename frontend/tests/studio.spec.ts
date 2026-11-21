@@ -987,6 +987,10 @@ for (const assetMode of ["static", "age_morph"] as const) {
 for (const finalState of ["ready", "error"] as const) {
   test(`连接仅刷新loading状态，转为${finalState}后更新能力并停止轮询`, async ({ page }) => {
     let checks = 0;
+    let releaseSecond!: () => void;
+    const secondHeld = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
     const loading = serviceHealth({ reconstruction: false, age_morph: false, age_texture: false, realtime: false });
     loading.models.reconstructor.state = "loading";
     loading.models.reconstructor.detail = "Fixture model loading.";
@@ -995,6 +999,10 @@ for (const finalState of ["ready", "error"] as const) {
     terminal.models.reconstructor.detail = `Fixture model ${finalState}.`;
     await page.route(`${API}/api/health`, async (route) => {
       checks++;
+      // Hold the 2nd (and later) health response until loading-state assertions finish.
+      // The app polls 500ms after the first loading payload; on software rendering,
+      // connect/Escape/assert can exceed that window and the ready payload races the checks.
+      if (checks > 1) await secondHeld;
       await route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: checks === 1 ? loading : terminal });
     });
     await openStudio(page);
@@ -1003,10 +1011,13 @@ for (const finalState of ["ready", "error"] as const) {
     await connectLocalApi(page);
     await expect(page.locator("#health-status")).toContainText("state=loading");
     await expect(page.locator("#reconstruct")).toBeDisabled();
+    await expect.poll(() => checks).toBe(2);
+    await expect(page.locator("#health-status")).toContainText("state=loading");
+    await expect(page.locator("#reconstruct")).toBeDisabled();
+    releaseSecond();
     await expect(page.locator("#health-status")).toContainText(`Fixture model ${finalState}.`);
     if (finalState === "ready") await expect(page.locator("#reconstruct")).toBeEnabled();
     else await expect(page.locator("#reconstruct")).toBeDisabled();
-    await page.waitForTimeout(750);
     expect(checks).toBe(2);
   });
 }
