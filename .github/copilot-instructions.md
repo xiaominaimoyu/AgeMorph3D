@@ -1,5 +1,13 @@
 # AgeMorph3D Copilot Instructions
 
+**先读 RULES.md。**
+
+- RULES.md:14 的文件清单确认：未确认本次精确文件清单前不执行 Git 操作。
+- 本地提交授权不等于推送授权。
+- 论文正文、图、人工评价、签名归用户本人。
+- 不得抹去 AI 署名。
+- AgeDB 和参与者材料不进 AI。
+
 ## Repository shape
 
 AgeMorph3D is a local-only, Windows-oriented 3D face reconstruction and visualization project:
