@@ -1,6 +1,6 @@
 # 当前进度与交接
 
-2026-11-16 FG-8 第一阶段[LX-1 到 LX-3 本机脚本包](docs/LX本机脚本包开发记录.md)：`preprocessing/lx_local.py` 与 `tools/lx-local.ps1`，对外只出白名单 summary.json；18 项合成测试，未取得真实数据，分支未推送。
+2026-11-16 FG-8 第一阶段[LX-1 到 LX-3 本机脚本包](docs/LX本机脚本包开发记录.md)：`preprocessing/lx_local.py` 与 `tools/lx-local.ps1`，对外只出白名单 summary.json；2026-11-21（UTC+8）按 Sentinel 复审返工：续跑复核输入、损坏归档固定错误码、近重复/划分规则/小格抑制在 summary 中如实标注“未做/待定”；47 项合成测试，未取得真实数据，分支未推送。
 
 2026-11-16 FG-2[AgeDB官方文件名解析](docs/AgeDB文件名解析开发记录.md)合成工程子项：`preprocessing/agedb_filenames.py`供用户本机统计官方文件夹，输出只含汇总的stats.json、本机专用rejected.json和K5清单，K5用途保持unassigned、不改划分逻辑。113项新增合成测试，完整后端3006→3119通过（Python 3.11.16/Pillow 13.0.0；3项跳过取决于环境：未设AGEMORPH_LOCAL_RUN_LIVE及无项目venv/Vite时跳过；Ruff/格式只针对新增文件，35c0cd6全库仍有17处I001）。未取得真实数据，分支未推送。复审后补充：CLI 须显式传入 --local-only-ack 才运行；audit.json 增加 local_only，K5 manifest 结构未改。
 
