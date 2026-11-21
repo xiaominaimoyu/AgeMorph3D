@@ -462,6 +462,9 @@ test("材质、视角、光照与年龄对照可切换，画布确实更新", as
 test("390px 窄屏无横向溢出，核心操作与弹窗可达", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openStudio(page);
+  await expect(page.locator("#ethics-notice")).toHaveText(
+    "年龄变换研究演示，不用于预测个体未来相貌。仅记录你提供的年龄，不代表模型估计。",
+  );
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -485,8 +488,11 @@ test("390px 窄屏无横向溢出，核心操作与弹窗可达", async ({ page 
 test("笔记本单屏工作台：视口、年龄滑块与主要操作无需滚动", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await openStudio(page);
+  await expect(page.locator("#ethics-notice")).toHaveText(
+    "年龄变换研究演示，不用于预测个体未来相貌。仅记录你提供的年龄，不代表模型估计。",
+  );
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(720);
-  for (const selector of ["#viewer canvas", "#age-slider", "#reconstruct", "#export-glb", "#settings-open"]) {
+  for (const selector of ["#ethics-notice", "#viewer canvas", "#age-slider", "#reconstruct", "#export-glb", "#settings-open"]) {
     const box = (await page.locator(selector).boundingBox())!;
     expect(box.y, selector).toBeGreaterThanOrEqual(0);
     expect(box.y + box.height, selector).toBeLessThanOrEqual(720);
