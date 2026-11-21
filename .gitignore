@@ -21,6 +21,12 @@ venv/
 *.obj
 *.fbx
 *.tgz
+*.zip
+*.ZIP
+*.jpg
+*.JPG
+*.jpeg
+*.JPEG
 datasets/
 data/
 
