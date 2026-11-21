@@ -1120,3 +1120,78 @@ def test_zip_member_failure_leaves_no_staging_part(tmp_path):
     assert result["inventory"][0]["error_code"] == "MEMBER_READ_FAILED"
     assert list((tmp_path / OUTPUT / "stage").iterdir()) == []
     assert not (tmp_path / OUTPUT / "files/images/a.png").exists()
+
+
+# ---- SN-6 round 2: strict, contiguous zip layout (concatenated/prefixed/gapped) ----
+
+
+def _plain_zip_bytes(members):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as container:
+        for name, body in members:
+            container.writestr(name, body)
+    return buffer.getvalue()
+
+
+def _shift_offsets(body, prefix):
+    """Prepend bytes and fix every central/end offset (self-consistent, like zip -A)."""
+    body = bytearray(body)
+    end = body.rfind(b"PK\x05\x06")
+    for central in _central_offsets(body):
+        offset = struct.unpack_from("<L", body, central + 42)[0]
+        struct.pack_into("<L", body, central + 42, offset + len(prefix))
+    start = struct.unpack_from("<L", body, end + 16)[0]
+    struct.pack_into("<L", body, end + 16, start + len(prefix))
+    return bytes(prefix) + bytes(body)
+
+
+def test_zip_concatenated_archive_rejected_not_partially_read(tmp_path):
+    case = one_image_case(tmp_path)
+    hidden = _plain_zip_bytes([("hidden.png", image_bytes())])
+    shown = _plain_zip_bytes([("ok.png", image_bytes())])
+    rewrite(case, lambda path: path.write_bytes(hidden + shown))
+    assert_rejected_cleanly(case, "ZIP_END_AMBIGUOUS|ZIP_DIRECTORY_NOT_ADJACENT")
+
+
+def test_zip_self_consistent_prefix_is_a_gap(tmp_path):
+    case = one_image_case(tmp_path)
+    body = _plain_zip_bytes([("ok.png", image_bytes())])
+    shifted = _shift_offsets(body, b"PK\x03\x04" + b"\0" * 60)
+    rewrite(case, lambda path: path.write_bytes(shifted))
+    assert_rejected_cleanly(case, "ZIP_ENTRY_GAP")
+
+
+def test_zip_gap_before_central_directory_rejected(tmp_path):
+    case = one_image_case(tmp_path)
+    body = bytearray(_plain_zip_bytes([("ok.png", image_bytes())]))
+    end = body.rfind(b"PK\x05\x06")
+    start = struct.unpack_from("<L", body, end + 16)[0]
+    gapped = body[:start] + b"\0" * 16 + body[start:]
+    struct.pack_into("<L", gapped, end + 16 + 16, start + 16)
+    rewrite(case, lambda path: path.write_bytes(bytes(gapped)))
+    assert_rejected_cleanly(case, "ZIP_ENTRY_GAP")
+
+
+def test_zip_trailing_bytes_and_comment_hiding_end_record_rejected(tmp_path):
+    case = one_image_case(tmp_path)
+    body = _plain_zip_bytes([("ok.png", image_bytes())])
+    rewrite(case, lambda path: path.write_bytes(body + b"trailing"))
+    assert_rejected_cleanly(case, "ZIP_END_INVALID|ZIP_LAYOUT_UNSUPPORTED")
+    tricked = bytearray(body)
+    struct.pack_into("<H", tricked, len(tricked) - 2, 22)
+    tricked += b"PK\x05\x06" + b"\0" * 18
+    rewrite(case, lambda path: path.write_bytes(bytes(tricked)))
+    assert_rejected_cleanly(case, "ZIP_END_AMBIGUOUS|ZIP_LAYOUT_UNSUPPORTED")
+
+
+def test_zip_strict_layout_still_accepts_a_normal_archive(tmp_path):
+    case = one_image_case(tmp_path)
+    for compression in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+        zip_with(case, [("notes.txt", b"synthetic only")], compression)
+        path, checksum = refresh(case)
+        report = data.prepare(
+            case["root"], path.relative_to(case["root"]).as_posix(), checksum, OUTPUT
+        )
+        assert report["receipt"] == OUTPUT + "/report.json"
+        assert any(row["member"] == "notes.txt" for row in report["inventory"])
+        shutil.rmtree(case["root"] / OUTPUT)

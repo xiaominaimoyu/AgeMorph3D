@@ -92,13 +92,19 @@ def _write_json(root, name, value):
         stream.write(body)
 
 
-def _zip_guard(path, limits):
-    # Bound central-directory allocation before ZipFile constructs its entry objects.
+def _zip_end(path, limits=None):
+    """Parse the single end record; the directory must end exactly where it starts.
+
+    CPython ``zipfile`` tolerates prepended or concatenated data by shifting every
+    offset by the difference; this refuses such files instead (SN-6 round 2).
+    """
     with path.open("rb") as stream:
-        require(stream.read(4) in {b"PK\x03\x04", b"PK\x05\x06"}, "ZIP_PREFIX_UNSUPPORTED")
+        head = stream.read(4)
         size = path.stat().st_size
-        stream.seek(max(0, size - 65557))
+        tail_start = max(0, size - 65557)
+        stream.seek(tail_start)
         tail = stream.read(65557)
+    require(head in {b"PK\x03\x04", b"PK\x05\x06"}, "ZIP_PREFIX_UNSUPPORTED")
     position = tail.rfind(b"PK\x05\x06")
     require(position >= 0 and position + 22 <= len(tail), "ZIP_END_INVALID")
     _, disk, directory_disk, disk_count, count, directory_bytes, offset, comment = struct.unpack(
@@ -112,8 +118,23 @@ def _zip_guard(path, limits):
         and offset != 0xFFFFFFFF,
         "ZIP_LAYOUT_UNSUPPORTED",
     )
-    require(count <= limits["members"] and directory_bytes <= 1024**2, "ZIP_DIRECTORY_LIMIT")
-    require(offset + directory_bytes <= size - len(tail) + position, "ZIP_DIRECTORY_INVALID")
+    if limits is not None:
+        require(count <= limits["members"] and directory_bytes <= 1024**2, "ZIP_DIRECTORY_LIMIT")
+    # Exactly one end record in the tail window (a comment may not hide a second one,
+    # and a concatenated archive leaves its own end record behind), and no ZIP64 locator.
+    require(tail.count(b"PK\x05\x06") == 1, "ZIP_END_AMBIGUOUS")
+    require(b"PK\x06\x07" not in tail[max(0, position - 20) : position], "ZIP_LAYOUT_UNSUPPORTED")
+    require(offset + directory_bytes == tail_start + position, "ZIP_DIRECTORY_NOT_ADJACENT")
+    if count == 0:
+        require(offset == 0 and directory_bytes == 0, "ZIP_LAYOUT_UNSUPPORTED")
+    else:
+        require(head == b"PK\x03\x04", "ZIP_PREFIX_UNSUPPORTED")
+    return offset, count, directory_bytes
+
+
+def _zip_guard(path, limits):
+    # Bound central-directory allocation before ZipFile constructs its entry objects.
+    _zip_end(path, limits)
 
 
 class _BoundedReader:
@@ -159,14 +180,19 @@ def tar_data_filter(info, destination):
 
 
 def _zip_layout(path, infos, directory_offset):
-    """Local headers must match the central directory and entry data may not overlap.
+    """Local headers must match the central directory, and the entry area is contiguous.
 
-    Rejects overlapping-entry bombs and names hidden behind a different central name
-    before any byte is extracted.
+    The first local header is at offset 0, each entry is followed directly by the
+    next (no gap, no overlap), and the central directory starts right after the last
+    one. Rejects overlapping-entry bombs, hidden or concatenated payloads and names
+    hidden behind a different central name before any byte is extracted.
     """
+    offset, count, _ = _zip_end(path)
+    require(directory_offset == offset and len(infos) == count, "ZIP_DIRECTORY_INVALID")
     end = 0
     with path.open("rb") as stream:
         for info in sorted(infos, key=lambda item: item.header_offset):
+            require(info.header_offset <= end, "ZIP_ENTRY_GAP")
             require(info.header_offset >= end, "ZIP_ENTRY_OVERLAP")
             stream.seek(info.header_offset)
             header = stream.read(_ZIP_LOCAL.size)
@@ -183,8 +209,12 @@ def _zip_layout(path, infos, directory_offset):
                 "ZIP_LOCAL_HEADER_MISMATCH",
             )
             end = info.header_offset + _ZIP_LOCAL.size + name_length + extra_length
-            end += info.compress_size + (12 if flags & 0x08 else 0)
+            end += info.compress_size
+            if flags & 0x08:  # data descriptor, with or without its optional signature
+                stream.seek(end)
+                end += 16 if stream.read(4) == b"PK\x07\x08" else 12
             require(end <= directory_offset, "ZIP_ENTRY_OVERLAP")
+    require(end == directory_offset, "ZIP_ENTRY_GAP")
 
 
 def _member(info, kind, destination=None):
