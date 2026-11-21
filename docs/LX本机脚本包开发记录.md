@@ -1,12 +1,12 @@
 # FG-8 第一阶段：LX-1 到 LX-3 本机脚本包
 
-本文时间均为 UTC+8。2026-11-16 完成 FG-8 第一阶段初版（规划 v2 第 102 行；LX 任务组本阶段只做 LX-1 到 LX-3）。2026-11-21 按 Sentinel 复审意见返工（3 项 MAJOR、9 项 MINOR，另含“与 FG-4 等价”表述过度一项）。
+本文时间均为 UTC+8。2026-11-16 完成 FG-8 第一阶段初版（规划 v2 第 102 行；LX 任务组本阶段只做 LX-1 到 LX-3）。2026-11-21 按 Sentinel 复审意见返工（3 项 MAJOR、9 项 MINOR，另含“与 FG-4 等价”表述过度一项）；同日按第二轮复审（SN-6，1 项 MAJOR、10 项 MINOR）再返工。
 
 脚本在用户自己的 Windows 电脑上，对用户已取得的 AgeDB 官方包做三件事：校验和解压、按官方文件名统计、给出按身份划分的**临时建议账本**。
 
 - 对外只写一份 `summary.json`。它受字段白名单和取值白名单双重约束，只含汇总数字、固定代码和文件 SHA-256，不含文件名、人名、身份编号、逐图记录或特征值。
 - 脚本不接收、不保存解压密码。
-- 测试只用合成文件名（虚构人名）和小图。**没有读取或下载任何官方包、HF 转存或 `/workspace/hf`。**
+- 测试只用合成文件名（虚构人名）和小图。**没有读取或下载任何官方包、HF 转存或本机 HF 目录。**
 - LX-4 到 LX-6 依赖尚未合并的 FG-6/FG-7，本阶段不做。
 
 代码：[lx_local.py](../preprocessing/lx_local.py)；Windows 入口：[lx-local.ps1](../tools/lx-local.ps1)；测试：[test_lx_local.py](../backend/tests/test_lx_local.py)；样例：[lx-summary-sample.json](lx-summary-sample.json)（由合成夹具生成）。
@@ -26,7 +26,7 @@ CLI **默认拒绝运行**，必须显式传入 `--local-only-ack`。未传时�
   --output-dir output/research/lx-agedb-v1
 ```
 
-ps1 选 Python 的顺序：`backend\.venv\Scripts\python.exe`，然后 `py -3.11`，最后 PATH 上的 `python`（拒绝 Microsoft Store 占位程序）。它用 `Push-Location`/`Pop-Location` 运行，结束后恢复调用者的当前目录和 `PYTHONDONTWRITEBYTECODE`，不写字节码，并原样传回退出码。**ps1 只做了静态检查，没有在 Windows 实机运行过。**
+ps1 选 Python 的顺序：`backend\.venv\Scripts\python.exe`；然后 `py -3.11`，但要先探测确实装了 3.11；最后是 PATH 上第一个真正的 `python`（`Get-Command -All` 逐个看，跳过 WindowsApps 占位程序，而不是直接拒绝）。找不到 3.11 时退出码 2，并打印 `LAUNCHER_PYTHON_311_REQUIRED`；Python 起不来、或返回 0/1/2 以外的退出码时，也退出 2，并打印 `LAUNCHER_START_FAILED`。它用 `Push-Location`/`Pop-Location` 运行，结束后恢复调用者的当前目录和 `PYTHONDONTWRITEBYTECODE`，不写字节码。**ps1 只做了静态检查，没有在 Windows 实机运行过。** 注意：Python 进程若在 CLI 之外崩溃并以 1 退出，ps1 无法和 needs_review 区分。
 
 - **官方包**：自己把 AgeDB.zip 放到 `--archive` 路径，脚本不下载。条款快照可选，只记录大小和 SHA-256。
 - **解压密码**：不要传给脚本，也不要写进参数、环境变量或聊天。
@@ -35,6 +35,8 @@ ps1 选 Python 的顺序：`backend\.venv\Scripts\python.exe`，然后 `py -3.11
 - **`--images-dir`**：必须是 `data/datasets/` 下以 `agedb` 开头的专用目录（如 `data/datasets/agedb`），不能是 `data`、`data/datasets` 本身或更深的子目录。
 - **退出码**：0 表示 passed；1 表示 needs_review（例如 LX-2 有被拒文件）；2 表示拒绝。拒绝时 stdout 只打印 `{"status":"rejected","error_code":<固定代码>}`，不打印文件名、路径或 traceback；参数错误也不会回显参数值。
 - **回传**：只回传 `output/research/<目录>/summary.json`，回传前请自己打开看一眼。`local/` 下的报告含文件名，标了 `local_only`，不要外传。
+
+开发者自测时：`--basetemp` 的父目录必须事先存在（例如先 `mkdir -p /tmp/fg8-pytest`），否则 pytest 会让全部测试报错。
 
 ## 2. 各阶段
 
@@ -61,7 +63,10 @@ summary.json 里有一组固定披露字段，取值写死在代码里。被改�
 | `pending_user_decisions` | `NEAR_DUPLICATE_METHOD`、`SPLIT_RULE`、`SMALL_CELL_SUPPRESSION` | 三项待决事项 |
 | `freeze_authorized` / `split_assignment_performed` | false / false | 只是建议账本，没有冻结 |
 
+以上每个字段（含 `p01_quality_checks_performed`、`exact_duplicate_zero_does_not_prove_no_leakage`、`small_cell_suppression_applied`、`freeze_authorized`、`split_assignment_performed`）都在 `FORCED_DISCLOSURES` 里，值或类型被改都会被拒。`near_duplicate_screening_performed` 不强制：≤32 条且提供 P01 产物时 P03 真的会跑，此时为 true。
+
 - **临时划分规则**：`int(sha256(seed:subject_id)[:8], 16) % 100`。0—69 进训练集，70—84 进验证集，85—99 进测试集。种子默认 `agemorph3d-lx3-identity-split-v1`。
+- **`short_side_px.median`**：沿用 FG-2 的真实中位数（`statistics.median`）。张数为偶数时取中间两值的平均，所以可能是整数、`x.0` 或 `x.5`（官方 16,488 张为偶数）；白名单只接受有限、非负、非 bool、且为整数或半整数的数，没有可读图片时为 null。没有可读图片时 `short_side_px` 仍是同样 7 个键：`count=0`，`min/max/median=null`，`below_128=0`，`histogram`/`quantiles` 为空对象。直方图和分位数的值必须是非负整数。
 - **小格计数**：568 人的公开名人集上，`age_min`/`age_max`、分位数和很小的格子可能指认到单人。本版本不抑制这些格子。传 `--suppress-small-cells` 会以 `SMALL_CELL_SUPPRESSION_POLICY_UNSETTLED` 拒绝，以免擅自选定规则。
 
 ## 4. 断点续跑与输入复核
@@ -69,12 +74,16 @@ summary.json 里有一组固定披露字段，取值写死在代码里。被改�
 `local/state.json` 记录各阶段的输入哈希和产物哈希。
 
 - **LX-1**：每次都重新计算归档哈希；复用已解压目录前，先和中央目录核对。
-- **LX-2**：同时满足以下三条才复用，否则删除本输出 `local/` 下的旧产物重跑，并作废 LX-3 状态：
-  1. 重新计算的输入清单哈希与记录一致（清单含每个文件的 SHA-256、大小和路径）；
-  2. 四个产物文件的 SHA-256 都与记录一致；
-  3. 上次运行标记为通过。
-- **LX-3**：每次都重算。开跑前先复核 LX-2 产物哈希；没跑 LX-2 时还要重新计算输入清单哈希，输入变了就报 `LX2_STALE_RERUN_REQUIRED`，产物被改就报 `LX2_OUTPUT_CHANGED`。旧账本、P03/P04 的半成品会先删掉。
-- **旧的 summary.json**：每次运行开始时移到 `local/summary.stale.json`。失败时写入 `status=rejected` 的 summary，不会留下上一次“通过”的结果。
+- **LX-2**：同时满足以下四条才复用（与代码 `_lx2_reusable` 一致），否则先作废 LX-3（删账本和 P03/P04 半成品、`state` 里去掉 `lx3`），再删除本输出 `local/` 下的旧 LX-2 产物重跑：
+  1. `state.json` 里 LX-2 标记为通过；
+  2. 重新计算的输入清单哈希与记录一致（清单含每个文件的 SHA-256、大小和路径）；
+  3. 记录的产物目录就是本输出的 `local/agedb-stats`，且记录了四个产物的哈希；
+  4. 四个产物文件都存在、不是链接，SHA-256 都与记录一致。
+- **LX-3**：每次都重算。**先**作废旧结果（删除账本、精确重复表、P03/P04 半成品，`state` 里去掉 `lx3`），**再**复核 LX-2 产物哈希；没跑 LX-2 时还要重新计算输入清单哈希。输入变了报 `LX2_STALE_RERUN_REQUIRED`，产物被改报 `LX2_OUTPUT_CHANGED`；这两种失败后都不会留下旧账本。
+- **`state.json` 损坏**（不是合法 JSON，或 schema/输出目录不符）：报 `STATE_CORRUPT`，原文件保持不动，不覆盖。
+- **哪些失败会写拒收 summary**：
+  - 会写：`--root` 和 `--output-dir` 校验通过之后的一切失败，包括 `--images-dir` 越界、`state.json` 损坏、`--stages` 非法、`--suppress-small-cells`、归档损坏、各阶段失败。旧的 summary.json 在运行开始时移到 `local/summary.stale.json`，不会留下上一次“通过”的结果。
+  - 不写任何文件：未传 `--local-only-ack`、参数解析错误、`--root` 无效、`--output-dir` 不在 `output/research/` 下或路径不安全。此时输出目录本身不可信，只在 stdout 打印固定错误码。
 - **字段**：`lx2_resumed` 表示 LX-2 是否复用；`inputs_stable` 表示输入是否与上次一致。
 
 ## 5. 与未合并分支、现有工具的关系
@@ -82,7 +91,8 @@ summary.json 里有一组固定披露字段，取值写死在代码里。被改�
 - **FG-2**（本分支基于 `feat/agedb-parser` @ `377acae`）：直接调用 `export()` / `build()`。
 - **FG-4**（`feat/safe-loading`，未合并）：LX-1 的安全解压与 FG-4 **部分等价**，规则是在这里重新实现的，没有共用代码。
   - 已覆盖：
-    - 非 zip 输入、前置数据（自解压壳）、多卷或 ZIP64 布局；
+    - 非 zip 输入、前置数据（自解压壳）、拼接 zip、多卷或 ZIP64 布局；
+    - 布局必须严格连续：第一个本地头在偏移 0，条目之间无空隙，中央目录紧跟最后一个条目，结束记录紧跟中央目录并结束文件（只允许声明长度的注释，注释里不得再有结束记录签名），文件末 64 KB 内只能有一个结束记录。CPython `zipfile` 会通过平移偏移量静默容忍前置或拼接数据，这里改为拒绝。代价是：带空隙的少见合法 zip 也会被拒（偏向拒绝）；
     - 中央目录过大，条目重叠，本地头与中央目录不一致；
     - 加密成员，符号链接或设备成员，不支持的压缩方法；
     - 单成员、总量和压缩比上限；
@@ -91,11 +101,12 @@ summary.json 里有一组固定披露字段，取值写死在代码里。被改�
   - 未覆盖：tar/tar.gz（这里不支持），以及 FG-4 的 `safe_loading` 模块（未合并）。
   - 本底的 `archive_preparation.prepare()` 有 32 张图上限和取得回执要求，不能处理官方包。
 - **fix/env-and-imports**（未合并）：本底的 `duplicate_screening.fingerprint_contract()` 仍钉死 Python 3.11.16。用户本机若是其他补丁版本，调用 P03 会因环境合同失败，原因会记入 `p03_p04_block_reason`。
-- **P01—P04 的 32 条上限**：现有工具都按 32 条小样设计，P03 还需要 P01 的规范化 PNG 和取得回执。官方 AgeDB 有 16,488 张，不能走这条链。只有调用方提供合格的 P01 报告和清单、且记录不超过 32 条时，才会调用 `screen` 和 `precheck`。身份分组的 `origin` 记为 `official`（分组来自官方文件名里的姓名字段）。
+- **P01—P04 的 32 条上限**：现有工具都按 32 条小样设计，P03 还需要 P01 的规范化 PNG 和取得回执。官方 AgeDB 有 16,488 张，不能走这条链。只有调用方提供合格的 P01 报告和清单、且记录不超过 32 条时，才会调用 `screen` 和 `precheck`。身份分组的 `origin` 只在两条同时满足时记为 `official`：记录的 `dataset_id` 都是 `agedb-official`，且**同一次运行**的 LX-1 确认解压目录与归档一致（`extracted_archive_consistent=true`）；否则记 `unknown`。summary 和账本里有 `identity_group_origin`。分组来自官方文件名里的姓名字段（固定规则，没有人工复核，所以从不用 `human`）。
+- **`group_id` 不是匿名化**：`group_id` 是姓名未加盐 SHA-256 的前 16 位十六进制，按公开的 568 人名单可以反查。它只是稳定键，只出现在 `local/` 下的本机报告里，不进 summary。是否加盐由用户决定。
 
 ## 6. 提交与署名
 
 - 全部是本地提交，未推送；push 地址为 `DISABLED_NO_PUSH`。
-- 返工提交按用户决定署名：作者用用户本人，并加 `Co-authored-by: Forge (AI agent)`。
-- 精确文件清单见 `/workspace/AgeMorph3D_tasks/FG-8_说明.md`，请用户确认（RULES.md 第 14 行）。
+- 返工提交的署名口径由用户本人确认（经 Atlas 转达，2026-11-21）：作者和提交者都用用户本人，并加 `Co-authored-by: Forge (AI agent)`，不抹去 AI 署名。
+- 本批精确文件清单另行提交给用户确认（RULES.md 第 14 行）。
 - 推送和开 PR 需要用户逐次批准。
