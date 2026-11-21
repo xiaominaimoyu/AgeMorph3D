@@ -1,5 +1,7 @@
 # 当前进度与交接
 
+2026-11-21 FG-4 Sentinel 对 `3c3b34c`+`23cfd7b` 复审 PASS 后的 5 条 MINOR：静态检查补上 `torch.serialization.load` 与 `np.load` 第三位置 `allow_pickle`（未发现新的仓库存量，已知清单仍为 6 条）；盲区与未纳入范围的加载器已写明；`prepare_tddfa` 的 SHA 来自调用方 CLI，只核完整性、不核出处；失败成员 `.part` 清理改为待用户确认。新增测试 174→188，完整后端 3180→3194 通过（3 项跳过；Ruff 只针对改动文件，全库既有 I001 仍为 17）。未改写既有提交，未推送。
+
 2026-11-16 FG-4[数据安全加载规则](docs/数据安全加载规则开发记录.md)合成工程子项：`archive_preparation.py`补TAR `filter="data"`、ZIP本地头/重叠/压缩比和NFC重名检查（建输出目录前拒绝），失败成员不留`.part`；新增`safe_loading.py`（pin后weights_only=True加载、不回退）与仓库启发式静态检查（解析别名，非安全证明）；缺少`tarfile.data_filter`时显式拒绝。174项新增合成测试（含Sentinel复审返工），完整后端3006→3180通过（Python 3.11.16/Pillow 13.0.0；3项跳过取决于环境；Ruff/格式只针对改动文件，35c0cd6全库仍有17处I001）。SAM已知存量未改、待用户决定：`tools/sam_probe.py`2处（加载前无SHA校验）、`tools/sam_worker.py`1处（先哈希后按路径重读，TOCTOU），以及`tools/sam_native_ops/install.py`把`psp.py`改写为`weights_only=False`（`pSp`二次加载），共4处；`prepare_tddfa.py`受限Unpickler 1处一并列出；`feature_join`源码哈希因本次改动变化。未接触真实数据，分支未推送。
 
 2026-10-31 L03/L04 准备：`tools/code_stats.py` 与 [B系统论文章节提纲](docs/B系统论文章节提纲.md)。统计测试 7 项通过。对当前提交跑过一次，三名 git 作者都未映射到 A/B，`passes_requirement` 为 false。提纲没有正文。G1–G3、`MODEL_NOT_READY` 和 `static_fallback` 未改。

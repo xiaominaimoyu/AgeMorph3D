@@ -8,10 +8,11 @@ Archive rules (zip-slip, ``tarfile`` ``filter="data"``, bombs) live in
   and load) and always loaded with ``weights_only=True``. A refusal is final and is never
   retried with ``weights_only=False``. ``torch`` is imported lazily and stays optional.
 * ``audit_source``: a heuristic AST check (import aliases resolved per module) for
-  ``torch.load`` without literal ``weights_only=True``, ``torch.jit/hub.load``, pickle-family
-  loads, ``np.load(allow_pickle=...)`` other than literal ``False``, ``trust_remote_code``
-  other than literal ``False``, ``**kwargs`` into those calls, ``getattr`` on sensitive
-  modules, ``extract``/``extractall``/``shutil.unpack_archive`` without ``filter="data"``,
+  ``torch.load`` / ``torch.serialization.load`` without literal ``weights_only=True``,
+  ``torch.jit/hub.load``, pickle-family loads, ``np.load`` with ``allow_pickle`` other than
+  literal ``False`` (keyword or third positional), ``trust_remote_code`` other than literal
+  ``False``, ``**kwargs`` into those calls, ``getattr`` on sensitive modules,
+  ``extract``/``extractall``/``shutil.unpack_archive`` without ``filter="data"``,
   and unsafe flags inside dict or str/bytes literals. It is not a proof of safety.
 
 No network, model inference, ``eval`` or ``trust_remote_code`` is used here.
@@ -212,13 +213,15 @@ class _Auditor(ast.NodeVisitor):
         ):
             self.add(node, "DYNAMIC_SENSITIVE_LOOKUP")
         star = any(item.arg is None for item in node.keywords)
-        if name == "torch.load":
+        if name in {"torch.load", "torch.serialization.load"}:
             if star or not _is_constant(_keyword(node, "weights_only"), True):
                 self.add(node, "TORCH_LOAD_WITHOUT_WEIGHTS_ONLY")
         elif name in {"torch.jit.load", "torch.hub.load", "torch.hub.load_state_dict_from_url"}:
             self.add(node, "TORCH_JIT_OR_HUB_LOAD")
         elif name == "numpy.load":
             value = _keyword(node, "allow_pickle")
+            if value is None and len(node.args) >= 3:
+                value = node.args[2]
             if star or (value is not None and not _is_constant(value, False)):
                 self.add(node, "NUMPY_ALLOW_PICKLE")
         elif name.split(".")[0] in PICKLE_MODULES and name.rsplit(".", 1)[-1] in {
@@ -253,10 +256,11 @@ def audit_source(text, name="<source>"):
     """Return findings ``(name, line, code, snippet)`` for one source; empty means clean.
 
     A heuristic: it recognises the listed call names (after resolving ``import ... as`` and
-    ``from ... import`` aliases), ``getattr`` on sensitive modules, ``**`` unpacking into
-    sensitive calls, unsafe flags inside dict and string/bytes literals (docstrings are
-    skipped). Dynamic imports, values passed through variables, or code generated at run
-    time are not followed, so an empty result is not a proof of safety.
+    ``from ... import`` aliases), including ``torch.serialization.load`` and a positional
+    ``allow_pickle`` on ``numpy.load``, ``getattr`` on sensitive modules, ``**`` unpacking
+    into sensitive calls, unsafe flags inside dict and string/bytes literals (docstrings
+    are skipped). Dynamic imports, values passed through variables, or code generated at
+    run time are not followed, so an empty result is not a proof of safety.
     """
     auditor = _Auditor(name)
     auditor.visit(ast.parse(text, filename=name))
